@@ -1,4 +1,5 @@
 from copy import deepcopy
+from math import ceil
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -149,10 +150,11 @@ class WellLogsBatch(bf.Batch):
             raise ValueError("{} must be positive integer".format(val_name))
 
     @staticmethod
-    def _pad(logs, length, pad_value):
-        pad_len = length - logs.shape[1]
-        logs = np.pad(logs, ((0, 0), (pad_len, 0)), "constant", constant_values=pad_value)
-        return logs
+    def _pad(logs, new_length, pad_value):
+        pad_len = new_length - logs.shape[1]
+        if pad_len == 0:
+            return logs
+        return np.pad(logs, ((0, 0), (pad_len, 0)), "constant", constant_values=pad_value)
 
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
@@ -160,16 +162,22 @@ class WellLogsBatch(bf.Batch):
         self._check_positive_int(length, "Segment length")
         self._check_positive_int(step, "Step size")
         i = self.get_pos(None, "logs", index)
-        if self.logs[i].shape[1] < length:
-            tmp_logs = self._pad(self.logs[i], length, pad_value)
-            self.logs[i] = tmp_logs[np.newaxis, ...]
-            if split_mask:
-                tmp_mask = self._pad(self.mask[i][np.newaxis, ...], length, pad_value)
-                self.mask[i] = tmp_mask[np.newaxis, ...]
-        else:
-            self.logs[i] = bt.split(self.logs[i], length, step)
-            if split_mask:
-                self.mask[i] = bt.split(self.mask[i][np.newaxis, ...], length, step)
+
+        log_length = self.logs[i].shape[1]
+        n_segments = ceil(max(log_length - length, 0) / step) + 1
+        new_length = (n_segments - 1) * step + length
+        pad_length = new_length - log_length
+        # TODO: store to meta
+
+        split_positions = np.arange(n_segments) * step
+
+        # TODO: split dept component
+        padded_logs = self._pad(self.logs[i], new_length, pad_value)
+        self.logs[i] = bt.split(padded_logs, length, split_positions)
+
+        if split_mask:
+            padded_mask = self._pad(self.mask[i][np.newaxis, ...], new_length, pad_value)
+            self.mask[i] = bt.split(padded_mask, length, split_positions)
 
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
@@ -184,11 +192,10 @@ class WellLogsBatch(bf.Batch):
                 tmp_mask = self._pad(self.mask[i][np.newaxis, ...], length, pad_value)
                 self.mask[i] = np.tile(tmp_mask, (n_segments, 1, 1))
         else:
-            positions = np.random.randint(0, self.logs[i].shape[1] - length + 1, n_segments)
-            self.logs[i] = bt.random_split(self.logs[i], length, n_segments, positions)
+            split_positions = np.random.randint(0, self.logs[i].shape[1] - length + 1, n_segments)
+            self.logs[i] = bt.split(self.logs[i], length, split_positions)
             if split_mask:
-                self.mask[i] = bt.random_split(self.mask[i][np.newaxis, ...], length, n_segments, positions)
-
+                self.mask[i] = bt.split(self.mask[i][np.newaxis, ...], length, split_positions)
 
     @bf.action
     def split_predictions(self, length, step, shapes):
