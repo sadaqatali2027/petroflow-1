@@ -167,7 +167,13 @@ class WellLogsBatch(bf.Batch):
         n_segments = ceil(max(log_length - length, 0) / step) + 1
         new_length = (n_segments - 1) * step + length
         pad_length = new_length - log_length
-        self.meta[i].update({"n_segments": n_segments})
+        meta = {
+            "n_segments": n_segments,
+            "padded_length": new_length,
+            "pad_length": pad_length,
+            "split_step": step,
+        }
+        self.meta[i].update(meta)
 
         split_positions = np.arange(n_segments) * step
 
@@ -209,25 +215,21 @@ class WellLogsBatch(bf.Batch):
         return self
 
     @bf.action
-    @bf.inbatch_parallel(init="indices", post="_assemble_predictions", target="threads")
-    def average_prediction(self, index, length, step, shapes):
-        predictions = self.predictions[self.get_pos(None, "logs", index)]
-        log_length = (len(predictions) - 1) * step + length
-        average_prediction = np.zeros((len(predictions), log_length, 1))
-        denom = np.zeros(log_length)
-        for i, item in enumerate(predictions):
-            # print(item.shape, predictions.shape, average_prediction[i, i * step: i * step+length].shape)
-            average_prediction[i, i * step: i * step+length] = item
-            denom[i * step: i * step+length] += 1
-        average_prediction = np.sum(average_prediction, axis=0).swapaxes(0, 1) / denom
-        return average_prediction
+    @bf.inbatch_parallel(init="indices", target="for")
+    def aggregate_predictions(self, index):
+        # TODO: remove shape hardcode
+        i = self.get_pos(None, "logs", index)
+        predictions = self.predictions[i]
+        meta = self.meta[i]
+        step = meta["split_step"]
+        tmp_predictions = np.full(predictions.shape[:-1] + (meta["padded_length"],),
+                                  np.nan, dtype=predictions.dtype)
+        for ix in range(len(predictions)):
+            tmp_predictions[ix, 0, ix * step : (ix + 1) * step] = predictions[ix]
 
-    def _assemble_predictions(self, list_of_res, *args, **kwargs):
-        if not bf.any_action_failed(list_of_res):
-            setattr(self, 'predictions', self._to_array(list_of_res))
-        else:
-            raise Exception(list_of_res)
-        return self
+        # TODO: agg_fn to function arguments
+        agg_fn = np.nanmean
+        self.predictions[i] = agg_fn(tmp_predictions, axis=0)[0, meta["pad_length"]:]
 
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
