@@ -167,7 +167,7 @@ class WellLogsBatch(bf.Batch):
         n_segments = ceil(max(log_length - length, 0) / step) + 1
         new_length = (n_segments - 1) * step + length
         pad_length = new_length - log_length
-        # TODO: store to meta
+        self.meta[i].update({"n_segments": n_segments})
 
         split_positions = np.arange(n_segments) * step
 
@@ -198,14 +198,14 @@ class WellLogsBatch(bf.Batch):
                 self.mask[i] = bt.split(self.mask[i][np.newaxis, ...], length, split_positions)
 
     @bf.action
-    def split_predictions(self, length, step, shapes):
-        n_crops_per_item = [max([1, (shape[1] - length) // step + 1]) for shape in shapes]
-        pos = 0
-        predictions = []
-        for n_crops in n_crops_per_item:
-            predictions.append(self.predictions[pos:pos+n_crops])
-            pos += n_crops
-        setattr(self, 'predictions', predictions)
+    def split_by_well(self, components):
+        components = np.asarray(components).ravel()
+        split_indices = [meta.get("n_segments") for meta in self.meta]
+        if any(ix is None for ix in split_indices):
+            raise ValueError("The number of log segments for a well is unknown")
+        split_indices = np.cumsum(split_indices)[:-1]
+        for comp in components:
+            setattr(self, comp, self._to_array(np.split(getattr(self, comp), split_indices)))
         return self
 
     @bf.action
