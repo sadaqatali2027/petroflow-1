@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -6,19 +8,23 @@ from . import well_logs_batch_tools as bt
 
 
 class WellLogsBatch(bf.Batch):
-    components = "dept", "logs", "mnemonics", "mask", "predictions"
+    components = "dept", "logs", "meta", "mask", "predictions"
 
     def __init__(self, index, preloaded=None):
         super().__init__(index, preloaded)
         self.dept = self.array_of_nones
         self.logs = self.array_of_nones
-        self.mnemonics = self.array_of_nones
+        self.meta = self.array_of_dicts
         self.mask = self.array_of_nones
         self.predictions = self.array_of_nones
 
     @property
     def array_of_nones(self):
         return np.array([None] * len(self.index))
+
+    @property
+    def array_of_dicts(self):
+        return np.array([{} for _ in range(len(self.index))])
 
     def _reraise_exceptions(self, results):
         if bf.any_action_failed(results):
@@ -33,13 +39,12 @@ class WellLogsBatch(bf.Batch):
     def load(self, src=None, fmt=None, components=None, *args, **kwargs):
         if components is None:
             components = self.components
-        components = list(set(components) - set(['predictions']))
         components = np.asarray(components).ravel()
         if fmt == "npz":
             return self._load_npz(src=src, fmt=fmt, components=components, *args, **kwargs)
         return super().load(src, fmt, components, *args, **kwargs)
 
-    @bf.inbatch_parallel(init="indices", post="_assemble_load", target="threads")
+    @bf.inbatch_parallel(init="indices", target="threads")
     def _load_npz(self, index, src=None, fmt=None, components=None, *args, **kwargs):
         if src is not None:
             path = src[index]
@@ -48,27 +53,23 @@ class WellLogsBatch(bf.Batch):
         else:
             raise ValueError("Source path is not specified")
 
+        i = self.get_pos(None, "logs", index)
         well_data = np.load(path)
+
         missing_components = set(components) - set(well_data.keys())
         if missing_components:
             err_msg = "File {} does not contain components {}".format(path, ", ".join(missing_components))
             raise ValueError(err_msg)
-        return [well_data[comp] for comp in components]
+        for comp in components:
+            getattr(self, comp)[i] = well_data[comp]
 
-    def _assemble_load(self, results, *args, **kwargs):
-        _ = args, kwargs
-        self._reraise_exceptions(results)
-        components = kwargs.get("components", None)
-        if components is None:
-            components = self.components
-        for comp, data in zip(components, zip(*results)):
-            data = np.array(data + (None,))[:-1]
-            setattr(self, comp, data)
-        return self
+        extra_components = set(well_data.keys()) - set(components)
+        for comp in extra_components:
+            self.meta[i][comp] = well_data[comp]
 
     def show_logs(self, index=None, start=None, end=None, plot_mask=False, subplot_size=(15, 2)):
         i = 0 if index is None else self.get_pos(None, "signal", index)
-        dept, logs, mnemonics = self.dept[i], self.logs[i], self.mnemonics[i]
+        dept, logs, mnemonics = self.dept[i], self.logs[i], self.meta[i]["mnemonics"]
         if plot_mask:
             mask = self.mask[i]
             logs = np.concatenate([logs, mask[np.newaxis, ...]], axis=0)
@@ -96,7 +97,7 @@ class WellLogsBatch(bf.Batch):
     @bf.inbatch_parallel(init="indices", post="_assemble_drop_nans", target="threads")
     def drop_nans(self, index):
         i = self.get_pos(None, "logs", index)
-        dept, logs, mnemonics, mask = self.dept[i], self.logs[i], self.mnemonics[i], self.mask[i]
+        dept, logs, meta, mask = self.dept[i], self.logs[i], self.meta[i], self.mask[i]
         not_nan_mask = np.all(~np.isnan(logs), axis=0)
         not_nan_indices = np.where(not_nan_mask)[0]
         borders = np.where((not_nan_indices[1:] - not_nan_indices[:-1]) != 1)[0] + 1
@@ -104,7 +105,7 @@ class WellLogsBatch(bf.Batch):
         for i, indices in enumerate(np.split(not_nan_indices, borders)):
             if len(indices) == 0:
                 continue
-            splits.append([str(index) + "_" + str(i), np.copy(mnemonics),
+            splits.append([str(index) + "_" + str(i), deepcopy(meta),
                            dept[indices], logs[:, indices], mask[indices]])
         return splits
 
@@ -114,9 +115,9 @@ class WellLogsBatch(bf.Batch):
         results = sum(results, [])
         if len(results) == 0:
             raise bf.SkipBatchException("All batch data was dropped")
-        indices, mnemonics, dept, logs, mask = zip(*results)
+        indices, meta, dept, logs, mask = zip(*results)
         batch = self.__class__(bf.DatasetIndex(indices))
-        batch.mnemonics = self._to_array(mnemonics)
+        batch.meta = self._to_array(meta)
         batch.dept = self._to_array(dept)
         batch.logs = self._to_array(logs)
         batch.mask = self._to_array(mask)
@@ -173,6 +174,7 @@ class WellLogsBatch(bf.Batch):
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
     def random_split_logs(self, index, length, n_segments, pad_value=0, split_mask=False):
+        self._check_positive_int(length, "Segment length")
         self._check_positive_int(n_segments, "The number of segments")
         i = self.get_pos(None, "logs", index)
         if self.logs[i].shape[1] < length:
@@ -198,7 +200,7 @@ class WellLogsBatch(bf.Batch):
             pos += n_crops
         setattr(self, 'predictions', predictions)
         return self
-    
+
     @bf.action
     @bf.inbatch_parallel(init="indices", post="_assemble_predictions", target="threads")
     def average_prediction(self, index, length, step, shapes):
@@ -212,7 +214,7 @@ class WellLogsBatch(bf.Batch):
             denom[i * step: i * step+length] += 1
         average_prediction = np.sum(average_prediction, axis=0).swapaxes(0, 1) / denom
         return average_prediction
-    
+
     def _assemble_predictions(self, list_of_res, *args, **kwargs):
         if not bf.any_action_failed(list_of_res):
             setattr(self, 'predictions', self._to_array(list_of_res))
