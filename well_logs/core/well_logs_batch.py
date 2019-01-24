@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 
 from .. import batchflow as bf
 from . import well_logs_batch_tools as bt
+from .utils import for_each_component
 
 
 class WellLogsBatch(bf.Batch):
@@ -233,9 +234,11 @@ class WellLogsBatch(bf.Batch):
         self.predictions[i] = agg_fn(tmp_predictions, axis=0)[..., meta["pad_length"]:]
 
     @bf.action
+    @for_each_component
     @bf.inbatch_parallel(init="indices", target="threads")
-    def standardize(self, index, axis=-1, eps=1e-10):
-        i = self.get_pos(None, "logs", index)
-        logs = self.logs[i]
-        self.logs[i] = ((logs - np.mean(logs, axis=axis, keepdims=True)) /
-                         np.std(logs, axis=axis, keepdims=True) + eps)
+    def standardize(self, index, axis=-1, eps=1e-10, *, components):
+        i = self.get_pos(None, components, index)
+        comp = getattr(self, components)[i]
+        comp = ((comp - np.nanmean(comp, axis=axis, keepdims=True)) /
+                np.nanstd(comp, axis=axis, keepdims=True) + eps)
+        getattr(self, components)[i] = comp
