@@ -151,10 +151,11 @@ class WellLogsBatch(bf.Batch):
 
     @staticmethod
     def _pad(logs, new_length, pad_value):
-        pad_len = new_length - logs.shape[1]
+        pad_len = new_length - logs.shape[-1]
         if pad_len == 0:
             return logs
-        return np.pad(logs, ((0, 0), (pad_len, 0)), "constant", constant_values=pad_value)
+        pad_width = [(0, 0)] * (logs.ndim - 1) + [(pad_len, 0)]
+        return np.pad(logs, pad_width, "constant", constant_values=pad_value)
 
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
@@ -163,7 +164,7 @@ class WellLogsBatch(bf.Batch):
         self._check_positive_int(step, "Step size")
         i = self.get_pos(None, "logs", index)
 
-        log_length = self.logs[i].shape[1]
+        log_length = self.logs[i].shape[-1]
         n_segments = ceil(max(log_length - length, 0) / step) + 1
         new_length = (n_segments - 1) * step + length
         pad_length = new_length - log_length
@@ -182,7 +183,7 @@ class WellLogsBatch(bf.Batch):
         self.logs[i] = bt.split(padded_logs, length, split_positions)
 
         if split_mask:
-            padded_mask = self._pad(self.mask[i][np.newaxis, ...], new_length, pad_value)
+            padded_mask = self._pad(self.mask[i], new_length, pad_value)
             self.mask[i] = bt.split(padded_mask, length, split_positions)
 
     @bf.action
