@@ -192,17 +192,17 @@ class WellLogsBatch(bf.Batch):
         self._check_positive_int(length, "Segment length")
         self._check_positive_int(n_segments, "The number of segments")
         i = self.get_pos(None, "logs", index)
-        if self.logs[i].shape[1] < length:
+        if self.logs[i].shape[-1] < length:
             tmp_logs = self._pad(self.logs[i], length, pad_value)
-            self.logs[i] = np.tile(tmp_logs, (n_segments, 1, 1))
+            self.logs[i] = np.tile(tmp_logs, (n_segments,) + (1,) * tmp_logs.ndim)
             if split_mask:
-                tmp_mask = self._pad(self.mask[i][np.newaxis, ...], length, pad_value)
-                self.mask[i] = np.tile(tmp_mask, (n_segments, 1, 1))
+                tmp_mask = self._pad(self.mask[i], length, pad_value)
+                self.mask[i] = np.tile(tmp_mask, (n_segments,) + (1,) * tmp_mask.ndim)
         else:
-            split_positions = np.random.randint(0, self.logs[i].shape[1] - length + 1, n_segments)
+            split_positions = np.random.randint(0, self.logs[i].shape[-1] - length + 1, n_segments)
             self.logs[i] = bt.split(self.logs[i], length, split_positions)
             if split_mask:
-                self.mask[i] = bt.split(self.mask[i][np.newaxis, ...], length, split_positions)
+                self.mask[i] = bt.split(self.mask[i], length, split_positions)
 
     @bf.action
     def split_by_well(self, components):
