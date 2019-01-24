@@ -218,19 +218,19 @@ class WellLogsBatch(bf.Batch):
     @bf.action
     @bf.inbatch_parallel(init="indices", target="for")
     def aggregate_predictions(self, index):
-        # TODO: remove shape hardcode
         i = self.get_pos(None, "logs", index)
         predictions = self.predictions[i]
         meta = self.meta[i]
         step = meta["split_step"]
-        tmp_predictions = np.full(predictions.shape[:-1] + (meta["padded_length"],),
+        length = predictions.shape[-1]
+        tmp_predictions = np.full((*predictions.shape[:-1], meta["padded_length"]),
                                   np.nan, dtype=predictions.dtype)
         for ix in range(len(predictions)):
-            tmp_predictions[ix, 0, ix * step : (ix + 1) * step] = predictions[ix]
+            tmp_predictions[ix, ..., ix * step : ix * step + length] = predictions[ix]
 
         # TODO: agg_fn to function arguments
         agg_fn = np.nanmean
-        self.predictions[i] = agg_fn(tmp_predictions, axis=0)[0, meta["pad_length"]:]
+        self.predictions[i] = agg_fn(tmp_predictions, axis=0)[..., meta["pad_length"]:]
 
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
