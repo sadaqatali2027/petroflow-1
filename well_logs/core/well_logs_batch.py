@@ -171,7 +171,6 @@ class WellLogsBatch(bf.Batch):
         pad_length = new_length - log_length
         meta = {
             "n_segments": n_segments,
-            "padded_length": new_length,
             "pad_length": pad_length,
             "split_step": step,
         }
@@ -193,6 +192,8 @@ class WellLogsBatch(bf.Batch):
         self._check_positive_int(length, "Segment length")
         self._check_positive_int(n_segments, "The number of segments")
         i = self.get_pos(None, "logs", index)
+
+        # TODO: split dept component
         if self.logs[i].shape[-1] < length:
             tmp_logs = self._pad(self.logs[i], length, pad_value)
             self.logs[i] = np.tile(tmp_logs, (n_segments,) + (1,) * tmp_logs.ndim)
@@ -209,7 +210,6 @@ class WellLogsBatch(bf.Batch):
     def _split_by_well(self, split_indices, *, components):
         comp = self._to_array(np.split(getattr(self, components), split_indices))
         setattr(self, components, comp)
-        return self
 
     @bf.action
     def split_by_well(self, *, components):
@@ -219,26 +219,31 @@ class WellLogsBatch(bf.Batch):
         split_indices = np.cumsum(split_indices)[:-1]
         return self._split_by_well(split_indices, components=components)
 
-    @bf.action
+    @for_each_component
     @bf.inbatch_parallel(init="indices", target="for")
-    def aggregate_predictions(self, index):
-        i = self.get_pos(None, "logs", index)
-        predictions = self.predictions[i]
+    def _aggregate_components(self, index, agg_fn, *, components):
+        i = self.get_pos(None, components, index)
+        comp = getattr(self, components)[i]
         meta = self.meta[i]
-        step = meta["split_step"]
-        length = predictions.shape[-1]
-        tmp_predictions = np.full((*predictions.shape[:-1], meta["padded_length"]),
-                                  np.nan, dtype=predictions.dtype)
-        for ix in range(len(predictions)):
-            tmp_predictions[ix, ..., ix * step : ix * step + length] = predictions[ix]
+        tmp_comp = bt.aggregate(comp, meta["split_step"], agg_fn)
+        getattr(self, components)[i] = tmp_comp[..., meta["pad_length"]:]
 
-        # TODO: agg_fn to function arguments
-        agg_fn = np.nanmean
-        self.predictions[i] = agg_fn(tmp_predictions, axis=0)[..., meta["pad_length"]:]
+    @bf.action
+    def aggregate_components(self, agg_fn="mean", *, components):
+        if isinstance(agg_fn, str):
+            if not agg_fn.startswith("nan"):
+                agg_fn = "nan" + agg_fn
+            try:
+                agg_fn = getattr(np, agg_fn)
+            except AttributeError:
+                raise ValueError("agg_fn must be a valid numpy aggregation function name")
+        elif not callable(agg_fn):
+            raise ValueError("agg_fn must be a callable or a valid numpy aggregation function name")
+        return self._aggregate_components(agg_fn, components=components)
 
     @bf.action
     @for_each_component
-    @bf.inbatch_parallel(init="indices", target="threads")
+    @bf.inbatch_parallel(init="indices", target="for")
     def standardize(self, index, axis=-1, eps=1e-10, *, components):
         i = self.get_pos(None, components, index)
         comp = getattr(self, components)[i]
