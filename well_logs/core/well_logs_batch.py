@@ -205,16 +205,19 @@ class WellLogsBatch(bf.Batch):
             if split_mask:
                 self.mask[i] = bt.split(self.mask[i], length, split_positions)
 
+    @for_each_component
+    def _split_by_well(self, split_indices, *, components):
+        comp = self._to_array(np.split(getattr(self, components), split_indices))
+        setattr(self, components, comp)
+        return self
+
     @bf.action
-    def split_by_well(self, components):
-        components = np.asarray(components).ravel()
+    def split_by_well(self, *, components):
         split_indices = [meta.get("n_segments") for meta in self.meta]
         if any(ix is None for ix in split_indices):
             raise ValueError("The number of log segments for a well is unknown")
         split_indices = np.cumsum(split_indices)[:-1]
-        for comp in components:
-            setattr(self, comp, self._to_array(np.split(getattr(self, comp), split_indices)))
-        return self
+        return self._split_by_well(split_indices, components=components)
 
     @bf.action
     @bf.inbatch_parallel(init="indices", target="for")
