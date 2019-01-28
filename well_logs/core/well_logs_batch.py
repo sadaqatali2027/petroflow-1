@@ -151,16 +151,25 @@ class WellLogsBatch(bf.Batch):
             raise ValueError("{} must be positive integer".format(val_name))
 
     @staticmethod
-    def _pad(logs, new_length, pad_value):
-        pad_len = new_length - logs.shape[-1]
+    def _pad(comp, new_length, pad_value):
+        pad_len = new_length - comp.shape[-1]
         if pad_len == 0:
-            return logs
-        pad_width = [(0, 0)] * (logs.ndim - 1) + [(pad_len, 0)]
-        return np.pad(logs, pad_width, "constant", constant_values=pad_value)
+            return comp
+        pad_width = [(0, 0)] * (comp.ndim - 1) + [(pad_len, 0)]
+        return np.pad(comp, pad_width, "constant", constant_values=pad_value)
+
+    @staticmethod
+    def _pad_dept(dept, new_length):
+        pad_len = new_length - dept.shape[-1]
+        if pad_len == 0:
+            return dept
+        pad_width = [(0, 0)] * (dept.ndim - 1) + [(pad_len, 0)]
+        end_values = (dept[0] - (dept[1] - dept[0]) * pad_len, 0)
+        return np.pad(dept, pad_width, "linear_ramp", end_values=end_values)
 
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
-    def split_logs(self, index, length, step, pad_value=0, split_mask=False):
+    def split_logs(self, index, length, step, pad_value=0, *, components):
         self._check_positive_int(length, "Segment length")
         self._check_positive_int(step, "Step size")
         i = self.get_pos(None, "logs", index)
@@ -169,42 +178,42 @@ class WellLogsBatch(bf.Batch):
         n_segments = ceil(max(log_length - length, 0) / step) + 1
         new_length = (n_segments - 1) * step + length
         pad_length = new_length - log_length
-        meta = {
+        additional_meta = {
             "n_segments": n_segments,
             "pad_length": pad_length,
             "split_step": step,
         }
-        self.meta[i].update(meta)
+        self.meta[i].update(additional_meta)
 
+        components = set(np.unique(np.asarray(components).ravel()))
         split_positions = np.arange(n_segments) * step
-
-        # TODO: split dept component
-        padded_logs = self._pad(self.logs[i], new_length, pad_value)
-        self.logs[i] = bt.split(padded_logs, length, split_positions)
-
-        if split_mask:
-            padded_mask = self._pad(self.mask[i], new_length, pad_value)
-            self.mask[i] = bt.split(padded_mask, length, split_positions)
+        if "dept" in components:
+            padded_dept = self._pad_dept(self.dept[i], new_length)
+            self.dept[i] = bt.split(padded_dept, length, split_positions)
+            components.remove("dept")
+        for comp in components:
+            padded_comp = self._pad(getattr(self, comp)[i], new_length, pad_value)
+            getattr(self, comp)[i] = bt.split(padded_comp, length, split_positions)
 
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
-    def random_split_logs(self, index, length, n_segments, pad_value=0, split_mask=False):
+    def random_split_logs(self, index, length, n_segments, pad_value=0, *, components):
         self._check_positive_int(length, "Segment length")
         self._check_positive_int(n_segments, "The number of segments")
         i = self.get_pos(None, "logs", index)
 
-        # TODO: split dept component
         if self.logs[i].shape[-1] < length:
-            tmp_logs = self._pad(self.logs[i], length, pad_value)
-            self.logs[i] = np.tile(tmp_logs, (n_segments,) + (1,) * tmp_logs.ndim)
-            if split_mask:
-                tmp_mask = self._pad(self.mask[i], length, pad_value)
-                self.mask[i] = np.tile(tmp_mask, (n_segments,) + (1,) * tmp_mask.ndim)
+            if "dept" in components:
+                padded_dept = self._pad_dept(self.dept[i], length)
+                self.dept[i] = np.tile(padded_dept, (n_segments,) + (1,) * padded_dept.ndim)
+                components.remove("dept")
+            for comp in components:
+                padded_comp = self._pad(getattr(self, comp)[i], length, pad_value)
+                getattr(self, comp)[i] = np.tile(padded_comp, (n_segments,) + (1,) * padded_comp.ndim)
         else:
             split_positions = np.random.randint(0, self.logs[i].shape[-1] - length + 1, n_segments)
-            self.logs[i] = bt.split(self.logs[i], length, split_positions)
-            if split_mask:
-                self.mask[i] = bt.split(self.mask[i], length, split_positions)
+            for comp in components:
+                getattr(self, comp)[i] = bt.split(getattr(self, comp)[i], length, split_positions)
 
     @for_each_component
     def _split_by_well(self, split_indices, *, components):
