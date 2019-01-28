@@ -230,7 +230,7 @@ class WellLogsBatch(bf.Batch):
 
     @for_each_component
     @bf.inbatch_parallel(init="indices", target="for")
-    def _aggregate_components(self, index, agg_fn, *, components):
+    def _aggregate(self, index, agg_fn, *, components):
         i = self.get_pos(None, components, index)
         comp = getattr(self, components)[i]
         meta = self.meta[i]
@@ -238,7 +238,7 @@ class WellLogsBatch(bf.Batch):
         getattr(self, components)[i] = tmp_comp[..., meta["pad_length"]:]
 
     @bf.action
-    def aggregate_components(self, agg_fn="mean", *, components):
+    def aggregate(self, agg_fn="mean", *, components):
         if isinstance(agg_fn, str):
             if not agg_fn.startswith("nan"):
                 agg_fn = "nan" + agg_fn
@@ -248,7 +248,7 @@ class WellLogsBatch(bf.Batch):
                 raise ValueError("agg_fn must be a valid numpy aggregation function name")
         elif not callable(agg_fn):
             raise ValueError("agg_fn must be a callable or a valid numpy aggregation function name")
-        return self._aggregate_components(agg_fn, components=components)
+        return self._aggregate(agg_fn, components=components)
 
     @bf.action
     @for_each_component
