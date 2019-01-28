@@ -169,24 +169,24 @@ class WellLogsBatch(bf.Batch):
 
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
-    def split_logs(self, index, length, step, pad_value=0, *, components):
+    def crop(self, index, length, step, pad_value=0, *, components):
         self._check_positive_int(length, "Segment length")
         self._check_positive_int(step, "Step size")
         i = self.get_pos(None, "logs", index)
 
         log_length = self.logs[i].shape[-1]
-        n_segments = ceil(max(log_length - length, 0) / step) + 1
-        new_length = (n_segments - 1) * step + length
+        n_crops = ceil(max(log_length - length, 0) / step) + 1
+        new_length = (n_crops - 1) * step + length
         pad_length = new_length - log_length
         additional_meta = {
-            "n_segments": n_segments,
+            "n_crops": n_crops,
             "pad_length": pad_length,
             "split_step": step,
         }
         self.meta[i].update(additional_meta)
 
         components = set(np.unique(np.asarray(components).ravel()))
-        split_positions = np.arange(n_segments) * step
+        split_positions = np.arange(n_crops) * step
         if "dept" in components:
             padded_dept = self._pad_dept(self.dept[i], new_length)
             self.dept[i] = bt.split(padded_dept, length, split_positions)
@@ -197,21 +197,21 @@ class WellLogsBatch(bf.Batch):
 
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
-    def random_split_logs(self, index, length, n_segments, pad_value=0, *, components):
+    def random_crop(self, index, length, n_crops, pad_value=0, *, components):
         self._check_positive_int(length, "Segment length")
-        self._check_positive_int(n_segments, "The number of segments")
+        self._check_positive_int(n_crops, "The number of segments")
         i = self.get_pos(None, "logs", index)
 
         if self.logs[i].shape[-1] < length:
             if "dept" in components:
                 padded_dept = self._pad_dept(self.dept[i], length)
-                self.dept[i] = np.tile(padded_dept, (n_segments,) + (1,) * padded_dept.ndim)
+                self.dept[i] = np.tile(padded_dept, (n_crops,) + (1,) * padded_dept.ndim)
                 components.remove("dept")
             for comp in components:
                 padded_comp = self._pad(getattr(self, comp)[i], length, pad_value)
-                getattr(self, comp)[i] = np.tile(padded_comp, (n_segments,) + (1,) * padded_comp.ndim)
+                getattr(self, comp)[i] = np.tile(padded_comp, (n_crops,) + (1,) * padded_comp.ndim)
         else:
-            split_positions = np.random.randint(0, self.logs[i].shape[-1] - length + 1, n_segments)
+            split_positions = np.random.randint(0, self.logs[i].shape[-1] - length + 1, n_crops)
             for comp in components:
                 getattr(self, comp)[i] = bt.split(getattr(self, comp)[i], length, split_positions)
 
@@ -222,7 +222,7 @@ class WellLogsBatch(bf.Batch):
 
     @bf.action
     def split_by_well(self, *, components):
-        split_indices = [meta.get("n_segments") for meta in self.meta]
+        split_indices = [meta.get("n_crops") for meta in self.meta]
         if any(ix is None for ix in split_indices):
             raise ValueError("The number of log segments for a well is unknown")
         split_indices = np.cumsum(split_indices)[:-1]
