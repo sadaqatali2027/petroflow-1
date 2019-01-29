@@ -126,18 +126,19 @@ class WellLogsBatch(bf.Batch):
         return batch
 
     @bf.action
+    @for_each_component
     @bf.inbatch_parallel(init="indices", target="threads")
-    def fill_nans(self, index, fill_value=0):
-        logs = self.logs[self.get_pos(None, "logs", index)]
-        logs[np.isnan(logs)] = fill_value
+    def fill_nans(self, index, fill_value=0, *, components):
+        comp = getattr(self, components)[self.get_pos(None, components, index)]
+        comp[np.isnan(comp)] = fill_value
 
     def _filter_batch(self, keep_mask):
         indices = self.indices[keep_mask]
         if len(indices) == 0:
             raise bf.SkipBatchException("All batch data was dropped")
         batch = self.__class__(bf.DatasetIndex(indices))
-        for component in self.components:
-            setattr(batch, component, getattr(self, component)[keep_mask])
+        for comp in self.components:
+            setattr(batch, comp, getattr(self, comp)[keep_mask])
         return batch
 
     @bf.action
