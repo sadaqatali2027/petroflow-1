@@ -95,35 +95,48 @@ class WellLogsBatch(bf.Batch):
         plt.tight_layout()
         plt.show()
 
-    @bf.action
     @bf.inbatch_parallel(init="indices", post="_assemble_drop_nans", target="threads")
-    def drop_nans(self, index):
-        i = self.get_pos(None, "logs", index)
-        dept, logs, meta, mask = self.dept[i], self.logs[i], self.meta[i], self.mask[i]
-        not_nan_mask = np.all(~np.isnan(logs), axis=0)
+    def _drop_nans(self, index, components_to_split, components_to_copy):
+        components = self[index]
+        not_nan_mask = np.all(~np.isnan(components.logs), axis=0)
         not_nan_indices = np.where(not_nan_mask)[0]
         borders = np.where((not_nan_indices[1:] - not_nan_indices[:-1]) != 1)[0] + 1
         splits = []
         for i, indices in enumerate(np.split(not_nan_indices, borders)):
             if len(indices) == 0:
                 continue
-            splits.append([str(index) + "_" + str(i), deepcopy(meta),
-                           dept[indices], logs[:, indices], mask[indices]])
+            split_components = [getattr(components, comp)[..., indices] for comp in components_to_split]
+            copy_components = [deepcopy(getattr(components, comp)) for comp in components_to_copy]
+            splits.append([str(index) + "_" + str(i)] + split_components + copy_components)
         return splits
 
-    def _assemble_drop_nans(self, results, *args, **kwargs):
+    def _assemble_drop_nans(self, results, components_to_split, components_to_copy, *args, **kwargs):
         _ = args, kwargs
         self._reraise_exceptions(results)
         results = sum(results, [])
         if len(results) == 0:
             raise bf.SkipBatchException("All batch data was dropped")
-        indices, meta, dept, logs, mask = zip(*results)
+        indices, *components = zip(*results)
         batch = self.__class__(bf.DatasetIndex(indices))
-        batch.meta = self._to_array(meta)
-        batch.dept = self._to_array(dept)
-        batch.logs = self._to_array(logs)
-        batch.mask = self._to_array(mask)
+        for comp_name, comp_data in zip(components_to_split + components_to_copy, components):
+            setattr(batch, comp_name, self._to_array(comp_data))
         return batch
+
+    @bf.action
+    def drop_nans(self, *, components_to_split=None, components_to_copy=None):
+        if components_to_split is None:
+            components_to_split = set()
+        else:
+            components_to_split = set(np.unique(np.asarray(components_to_split).ravel()))
+        components_to_split = sorted(components_to_split | {"dept", "logs"})
+
+        if components_to_copy is None:
+            components_to_copy = set()
+        else:
+            components_to_copy = set(np.unique(np.asarray(components_to_copy).ravel()))
+        components_to_copy = sorted(components_to_copy | {"meta"})
+
+        return self._drop_nans(components_to_split, components_to_copy)
 
     @bf.action
     @for_each_component
