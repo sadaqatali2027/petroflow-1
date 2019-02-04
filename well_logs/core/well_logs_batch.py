@@ -10,15 +10,13 @@ from .utils import for_each_component
 
 
 class WellLogsBatch(bf.Batch):
-    components = "dept", "logs", "meta", "mask", "predictions"
+    components = "dept", "logs", "meta"
 
     def __init__(self, index, preloaded=None):
         super().__init__(index, preloaded)
         self.dept = self.array_of_nones
         self.logs = self.array_of_nones
         self.meta = self.array_of_dicts
-        self.mask = self.array_of_nones
-        self.predictions = self.array_of_nones
 
     @property
     def array_of_nones(self):
