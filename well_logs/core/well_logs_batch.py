@@ -34,6 +34,8 @@ class WellLogsBatch(bf.Batch):
     @staticmethod
     def _to_array(arr):
         return np.array(list(arr) + [None])[:-1]
+    
+    # Input/output methods
 
     @bf.action
     def load(self, src=None, fmt=None, components=None, *args, **kwargs):
@@ -92,6 +94,99 @@ class WellLogsBatch(bf.Batch):
 
         plt.tight_layout()
         plt.show()
+
+    # Channels processing
+
+    @staticmethod
+    def _get_mnemonics_key(component):
+        return component + "_mnemonics"
+
+    def _generate_mask(self, index, mnemonics=None, indices=None, invert_mask=False, *, components):
+        i = self.get_pos(None, components, index)
+        component = getattr(self, components)[i]
+        n_channels = component.shape[0]
+        component_mnemonics = self.meta[i].get(self._get_mnemonics_key(components))
+        mask = np.zeros(n_channels, dtype=np.bool)
+        if indices is not None:
+            mask |= np.in1d(np.arange(n_channels), indices)
+        if mnemonics is not None:
+            if component_mnemonics is None:
+                raise ValueError("Mnemonics for {} component are not defined in meta".format(components))
+            mask |= np.in1d(component_mnemonics, mnemonics)
+        if invert_mask:
+            mask = ~mask
+        return mask
+
+    @bf.inbatch_parallel(init="indices", target="threads")
+    def _filter_channels(self, index, mnemonics=None, indices=None, invert_mask=False, *, components):
+        mask = self._generate_mask(index, mnemonics, indices, invert_mask, components=components)
+        if np.sum(mask) == 0:
+            raise ValueError("All channels cannot be dropped")
+        i = self.get_pos(None, components, index)
+        getattr(self, components)[i] = getattr(self, components)[i][mask]
+        mnemonics_key = self._get_mnemonics_key(components)
+        if mnemonics_key in self.meta[i]:
+            self.meta[i][mnemonics_key] = np.asarray(self.meta[i][mnemonics_key])[mask]
+
+    @bf.action
+    @for_each_component
+    def drop_channels(self, mnemonics=None, indices=None, *, components="logs"):
+        if mnemonics is None and indices is None:
+            raise ValueError("Both mnemonics and indices cannot be empty")
+        return self._filter_channels(mnemonics, indices, invert_mask=True, components=components)
+
+    @bf.action
+    @for_each_component
+    def keep_channels(self, mnemonics=None, indices=None, *, components="logs"):
+        if mnemonics is None and indices is None:
+            raise ValueError("Both mnemonics and indices cannot be empty")
+        return self._filter_channels(mnemonics, indices, invert_mask=False, components=components)
+
+    @bf.action
+    @for_each_component
+    @bf.inbatch_parallel(init="indices", target="threads")
+    def rename_channels(self, index, rename_dict, *, components="logs"):
+        i = self.get_pos(None, components, index)
+        mnemonics_key = self._get_mnemonics_key(components)
+        old_mnemonics = self.meta[i].get(mnemonics_key)
+        if old_mnemonics is not None:
+            new_mnemonics = np.array([rename_dict.get(name, name) for name in old_mnemonics], dtype=object)
+            self.meta[i][mnemonics_key] = new_mnemonics
+
+    @bf.action
+    @for_each_component
+    @bf.inbatch_parallel(init="indices", target="threads")
+    def reorder_channels(self, index, new_order, *, components="logs"):
+        i = self.get_pos(None, components, index)
+        mnemonics_key = self._get_mnemonics_key(components)
+        old_order = self.meta[i].get(mnemonics_key)
+        if old_order is None:
+            raise ValueError("Mnemonics for {} component are not defined in meta".format(components))
+        diff = np.setdiff1d(new_order, old_order)
+        if diff.size > 0:
+            raise ValueError("Unknown mnemonics: {}".format(", ".join(diff)))
+        if len(new_order) == 0:
+            raise ValueError("All channels cannot be dropped")
+        transform_dict = {k: v for v, k in enumerate(old_order)}
+        indices = [transform_dict[k] for k in new_order]
+        getattr(self, components)[i] = getattr(self, components)[i][indices]
+        self.meta[i][mnemonics_key] = old_order[indices]
+
+    @bf.action
+    @bf.inbatch_parallel(init="indices", target="threads")
+    def split_by_mnemonic(self, index, mnemonics, component_from, component_to):
+        mask = self._generate_mask(index, mnemonics, components=component_from)
+        i = self.get_pos(None, component_from, index)
+        mnemonics_key_to = self._get_mnemonics_key(component_to)
+        mnemonics_key_from = self._get_mnemonics_key(component_from)
+
+        getattr(self, component_to)[i] = getattr(self, component_from)[i][mask]
+        self.meta[i][mnemonics_key_to] = self.meta[i][mnemonics_key_from][mask]
+
+        getattr(self, component_from)[i] = getattr(self, component_from)[i][~mask]
+        self.meta[i][mnemonics_key_from] = self.meta[i][mnemonics_key_from][~mask]
+
+    # Logs processing
 
     @bf.inbatch_parallel(init="indices", post="_assemble_drop_nans", target="threads")
     def _drop_nans(self, index, components_to_split, components_to_copy):
