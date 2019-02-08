@@ -95,7 +95,7 @@ class WellLogsBatch(bf.Batch):
         plt.tight_layout()
         plt.show()
 
-    # Channels processing
+    # Channels processing methods
 
     @staticmethod
     def _get_mnemonics_key(component):
@@ -186,7 +186,7 @@ class WellLogsBatch(bf.Batch):
         getattr(self, component_from)[i] = getattr(self, component_from)[i][~mask]
         self.meta[i][mnemonics_key_from] = self.meta[i][mnemonics_key_from][~mask]
 
-    # Logs processing
+    # Logs processing methods
 
     @bf.inbatch_parallel(init="indices", post="_assemble_drop_nans", target="threads")
     def _drop_nans(self, index, components_to_split, components_to_copy):
