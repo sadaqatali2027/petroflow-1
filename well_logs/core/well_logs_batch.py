@@ -101,6 +101,12 @@ class WellLogsBatch(bf.Batch):
     def _get_mnemonics_key(component):
         return component + "_mnemonics"
 
+    @bf.action
+    @bf.inbatch_parallel(init="indices", target="threads")
+    def convert_names(self, index):
+        i = self.get_pos(None, 'logs', index)
+        self.meta[i]['logs_mnemonics'] = self.meta[i].pop('mnemonics')
+
     def _generate_mask(self, index, mnemonics=None, indices=None, invert_mask=False, *, components):
         i = self.get_pos(None, components, index)
         component = getattr(self, components)[i]
@@ -174,7 +180,9 @@ class WellLogsBatch(bf.Batch):
 
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
-    def split_by_mnemonic(self, index, mnemonics, component_from, component_to):
+    def split_by_mnemonic(self, index, mnemonics, component_from, component_to, all_mnemonics=None):
+        if callable(mnemonics):
+            mnemonics = mnemonics(all_mnemonics)
         mask = self._generate_mask(index, mnemonics, components=component_from)
         i = self.get_pos(None, component_from, index)
         mnemonics_key_to = self._get_mnemonics_key(component_to)
@@ -185,6 +193,28 @@ class WellLogsBatch(bf.Batch):
 
         getattr(self, component_from)[i] = getattr(self, component_from)[i][~mask]
         self.meta[i][mnemonics_key_from] = self.meta[i][mnemonics_key_from][~mask]
+
+    @bf.action
+    @bf.inbatch_parallel(init="indices", target="threads")
+    def create_input_target(self, index, component_input, component_target, component_mask, all_mnemonics):
+        i = self.get_pos(None, component_input, index)
+        is_crops = (len(getattr(self, component_input)[i].shape) == 3)
+        
+        components = [component_input, component_target]
+        
+        for component in components:
+            mnemonics = self.meta[i][self._get_mnemonics_key(component)]        
+            data = getattr(self, component)[i]
+            #new_data = np.zeros((len(all_mnemonics), *data.shape[1: ]))
+            new_data = np.zeros((*data.shape[:-2], len(all_mnemonics), data.shape[-1]))
+            mask = np.isin(all_mnemonics, mnemonics)
+            new_data[..., np.where(mask)[0], :] = data
+            getattr(self, component)[i] = new_data
+        
+        mask = mask[np.newaxis, ...]
+        if is_crops:
+            mask = np.tile(mask, (getattr(self, component_input)[i].shape[0], 1))
+        getattr(self, component_mask)[i] = mask.astype('float32')
 
     # Logs processing
 
