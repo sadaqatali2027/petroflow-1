@@ -34,7 +34,7 @@ class WellLogsBatch(bf.Batch):
     @staticmethod
     def _to_array(arr):
         return np.array(list(arr) + [None])[:-1]
-    
+
     # Input/output methods
 
     @bf.action
@@ -48,6 +48,7 @@ class WellLogsBatch(bf.Batch):
 
     @bf.inbatch_parallel(init="indices", target="threads")
     def _load_npz(self, index, src=None, fmt=None, components=None, *args, **kwargs):
+        _ = fmt
         if src is not None:
             path = src[index]
         elif isinstance(self.index, bf.FilesIndex):

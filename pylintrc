@@ -1,19 +1,17 @@
 [MASTER]
-extension-pkg-whitelist=numpy
-init-hook='import sys; sys.path.append(".")'
+extension-pkg-whitelist = numpy
 
 [FORMAT]
-max-line-length=120
-max-attributes=8
-max-args=8
-max-locals=25
-good-names=ax,im,ix,a,b,_,n,s,fs,i,j,k,t,x,y,z,lc,rc
+max-line-length = 120
+max-attributes = 8
+max-locals = 25
+max-args = 8
+ignored-argument-names = args|kwargs
+good-names = _, i, j, k, m, n, t, x, y, z, ax, ix
 
 [MESSAGE CONTROL]
-disable=no-value-for-parameter,no-self-use,too-few-public-methods,unsubscriptable-object,no-method-argument,no-member,arguments-differ,len-as-condition,keyword-arg-before-vararg,too-many-locals
+disable = no-value-for-parameter, keyword-arg-before-vararg, len-as-condition,
+          arguments-differ
 
 [TYPECHECK]
-ignored-modules=numpy, keras
-
-[MISCELLANEOUS]
-notes=
+ignored-modules=numpy
