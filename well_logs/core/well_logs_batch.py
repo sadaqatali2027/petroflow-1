@@ -212,6 +212,9 @@ class WellLogsBatch(bf.Batch):
         Raises
         ------
         ValueError
+            If mnemonics for any of the ``components`` are not defined in
+            ``self.meta``.
+        ValueError
             If both ``mnemonics`` and ``indices`` are empty.
         ValueError
             If all channels should be dropped.
@@ -243,6 +246,9 @@ class WellLogsBatch(bf.Batch):
 
         Raises
         ------
+        ValueError
+            If mnemonics for any of the ``components`` are not defined in
+            ``self.meta``.
         ValueError
             If both ``mnemonics`` and ``indices`` are empty.
         ValueError
@@ -329,6 +335,30 @@ class WellLogsBatch(bf.Batch):
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
     def split_by_mnemonic(self, index, mnemonics, component_from, component_to):
+        """Move channels with given ``mnemonics`` from ``component_from`` to
+        ``component_to``.
+
+        Parameters
+        ----------
+        mnemonics : str or list or tuple
+            Mnemonics of channels to be moved.
+        component_from : str
+            A component to move channels from.
+        component_to : str
+            A component to move channels to.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with moved channels. Changes its ``component_from``,
+            ``component_to`` and ``meta`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If mnemonics for ``component_from`` are not defined in
+            ``self.meta``.
+        """
         mask = self._generate_mask(index, mnemonics, components=component_from)
         i = self.get_pos(None, component_from, index)
         mnemonics_key_to = self._get_mnemonics_key(component_to)
