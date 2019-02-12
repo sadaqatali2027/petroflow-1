@@ -14,4 +14,4 @@ disable = no-value-for-parameter, keyword-arg-before-vararg, len-as-condition,
           arguments-differ
 
 [TYPECHECK]
-ignored-modules=numpy
+ignored-modules = numpy
