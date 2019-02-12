@@ -1,3 +1,5 @@
+"""Miscellaneous utility functions."""
+
 import functools
 import inspect
 
@@ -5,6 +7,9 @@ import numpy as np
 
 
 def for_each_component(method):
+    """Independently call a wrapped method for each component in the
+    ``components`` argument, which can be a string or an array-like object.
+    """
     @functools.wraps(method)
     def wrapped_method(self, *args, **kwargs):
         if "components" in kwargs:
