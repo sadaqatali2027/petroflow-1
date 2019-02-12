@@ -128,7 +128,8 @@ class WellLogsBatch(bf.Batch):
         for comp in extra_components:
             self.meta[i][comp] = well_data[comp]
 
-    def show_logs(self, index=None, start=None, end=None, plot_mask=False, subplot_size=(15, 2)):
+    def _show_logs(self, index=None, start=None, end=None, plot_mask=False, subplot_size=(15, 2)):
+        # TODO: Refactor completely
         i = 0 if index is None else self.get_pos(None, "signal", index)
         dept, logs, mnemonics = self.dept[i], self.logs[i], self.meta[i]["mnemonics"]
         if plot_mask:
