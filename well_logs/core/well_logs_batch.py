@@ -101,12 +101,6 @@ class WellLogsBatch(bf.Batch):
     def _get_mnemonics_key(component):
         return component + "_mnemonics"
 
-    @bf.action
-    @bf.inbatch_parallel(init="indices", target="threads")
-    def convert_names(self, index):
-        i = self.get_pos(None, 'logs', index)
-        self.meta[i]['logs_mnemonics'] = self.meta[i].pop('mnemonics')
-
     def _generate_mask(self, index, mnemonics=None, indices=None, invert_mask=False, *, components):
         i = self.get_pos(None, components, index)
         component = getattr(self, components)[i]
@@ -215,6 +209,31 @@ class WellLogsBatch(bf.Batch):
         if is_crops:
             mask = np.tile(mask, (getattr(self, component_input)[i].shape[0], 1))
         getattr(self, component_mask)[i] = mask.astype('float32')
+    
+    @bf.action
+    @bf.inbatch_parallel(init="indices", target="threads")
+    def pad_channels(self, index, components, channels, save_to, mask_component, value=0, axis=0):
+        if isinstance(components, str):
+            components = [components]
+        
+        i = self.get_pos(None, components[0], index)
+        data = getattr(self, components[0])[i]
+        n_channels = data.shape[axis]
+        
+        if callable(channels):
+            channels = channels(n_channels)
+        
+        indices = [slice(None)] * len(data.shape)
+        indices[axis] = channels
+        
+        for component in components:
+            data = getattr(self, component)[i]
+            new_data = data.copy()
+            new_data[indices] = value
+            getattr(self, save_to)[i] = new_data
+
+        getattr(self, mask_component)[i] = np.isin(np.arange(n_channels), channels).astype('float32')
+
 
     # Logs processing
 
