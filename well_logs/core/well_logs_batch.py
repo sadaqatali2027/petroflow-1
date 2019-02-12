@@ -190,6 +190,31 @@ class WellLogsBatch(bf.Batch):
     @bf.action
     @for_each_component
     def drop_channels(self, mnemonics=None, indices=None, *, components="logs"):
+        """Drop channels from ``components`` whose names are in ``mnemonics``
+        or whose indices are in ``indices``.
+
+        Parameters
+        ----------
+        mnemonics : str or list or tuple, optional
+            Mnemonics of channels to be dropped from a batch.
+        indices : int or list or tuple, optional
+            Indices of channels to be dropped from a batch.
+        components : str or array-like, optional
+            Components to be processed. Defaults to ``logs``.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with dropped channels. Changes its ``components`` and
+            ``meta`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If both ``mnemonics`` and ``indices`` are empty.
+        ValueError
+            If all channels should be dropped.
+        """
         if mnemonics is None and indices is None:
             raise ValueError("Both mnemonics and indices cannot be empty")
         return self._filter_channels(mnemonics, indices, invert_mask=True, components=components)
@@ -197,6 +222,31 @@ class WellLogsBatch(bf.Batch):
     @bf.action
     @for_each_component
     def keep_channels(self, mnemonics=None, indices=None, *, components="logs"):
+        """Drop channels from ``components`` whose names are not in
+        ``mnemonics`` and whose indices are not in ``indices``.
+
+        Parameters
+        ----------
+        mnemonics : str or list or tuple, optional
+            Mnemonics of channels to be kept in a batch.
+        indices : int or list or tuple, optional
+            Indices of channels to be kept in a batch.
+        components : str or array-like, optional
+            Components to be processed. Defaults to ``logs``.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with dropped channels. Changes its ``components`` and
+            ``meta`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If both ``mnemonics`` and ``indices`` are empty.
+        ValueError
+            If all channels should be dropped.
+        """
         if mnemonics is None and indices is None:
             raise ValueError("Both mnemonics and indices cannot be empty")
         return self._filter_channels(mnemonics, indices, invert_mask=False, components=components)
@@ -205,6 +255,23 @@ class WellLogsBatch(bf.Batch):
     @for_each_component
     @bf.inbatch_parallel(init="indices", target="threads")
     def rename_channels(self, index, rename_dict, *, components="logs"):
+        """Rename channels of ``components`` with corresponding values from
+        ``rename_dict``.
+
+        Parameters
+        ----------
+        rename_dict : dict
+            Dictionary containing ``(old mnemonic : new mnemonic)`` pairs.
+            Mnemonics, that are not specified in ``rename_dict`` keys, remain
+            unchanged.
+        components : str or array-like, optional
+            Components to be processed. Defaults to ``logs``.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with renamed channels. Changes ``self.meta`` inplace.
+        """
         i = self.get_pos(None, components, index)
         mnemonics_key = self._get_mnemonics_key(components)
         old_mnemonics = self.meta[i].get(mnemonics_key)
@@ -216,6 +283,33 @@ class WellLogsBatch(bf.Batch):
     @for_each_component
     @bf.inbatch_parallel(init="indices", target="threads")
     def reorder_channels(self, index, new_order, *, components="logs"):
+        """Change the order of channels of specified ``components`` according
+        to the ``new_order``.
+
+        Parameters
+        ----------
+        new_order : array_like
+            A list of mnemonics, specifying the order of channels in the
+            transformed ``components``.
+        components : str or array-like, optional
+            Components to be processed. Defaults to ``logs``.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with reordered channels. Changes its ``components`` and
+            ``meta`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If mnemonics for any of the ``components`` are not defined in
+            ``self.meta``.
+        ValueError
+            If unknown mnemonics are specified.
+        ValueError
+            If all channels should be dropped.
+        """
         i = self.get_pos(None, components, index)
         mnemonics_key = self._get_mnemonics_key(components)
         old_order = self.meta[i].get(mnemonics_key)
