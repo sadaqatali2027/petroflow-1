@@ -128,7 +128,8 @@ class WellLogsBatch(bf.Batch):
         for comp in extra_components:
             self.meta[i][comp] = well_data[comp]
 
-    def show_logs(self, index=None, start=None, end=None, plot_mask=False, subplot_size=(15, 2)):
+    def _show_logs(self, index=None, start=None, end=None, plot_mask=False, subplot_size=(15, 2)):
+        # TODO: Refactor completely
         i = 0 if index is None else self.get_pos(None, "signal", index)
         dept, logs, mnemonics = self.dept[i], self.logs[i], self.meta[i]["mnemonics"]
         if plot_mask:
@@ -190,6 +191,34 @@ class WellLogsBatch(bf.Batch):
     @bf.action
     @for_each_component
     def drop_channels(self, mnemonics=None, indices=None, *, components="logs"):
+        """Drop channels from ``components`` whose names are in ``mnemonics``
+        or whose indices are in ``indices``.
+
+        Parameters
+        ----------
+        mnemonics : str or list or tuple, optional
+            Mnemonics of channels to be dropped from a batch.
+        indices : int or list or tuple, optional
+            Indices of channels to be dropped from a batch.
+        components : str or array-like, optional
+            Components to be processed. Defaults to ``logs``.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with dropped channels. Changes its ``components`` and
+            ``meta`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If mnemonics for any of the ``components`` are not defined in
+            ``self.meta``.
+        ValueError
+            If both ``mnemonics`` and ``indices`` are empty.
+        ValueError
+            If all channels should be dropped.
+        """
         if mnemonics is None and indices is None:
             raise ValueError("Both mnemonics and indices cannot be empty")
         return self._filter_channels(mnemonics, indices, invert_mask=True, components=components)
@@ -197,6 +226,34 @@ class WellLogsBatch(bf.Batch):
     @bf.action
     @for_each_component
     def keep_channels(self, mnemonics=None, indices=None, *, components="logs"):
+        """Drop channels from ``components`` whose names are not in
+        ``mnemonics`` and whose indices are not in ``indices``.
+
+        Parameters
+        ----------
+        mnemonics : str or list or tuple, optional
+            Mnemonics of channels to be kept in a batch.
+        indices : int or list or tuple, optional
+            Indices of channels to be kept in a batch.
+        components : str or array-like, optional
+            Components to be processed. Defaults to ``logs``.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with dropped channels. Changes its ``components`` and
+            ``meta`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If mnemonics for any of the ``components`` are not defined in
+            ``self.meta``.
+        ValueError
+            If both ``mnemonics`` and ``indices`` are empty.
+        ValueError
+            If all channels should be dropped.
+        """
         if mnemonics is None and indices is None:
             raise ValueError("Both mnemonics and indices cannot be empty")
         return self._filter_channels(mnemonics, indices, invert_mask=False, components=components)
@@ -205,6 +262,23 @@ class WellLogsBatch(bf.Batch):
     @for_each_component
     @bf.inbatch_parallel(init="indices", target="threads")
     def rename_channels(self, index, rename_dict, *, components="logs"):
+        """Rename channels of ``components`` with corresponding values from
+        ``rename_dict``.
+
+        Parameters
+        ----------
+        rename_dict : dict
+            Dictionary containing ``(old mnemonic : new mnemonic)`` pairs.
+            Mnemonics, that are not specified in ``rename_dict`` keys, remain
+            unchanged.
+        components : str or array-like, optional
+            Components to be processed. Defaults to ``logs``.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with renamed channels. Changes ``self.meta`` inplace.
+        """
         i = self.get_pos(None, components, index)
         mnemonics_key = self._get_mnemonics_key(components)
         old_mnemonics = self.meta[i].get(mnemonics_key)
@@ -216,6 +290,33 @@ class WellLogsBatch(bf.Batch):
     @for_each_component
     @bf.inbatch_parallel(init="indices", target="threads")
     def reorder_channels(self, index, new_order, *, components="logs"):
+        """Change the order of channels of specified ``components`` according
+        to the ``new_order``.
+
+        Parameters
+        ----------
+        new_order : array_like
+            A list of mnemonics, specifying the order of channels in the
+            transformed ``components``.
+        components : str or array-like, optional
+            Components to be processed. Defaults to ``logs``.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with reordered channels. Changes its ``components`` and
+            ``meta`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If mnemonics for any of the ``components`` are not defined in
+            ``self.meta``.
+        ValueError
+            If unknown mnemonics are specified.
+        ValueError
+            If all channels should be dropped.
+        """
         i = self.get_pos(None, components, index)
         mnemonics_key = self._get_mnemonics_key(components)
         old_order = self.meta[i].get(mnemonics_key)
@@ -231,11 +332,31 @@ class WellLogsBatch(bf.Batch):
         getattr(self, components)[i] = getattr(self, components)[i][indices]
         self.meta[i][mnemonics_key] = old_order[indices]
 
-    @bf.action
-    @bf.inbatch_parallel(init="indices", target="threads")
-    def split_by_mnemonic(self, index, mnemonics, component_from, component_to, all_mnemonics=None):
-        if callable(mnemonics):
-            mnemonics = mnemonics(all_mnemonics)
+    def split_by_mnemonic(self, index, mnemonics, component_from, component_to):
+        """Move channels with given ``mnemonics`` from ``component_from`` to
+        ``component_to``.
+
+        Parameters
+        ----------
+        mnemonics : str or list or tuple
+            Mnemonics of channels to be moved.
+        component_from : str
+            A component to move channels from.
+        component_to : str
+            A component to move channels to.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with moved channels. Changes its ``component_from``,
+            ``component_to`` and ``meta`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If mnemonics for ``component_from`` are not defined in
+            ``self.meta``.
+        """
         mask = self._generate_mask(index, mnemonics, components=component_from)
         i = self.get_pos(None, component_from, index)
         mnemonics_key_to = self._get_mnemonics_key(component_to)
@@ -248,9 +369,44 @@ class WellLogsBatch(bf.Batch):
         self.meta[i][mnemonics_key_from] = self.meta[i][mnemonics_key_from][~mask]
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
-    def pad_channels(self, index, components, channels, save_to, mask_component, value=0, axis=0):
+    def pad_channels(self, index, components, channels, dst, mask_component, value=0, axis=0):
+        """Create copies of components and pad `channels` by `value` in the copies.
+
+        Parameters
+        ----------
+        components : str or list or tuple
+            Components to be processed.
+        channels : list or tuple or callable
+            Channels to pad by `value`.
+        dst : str or list or tuple
+            Components to save the copies. Must be converted to the list of the same length as `components`.
+        mask_component : str
+            Component to save binary mask with ones for padded channels.
+        value : float
+            Value to perform padding.
+        axis : int
+            Channels axis
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with new components channels.
+
+        Raises
+        ------
+        ValueError
+            If `components` and `dst` have different types.
+        """
         if isinstance(components, str):
             components = [components]
+        if isinstance(dst, str):
+            dst = [dst]
+        if len(dst) != len(components):
+            raise ValueError(
+                'components and dst must be converted to lists of the same length but {} and {} were given'.format(
+                    len(components), len(dst)
+                )
+            )
         
         i = self.get_pos(None, components[0], index)
         data = getattr(self, components[0])[i]
@@ -262,11 +418,11 @@ class WellLogsBatch(bf.Batch):
         indices = [slice(None)] * len(data.shape)
         indices[axis] = channels
         
-        for component in components:
+        for j, component in enumerate(components):
             data = getattr(self, component)[i]
             new_data = data.copy()
             new_data[indices] = value
-            getattr(self, save_to)[i] = new_data
+            getattr(self, dst[j])[i] = new_data
 
         getattr(self, mask_component)[i] = np.isin(np.arange(n_channels), channels).astype('float32')
 
@@ -333,6 +489,20 @@ class WellLogsBatch(bf.Batch):
 
     @bf.action
     def drop_short_logs(self, min_length, axis=-1):
+        """Drop short logs from a batch.
+
+        Parameters
+        ----------
+        min_length : positive int
+            Minimal log length.
+        axis : int, optional
+            Axis along which length is calculated. Defaults to the last axis.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Filtered batch. Creates a new ``WellLogsBatch`` instance.
+        """
         keep_mask = np.array([log.shape[axis] >= min_length for log in self.logs])
         return self._filter_batch(keep_mask)
 
@@ -361,6 +531,37 @@ class WellLogsBatch(bf.Batch):
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
     def crop(self, index, length, step, pad_value=0, *, components):
+        """Crop segments from ``components`` along the last axis with given
+        ``length`` and ``step``.
+
+        If the length of a component along the last axis is less than
+        ``length``, it is padded to the left with ``pad_value``.
+
+        Notice, that each element of the resulting components will have an
+        additional axis with index 0, along which crops were stacked.
+
+        Parameters
+        ----------
+        length : positive int
+            Length of each segment along the last axis.
+        step : positive int
+            The number of array elements between starting indices of cropped
+            segments.
+        pad_value : float, optional
+            Padding value. Defaults to 0.
+        components : str or array-like
+            Components to crop segments from.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            A batch of cropped components. Changes its ``components`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If ``length`` or ``step`` are negative or non-integer.
+        """
         self._check_positive_int(length, "Segment length")
         self._check_positive_int(step, "Step size")
         i = self.get_pos(None, "logs", index)
@@ -389,6 +590,36 @@ class WellLogsBatch(bf.Batch):
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
     def random_crop(self, index, length, n_crops, pad_value=0, *, components):
+        """Crop ``n_crops`` segments from ``components`` along the last axis
+        with random start positions and given ``length``.
+
+        If the length of a component along the last axis is less than
+        ``length``, it is padded to the left with ``pad_value``.
+
+        Notice, that each element of the resulting components will have an
+        additional axis with index 0, along which crops were stacked.
+
+        Parameters
+        ----------
+        length : positive int
+            Length of each segment along the last axis.
+        n_crops : positive int
+            The number of segments to be cropped.
+        pad_value : float, optional
+            Padding value. Defaults to 0.
+        components : str or array-like
+            Components to crop segments from.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            A batch of cropped components. Changes its ``components`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If ``length`` or ``n_crops`` are negative or non-integer.
+        """
         self._check_positive_int(length, "Segment length")
         self._check_positive_int(n_crops, "The number of segments")
         i = self.get_pos(None, "logs", index)
@@ -445,6 +676,26 @@ class WellLogsBatch(bf.Batch):
     @for_each_component
     @bf.inbatch_parallel(init="indices", target="for")
     def standardize(self, index, axis=-1, eps=1e-10, *, components):
+        """Standardize components along specified axes by removing the mean
+        and scaling to unit variance.
+
+        Parameters
+        ----------
+        axis : ``None`` or int or tuple of ints, optional
+            Axis or axes along which standardization is performed. Defaults to
+            the last axis.
+        eps: float, optional
+            A small float to be added to the denominator to avoid division by
+            zero.
+        components : str or array-like
+            Components to be standardized.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with standardized components. Changes its ``components``
+            inplace.
+        """
         i = self.get_pos(None, components, index)
         comp = getattr(self, components)[i]
         comp = ((comp - np.nanmean(comp, axis=axis, keepdims=True)) /
