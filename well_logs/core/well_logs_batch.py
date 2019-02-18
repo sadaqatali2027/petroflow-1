@@ -545,6 +545,26 @@ class WellLogsBatch(bf.Batch):
     @for_each_component
     @bf.inbatch_parallel(init="indices", target="for")
     def standardize(self, index, axis=-1, eps=1e-10, *, components):
+        """Standardize components along specified axes by removing the mean
+        and scaling to unit variance.
+
+        Parameters
+        ----------
+        axis : ``None`` or int or tuple of ints, optional
+            Axis or axes along which standardization is performed. Defaults to
+            the last axis.
+        eps: float, optional
+            A small float to be added to the denominator to avoid division by
+            zero.
+        components : str or array-like
+            Components to be standardized.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with standardized components. Changes its ``components``
+            inplace.
+        """
         i = self.get_pos(None, components, index)
         comp = getattr(self, components)[i]
         comp = ((comp - np.nanmean(comp, axis=axis, keepdims=True)) /
