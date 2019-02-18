@@ -410,17 +410,17 @@ class WellLogsBatch(bf.Batch):
                     len(components), len(dst)
                 )
             )
-        
+
         i = self.get_pos(None, components[0], index)
         data = getattr(self, components[0])[i]
         n_channels = data.shape[axis]
-        
+
         if callable(channels):
             channels = channels(n_channels)
-        
+
         indices = [slice(None)] * len(data.shape)
         indices[axis] = channels
-        
+
         for j, component in enumerate(components):
             data = getattr(self, component)[i]
             new_data = data.copy()
