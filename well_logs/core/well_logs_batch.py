@@ -433,6 +433,20 @@ class WellLogsBatch(bf.Batch):
 
     @bf.action
     def drop_short_logs(self, min_length, axis=-1):
+        """Drop short logs from a batch.
+
+        Parameters
+        ----------
+        min_length : positive int
+            Minimal log length.
+        axis : int, optional
+            Axis along which length is calculated. Defaults to the last axis.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Filtered batch. Creates a new ``WellLogsBatch`` instance.
+        """
         keep_mask = np.array([log.shape[axis] >= min_length for log in self.logs])
         return self._filter_batch(keep_mask)
 
