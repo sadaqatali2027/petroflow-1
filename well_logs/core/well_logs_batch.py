@@ -475,6 +475,35 @@ class WellLogsBatch(bf.Batch):
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
     def crop(self, index, length, step, pad_value=0, *, components):
+        """Crop segments from ``components`` along the last axis with given
+        ``length`` and ``step``.
+
+        If the length of a component along the last axis is less than
+        ``length``, it is padded to the left with ``pad_value``.
+
+        Notice, that each element of the resulting components will have an
+        additional axis with index 0, along which crops were stacked.
+
+        Parameters
+        ----------
+        length : positive int
+            Length of each segment along the last axis.
+        step : positive int
+            The number of array elements between starting indices of cropped
+            segments.
+        pad_value : float, optional
+            Padding value. Defaults to 0.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            A batch of cropped components. Changes its ``components`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If ``length`` or ``step`` are negative or non-integer.
+        """
         self._check_positive_int(length, "Segment length")
         self._check_positive_int(step, "Step size")
         i = self.get_pos(None, "logs", index)
