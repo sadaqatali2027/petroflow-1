@@ -332,6 +332,8 @@ class WellLogsBatch(bf.Batch):
         getattr(self, components)[i] = getattr(self, components)[i][indices]
         self.meta[i][mnemonics_key] = old_order[indices]
 
+    @bf.action
+    @bf.inbatch_parallel(init="indices", target="threads")
     def split_by_mnemonic(self, index, mnemonics, component_from, component_to):
         """Move channels with given ``mnemonics`` from ``component_from`` to
         ``component_to``.
@@ -367,6 +369,7 @@ class WellLogsBatch(bf.Batch):
 
         getattr(self, component_from)[i] = getattr(self, component_from)[i][~mask]
         self.meta[i][mnemonics_key_from] = self.meta[i][mnemonics_key_from][~mask]
+
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
     def pad_channels(self, index, components, channels, dst, mask_component, value=0, axis=0):
