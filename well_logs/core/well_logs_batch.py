@@ -1,3 +1,5 @@
+"""Implements WellLogsBatch class."""
+
 from copy import deepcopy
 from math import ceil
 
@@ -10,6 +12,35 @@ from .utils import for_each_component
 
 
 class WellLogsBatch(bf.Batch):
+    """A batch class for well logs storing and processing.
+
+    Parameters
+    ----------
+    index : DatasetIndex
+        Unique identifiers of well logs in the batch.
+    preloaded : tuple, optional
+        Data to put in the batch if given. Defaults to ``None``.
+
+    Attributes
+    ----------
+    index : DatasetIndex
+        Unique identifiers of well logs in the batch.
+    dept : 1-D ndarray
+        An array of 1-D ndarrays, containing information about depth for each
+        sample.
+    logs : 1-D ndarray
+        An array of 2-D ndarrays with well logs data in channels first format.
+    meta : 1-D ndarray
+        An array of dicts with additional metadata about logs, such as
+        mnemonics for each channel.
+
+    Note
+    ----
+    Some batch methods take ``index`` as their first argument after ``self``.
+    You should not specify it in your code since it will be implicitly passed
+    by ``inbatch_parallel`` decorator.
+    """
+
     components = "dept", "logs", "meta"
 
     def __init__(self, index, preloaded=None):
@@ -20,10 +51,12 @@ class WellLogsBatch(bf.Batch):
 
     @property
     def array_of_nones(self):
+        """1-D ndarray: ``NumPy`` array with ``None`` values."""
         return np.array([None] * len(self.index))
 
     @property
     def array_of_dicts(self):
+        """1-D ndarray: ``NumPy`` array with empty ``dict`` values."""
         return np.array([{} for _ in range(len(self.index))])
 
     def _reraise_exceptions(self, results):
@@ -34,11 +67,36 @@ class WellLogsBatch(bf.Batch):
     @staticmethod
     def _to_array(arr):
         return np.array(list(arr) + [None])[:-1]
-    
+
     # Input/output methods
 
     @bf.action
     def load(self, src=None, fmt=None, components=None, *args, **kwargs):
+        """Load given batch components from source.
+
+        This method supports loading of well logs in npz format.
+
+        Parameters
+        ----------
+        src : misc, optional
+            Source to load components from. Must be a collection, that can be
+            indexed by indices of a batch. If ``None`` and ``self.index`` has
+            ``FilesIndex`` type, paths from ``self.index`` are used.
+        fmt : str, optional
+            Source files extension. Can be one of:
+            npz:
+                Arrays from the source file are loaded in the components with
+                the corresponding names. Arrays, that are not listed in the
+                ``components`` argument, are stored in ``meta`` component
+                under the same keys.
+        components : str or array-like, optional
+            Components to load. If ``None``, all batch components are loaded.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with loaded components. Changes batch data inplace.
+        """
         if components is None:
             components = self.components
         components = np.asarray(components).ravel()
@@ -48,6 +106,7 @@ class WellLogsBatch(bf.Batch):
 
     @bf.inbatch_parallel(init="indices", target="threads")
     def _load_npz(self, index, src=None, fmt=None, components=None, *args, **kwargs):
+        _ = fmt
         if src is not None:
             path = src[index]
         elif isinstance(self.index, bf.FilesIndex):
@@ -95,7 +154,7 @@ class WellLogsBatch(bf.Batch):
         plt.tight_layout()
         plt.show()
 
-    # Channels processing
+    # Channels processing methods
 
     @staticmethod
     def _get_mnemonics_key(component):
@@ -187,29 +246,6 @@ class WellLogsBatch(bf.Batch):
 
         getattr(self, component_from)[i] = getattr(self, component_from)[i][~mask]
         self.meta[i][mnemonics_key_from] = self.meta[i][mnemonics_key_from][~mask]
-
-    @bf.action
-    @bf.inbatch_parallel(init="indices", target="threads")
-    def create_input_target(self, index, component_input, component_target, component_mask, all_mnemonics):
-        i = self.get_pos(None, component_input, index)
-        is_crops = (len(getattr(self, component_input)[i].shape) == 3)
-        
-        components = [component_input, component_target]
-        
-        for component in components:
-            mnemonics = self.meta[i][self._get_mnemonics_key(component)]        
-            data = getattr(self, component)[i]
-            #new_data = np.zeros((len(all_mnemonics), *data.shape[1: ]))
-            new_data = np.zeros((*data.shape[:-2], len(all_mnemonics), data.shape[-1]))
-            mask = np.isin(all_mnemonics, mnemonics)
-            new_data[..., np.where(mask)[0], :] = data
-            getattr(self, component)[i] = new_data
-        
-        mask = mask[np.newaxis, ...]
-        if is_crops:
-            mask = np.tile(mask, (getattr(self, component_input)[i].shape[0], 1))
-        getattr(self, component_mask)[i] = mask.astype('float32')
-    
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
     def pad_channels(self, index, components, channels, save_to, mask_component, value=0, axis=0):
@@ -234,8 +270,7 @@ class WellLogsBatch(bf.Batch):
 
         getattr(self, mask_component)[i] = np.isin(np.arange(n_channels), channels).astype('float32')
 
-
-    # Logs processing
+    # Logs processing methods
 
     @bf.inbatch_parallel(init="indices", post="_assemble_drop_nans", target="threads")
     def _drop_nans(self, index, components_to_split, components_to_copy):
@@ -342,14 +377,14 @@ class WellLogsBatch(bf.Batch):
         self.meta[i].update(additional_meta)
 
         components = set(np.unique(np.asarray(components).ravel()))
-        split_positions = np.arange(n_crops) * step
+        crop_positions = np.arange(n_crops) * step
         if "dept" in components:
             padded_dept = self._pad_dept(self.dept[i], new_length)
-            self.dept[i] = bt.split(padded_dept, length, split_positions)
+            self.dept[i] = bt.crop(padded_dept, length, crop_positions)
             components.remove("dept")
         for comp in components:
             padded_comp = self._pad(getattr(self, comp)[i], new_length, pad_value)
-            getattr(self, comp)[i] = bt.split(padded_comp, length, split_positions)
+            getattr(self, comp)[i] = bt.crop(padded_comp, length, crop_positions)
 
     @bf.action
     @bf.inbatch_parallel(init="indices", target="threads")
@@ -367,9 +402,9 @@ class WellLogsBatch(bf.Batch):
                 padded_comp = self._pad(getattr(self, comp)[i], length, pad_value)
                 getattr(self, comp)[i] = np.tile(padded_comp, (n_crops,) + (1,) * padded_comp.ndim)
         else:
-            split_positions = np.random.randint(0, self.logs[i].shape[-1] - length + 1, n_crops)
+            crop_positions = np.random.randint(0, self.logs[i].shape[-1] - length + 1, n_crops)
             for comp in components:
-                getattr(self, comp)[i] = bt.split(getattr(self, comp)[i], length, split_positions)
+                getattr(self, comp)[i] = bt.crop(getattr(self, comp)[i], length, crop_positions)
 
     @for_each_component
     def _split_by_well(self, split_indices, *, components):
