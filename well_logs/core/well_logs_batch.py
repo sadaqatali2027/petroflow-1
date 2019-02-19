@@ -68,6 +68,10 @@ class WellLogsBatch(bf.Batch):
     def _to_array(arr):
         return np.array(list(arr) + [None])[:-1]
 
+    @staticmethod
+    def _preprocess_components(components):
+        return set(np.unique(np.asarray(components).ravel()))
+
     # Input/output methods
 
     @bf.action
@@ -418,18 +422,11 @@ class WellLogsBatch(bf.Batch):
             Batch with dropped ``nan`` values. Creates a new ``WellLogsBatch``
             instance.
         """
-        if components_to_split is None:
-            components_to_split = set()
-        else:
-            components_to_split = set(np.unique(np.asarray(components_to_split).ravel()))
-        components_to_split = sorted(components_to_split | {"dept", "logs"})
+        def _init_components(components):
+            return set() if components is None else self._preprocess_components(components)
 
-        if components_to_copy is None:
-            components_to_copy = set()
-        else:
-            components_to_copy = set(np.unique(np.asarray(components_to_copy).ravel()))
-        components_to_copy = sorted(components_to_copy | {"meta"})
-
+        components_to_split = sorted(_init_components(components_to_split) | {"dept", "logs"})
+        components_to_copy = sorted(_init_components(components_to_copy) | {"meta"})
         return self._drop_nans(components_to_split, components_to_copy)
 
     @bf.action
@@ -554,7 +551,7 @@ class WellLogsBatch(bf.Batch):
         }
         self.meta[i].update(additional_meta)
 
-        components = set(np.unique(np.asarray(components).ravel()))
+        components = self._preprocess_components(components)
         crop_positions = np.arange(n_crops) * step
         if "dept" in components:
             padded_dept = self._pad_dept(self.dept[i], new_length)
@@ -601,7 +598,7 @@ class WellLogsBatch(bf.Batch):
         self._check_positive_int(n_crops, "The number of segments")
         i = self.get_pos(None, "logs", index)
 
-        components = set(np.unique(np.asarray(components).ravel()))
+        components = self._preprocess_components(components)
         if self.logs[i].shape[-1] < length:
             if "dept" in components:
                 padded_dept = self._pad_dept(self.dept[i], length)
