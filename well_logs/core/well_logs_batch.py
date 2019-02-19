@@ -400,6 +400,24 @@ class WellLogsBatch(bf.Batch):
 
     @bf.action
     def drop_nans(self, *, components_to_split=None, components_to_copy=None):
+        """Select connected areas of well logs without ``nan`` values and
+        store them in a new batch instance under modified indices.
+
+        Parameters
+        ----------
+        components_to_split : str or array-like, optional
+            Components, whose elements are indexed by positions of selected
+            connected areas.
+        components_to_copy : str or array-like, optional
+            Components, whose elements are copied for each selected connected
+            area.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with dropped ``nan`` values. Creates a new ``WellLogsBatch``
+            instance.
+        """
         if components_to_split is None:
             components_to_split = set()
         else:
