@@ -31,17 +31,18 @@ def crop(logs, length, positions):
 
 
 def aggregate(logs, step, agg_fn):
-    """Undo the application of ``WellLogsBatch.crop`` method by aggregating of
+    """Undo the application of ``WellLogsBatch.crop`` method by aggregating
     the resulting crops using ``agg_fn``.
 
     Parameters
     ----------
     logs : n-D ndarray
-        Segments, cropped from the initial logs, stacked along the first axis.
+        Segments, cropped from the initial logs and stacked along the first
+        axis.
     step : positive int
         ``WellLogsBatch.crop`` step argument.
     agg_fn : callable
-        Aggregation function to combine values in case of crop overlay.
+        An aggregation function to combine values in case of crop overlay.
 
     Returns
     -------

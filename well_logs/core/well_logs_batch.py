@@ -68,6 +68,10 @@ class WellLogsBatch(bf.Batch):
     def _to_array(arr):
         return np.array(list(arr) + [None])[:-1]
 
+    @staticmethod
+    def _preprocess_components(components):
+        return set(np.unique(np.asarray(components).ravel()))
+
     # Input/output methods
 
     @bf.action
@@ -129,7 +133,6 @@ class WellLogsBatch(bf.Batch):
             self.meta[i][comp] = well_data[comp]
 
     def _show_logs(self, index=None, start=None, end=None, plot_mask=False, subplot_size=(15, 2)):
-        # TODO: Refactor completely
         i = 0 if index is None else self.get_pos(None, "signal", index)
         dept, logs, mnemonics = self.dept[i], self.logs[i], self.meta[i]["mnemonics"]
         if plot_mask:
@@ -460,24 +463,56 @@ class WellLogsBatch(bf.Batch):
 
     @bf.action
     def drop_nans(self, *, components_to_split=None, components_to_copy=None):
-        if components_to_split is None:
-            components_to_split = set()
-        else:
-            components_to_split = set(np.unique(np.asarray(components_to_split).ravel()))
-        components_to_split = sorted(components_to_split | {"dept", "logs"})
+        """Select connected areas of well logs without ``nan`` values and
+        store them in a new batch instance under modified indices.
 
-        if components_to_copy is None:
-            components_to_copy = set()
-        else:
-            components_to_copy = set(np.unique(np.asarray(components_to_copy).ravel()))
-        components_to_copy = sorted(components_to_copy | {"meta"})
+        Parameters
+        ----------
+        components_to_split : str or array-like, optional
+            Components, whose elements are indexed by positions of selected
+            connected areas.
+        components_to_copy : str or array-like, optional
+            Components, whose elements are copied for each selected connected
+            area.
 
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with dropped ``nan`` values. Creates a new ``WellLogsBatch``
+            instance.
+
+        Raises
+        ------
+        SkipBatchException
+            If all batch data was dropped.
+        """
+        def _init_components(components):
+            return set() if components is None else self._preprocess_components(components)
+
+        components_to_split = sorted(_init_components(components_to_split) | {"dept", "logs"})
+        components_to_copy = sorted(_init_components(components_to_copy) | {"meta"})
         return self._drop_nans(components_to_split, components_to_copy)
 
     @bf.action
     @for_each_component
     @bf.inbatch_parallel(init="indices", target="threads")
     def fill_nans(self, index, fill_value=0, *, components):
+        """Replace ``nan`` values in specified ``components`` with given
+        ``fill_value``.
+
+        Parameters
+        ----------
+        fill_value : int or float
+            A value to replace ``nan`` with.
+        components : str or array-like, optional
+            Components to be processed.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with replaced ``nan`` values. Changes its ``components``
+            inplace.
+        """
         comp = getattr(self, components)[self.get_pos(None, components, index)]
         comp[np.isnan(comp)] = fill_value
 
@@ -505,6 +540,11 @@ class WellLogsBatch(bf.Batch):
         -------
         batch : WellLogsBatch
             Filtered batch. Creates a new ``WellLogsBatch`` instance.
+
+        Raises
+        ------
+        SkipBatchException
+            If all batch data was dropped.
         """
         keep_mask = np.array([log.shape[axis] >= min_length for log in self.logs])
         return self._filter_batch(keep_mask)
@@ -580,7 +620,7 @@ class WellLogsBatch(bf.Batch):
         }
         self.meta[i].update(additional_meta)
 
-        components = set(np.unique(np.asarray(components).ravel()))
+        components = self._preprocess_components(components)
         crop_positions = np.arange(n_crops) * step
         if "dept" in components:
             padded_dept = self._pad_dept(self.dept[i], new_length)
@@ -627,6 +667,7 @@ class WellLogsBatch(bf.Batch):
         self._check_positive_int(n_crops, "The number of segments")
         i = self.get_pos(None, "logs", index)
 
+        components = self._preprocess_components(components)
         if self.logs[i].shape[-1] < length:
             if "dept" in components:
                 padded_dept = self._pad_dept(self.dept[i], length)
@@ -647,6 +688,25 @@ class WellLogsBatch(bf.Batch):
 
     @bf.action
     def split_by_well(self, *, components):
+        """Split an array, stored in each of the specified ``components``,
+        along axis 0 into an array of arrays so that the shape of the
+        resulting arrays along axis 0 equals to ``n_crops`` value, stored in
+        the corresponding ``meta`` dict by the ``WellLogsBatch.crop`` method.
+
+        This method is useful for splitting model predictions for the
+        concatenated batch of crops into separate predictions for crops from
+        each individual log in the original batch.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            A batch with split components. Changes its ``components`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If ``WellLogsBatch.crop`` method was not called beforehand.
+        """
         split_indices = [meta.get("n_crops") for meta in self.meta]
         if any(ix is None for ix in split_indices):
             raise ValueError("The number of log segments for a well is unknown")
@@ -664,6 +724,30 @@ class WellLogsBatch(bf.Batch):
 
     @bf.action
     def aggregate(self, agg_fn="mean", *, components):
+        """Undo the application of ``WellLogsBatch.crop`` method by
+        aggregating the resulting crops using ``agg_fn``.
+
+        Parameters
+        ----------
+        agg_fn : str or callable
+            An aggregation function to combine values in case of crop overlay.
+            If ``str``, it must be a valid numpy NaN-aggregation function
+            name.
+        components : str or array-like
+            Components to be aggregated.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with aggregated components. Changes its ``components``
+            inplace.
+
+        Raises
+        ------
+        ValueError
+            If ``agg_fn`` is not a callable or a valid numpy aggregation
+            function name.
+        """
         if isinstance(agg_fn, str):
             if not agg_fn.startswith("nan"):
                 agg_fn = "nan" + agg_fn
