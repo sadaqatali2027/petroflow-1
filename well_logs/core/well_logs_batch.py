@@ -421,6 +421,11 @@ class WellLogsBatch(bf.Batch):
         batch : WellLogsBatch
             Batch with dropped ``nan`` values. Creates a new ``WellLogsBatch``
             instance.
+
+        Raises
+        ------
+        SkipBatchException
+            If all batch data was dropped.
         """
         def _init_components(components):
             return set() if components is None else self._preprocess_components(components)
@@ -476,6 +481,11 @@ class WellLogsBatch(bf.Batch):
         -------
         batch : WellLogsBatch
             Filtered batch. Creates a new ``WellLogsBatch`` instance.
+
+        Raises
+        ------
+        SkipBatchException
+            If all batch data was dropped.
         """
         keep_mask = np.array([log.shape[axis] >= min_length for log in self.logs])
         return self._filter_batch(keep_mask)
@@ -624,7 +634,7 @@ class WellLogsBatch(bf.Batch):
         resulting arrays along axis 0 equals to ``n_crops`` value, stored in
         the corresponding ``meta`` dict by the ``WellLogsBatch.crop`` method.
 
-        This method is useful for splitting of model predictions for the
+        This method is useful for splitting model predictions for the
         concatenated batch of crops into separate predictions for crops from
         each individual log in the original batch.
 
@@ -632,6 +642,11 @@ class WellLogsBatch(bf.Batch):
         -------
         batch : WellLogsBatch
             A batch with split components. Changes its ``components`` inplace.
+
+        Raises
+        ------
+        ValueError
+            If ``WellLogsBatch.crop`` method was not called beforehand.
         """
         split_indices = [meta.get("n_crops") for meta in self.meta]
         if any(ix is None for ix in split_indices):
@@ -650,6 +665,30 @@ class WellLogsBatch(bf.Batch):
 
     @bf.action
     def aggregate(self, agg_fn="mean", *, components):
+        """Undo the application of ``WellLogsBatch.crop`` method by
+        aggregating the resulting crops using ``agg_fn``.
+
+        Parameters
+        ----------
+        agg_fn : str or callable
+            An aggregation function to combine values in case of crop overlay.
+            If ``str``, it must be a valid numpy NaN-aggregation function
+            name.
+        components : str or array-like
+            Components to be aggregated.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with aggregated components. Changes its ``components``
+            inplace.
+
+        Raises
+        ------
+        ValueError
+            If ``agg_fn`` is not a callable or a valid numpy aggregation
+            function name.
+        """
         if isinstance(agg_fn, str):
             if not agg_fn.startswith("nan"):
                 agg_fn = "nan" + agg_fn
