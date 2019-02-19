@@ -583,6 +583,7 @@ class WellLogsBatch(bf.Batch):
         self._check_positive_int(n_crops, "The number of segments")
         i = self.get_pos(None, "logs", index)
 
+        components = set(np.unique(np.asarray(components).ravel()))
         if self.logs[i].shape[-1] < length:
             if "dept" in components:
                 padded_dept = self._pad_dept(self.dept[i], length)
