@@ -129,7 +129,6 @@ class WellLogsBatch(bf.Batch):
             self.meta[i][comp] = well_data[comp]
 
     def _show_logs(self, index=None, start=None, end=None, plot_mask=False, subplot_size=(15, 2)):
-        # TODO: Refactor completely
         i = 0 if index is None else self.get_pos(None, "signal", index)
         dept, logs, mnemonics = self.dept[i], self.logs[i], self.meta[i]["mnemonics"]
         if plot_mask:
@@ -419,6 +418,22 @@ class WellLogsBatch(bf.Batch):
     @for_each_component
     @bf.inbatch_parallel(init="indices", target="threads")
     def fill_nans(self, index, fill_value=0, *, components):
+        """Replace ``nan`` values in specified ``components`` with given
+        ``fill_value``.
+
+        Parameters
+        ----------
+        fill_value : int or float
+            A value to replace ``nan`` with.
+        components : str or array-like, optional
+            Components to be processed.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with replaced ``nan`` values. Changes its ``components``
+            inplace.
+        """
         comp = getattr(self, components)[self.get_pos(None, components, index)]
         comp[np.isnan(comp)] = fill_value
 
