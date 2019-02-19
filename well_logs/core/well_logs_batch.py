@@ -604,6 +604,20 @@ class WellLogsBatch(bf.Batch):
 
     @bf.action
     def split_by_well(self, *, components):
+        """Split an array, stored in each of the specified ``components``,
+        along axis 0 into an array of arrays so that the shape of the
+        resulting arrays along axis 0 equals to ``n_crops`` value, stored in
+        the corresponding ``meta`` dict by the ``WellLogsBatch.crop`` method.
+
+        This method is useful for splitting of model predictions for the
+        concatenated batch of crops into separate predictions for crops from
+        each individual log in the original batch.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            A batch with split components. Changes its ``components`` inplace.
+        """
         split_indices = [meta.get("n_crops") for meta in self.meta]
         if any(ix is None for ix in split_indices):
             raise ValueError("The number of log segments for a well is unknown")
