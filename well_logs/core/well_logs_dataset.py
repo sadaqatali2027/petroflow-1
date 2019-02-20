@@ -1,10 +1,10 @@
 """Implements WellLogsDataset class."""
 
-from .. import batchflow as bf
+from ..batchflow import Dataset, FilesIndex
 from .well_logs_batch import WellLogsBatch
 
 
-class WellLogsDataset(bf.Dataset):
+class WellLogsDataset(Dataset):
     """A dataset, that generates batches of ``WellLogsBatch`` class. Contains
     indices of well logs and a specific ``batch_class`` to create and process
     small subsets of data.
@@ -29,7 +29,7 @@ class WellLogsDataset(bf.Dataset):
         Additional keyword arguments to ``index_class.__init__``.
     """
 
-    def __init__(self, index=None, batch_class=WellLogsBatch, preloaded=None, index_class=bf.FilesIndex,
+    def __init__(self, index=None, batch_class=WellLogsBatch, preloaded=None, index_class=FilesIndex,
                  *args, **kwargs):
         if index is None:
             index = index_class(*args, **kwargs)
