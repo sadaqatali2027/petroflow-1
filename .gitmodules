@@ -1,0 +1,3 @@
+[submodule "well_logs/batchflow"]
+	path = well_logs/batchflow
+	url = https://github.com/analysiscenter/batchflow.git
