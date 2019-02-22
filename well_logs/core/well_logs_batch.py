@@ -374,8 +374,8 @@ class WellLogsBatch(Batch):
         getattr(self, component_from)[i] = getattr(self, component_from)[i][~mask]
         self.meta[i][mnemonics_key_from] = self.meta[i][mnemonics_key_from][~mask]
 
-    @bf.action
-    @bf.inbatch_parallel(init="indices", target="threads")
+    @action
+    @inbatch_parallel(init="indices", target="threads")
     def pad_channels(self, index, components, channels, dst, mask_component, value=0, axis=0):
         """Create copies of components and pad `channels` by `value` in the copies.
 
