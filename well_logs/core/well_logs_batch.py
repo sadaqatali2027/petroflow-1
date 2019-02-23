@@ -403,8 +403,8 @@ class WellLogsBatch(Batch):
                     len(components), len(dst)
                 )
             )
-        for j in range(len(components)):
-            setattr(self, dst[j], deepcopy(getattr(self, components[j])))
+        for j, component in enumerate(components):
+            setattr(self, dst[j], deepcopy(getattr(self, component)))
         return self
 
     @action
