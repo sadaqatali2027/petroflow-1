@@ -71,7 +71,7 @@ class WellLogsBatch(Batch):
 
     @staticmethod
     def _preprocess_components(components):
-        return set(np.unique(np.asarray(components).ravel()))
+        return list(np.unique(np.asarray(components).ravel()))
 
     # Input/output methods
 
@@ -403,8 +403,9 @@ class WellLogsBatch(Batch):
                     len(components), len(dst)
                 )
             )
-        for j in len(components):
-            setattr(self, dst[j], deepcopy(components[j]))
+        for j in range(len(components)):
+            setattr(self, dst[j], deepcopy(getattr(self, components[j])))
+        return self
 
     @action
     @inbatch_parallel(init="indices", target="threads")
@@ -429,6 +430,7 @@ class WellLogsBatch(Batch):
         batch : WellLogsBatch
             Batch with new components channels.
         """
+        components = self._preprocess_components(components)
         i = self.get_pos(None, components[0], index)
         data = getattr(self, components[0])[i]
         n_channels = data.shape[axis]
@@ -439,7 +441,7 @@ class WellLogsBatch(Batch):
         indices = [slice(None)] * len(data.shape)
         indices[axis] = channels
 
-        for j, component in enumerate(components):
+        for component in components:
             getattr(self, component)[i][indices] = value
 
         if channels_mask:
