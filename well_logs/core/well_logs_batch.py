@@ -6,12 +6,13 @@ from math import ceil
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .. import batchflow as bf
 from . import well_logs_batch_tools as bt
 from .utils import for_each_component
+from ..batchflow import Batch, FilesIndex, DatasetIndex, SkipBatchException
+from ..batchflow import action, inbatch_parallel, any_action_failed
 
 
-class WellLogsBatch(bf.Batch):
+class WellLogsBatch(Batch):
     """A batch class for well logs storing and processing.
 
     Parameters
@@ -60,7 +61,7 @@ class WellLogsBatch(bf.Batch):
         return np.array([{} for _ in range(len(self.index))])
 
     def _reraise_exceptions(self, results):
-        if bf.any_action_failed(results):
+        if any_action_failed(results):
             all_errors = self.get_errors(results)
             raise RuntimeError("Cannot assemble the batch", all_errors)
 
@@ -70,11 +71,11 @@ class WellLogsBatch(bf.Batch):
 
     @staticmethod
     def _preprocess_components(components):
-        return set(np.unique(np.asarray(components).ravel()))
+        return list(np.unique(np.asarray(components).ravel()))
 
     # Input/output methods
 
-    @bf.action
+    @action
     def load(self, src=None, fmt=None, components=None, *args, **kwargs):
         """Load given batch components from source.
 
@@ -108,12 +109,12 @@ class WellLogsBatch(bf.Batch):
             return self._load_npz(src=src, fmt=fmt, components=components, *args, **kwargs)
         return super().load(src, fmt, components, *args, **kwargs)
 
-    @bf.inbatch_parallel(init="indices", target="threads")
+    @inbatch_parallel(init="indices", target="threads")
     def _load_npz(self, index, src=None, fmt=None, components=None, *args, **kwargs):
         _ = fmt
         if src is not None:
             path = src[index]
-        elif isinstance(self.index, bf.FilesIndex):
+        elif isinstance(self.index, FilesIndex):
             path = self.index.get_fullpath(index)
         else:
             raise ValueError("Source path is not specified")
@@ -180,7 +181,7 @@ class WellLogsBatch(bf.Batch):
             mask = ~mask
         return mask
 
-    @bf.inbatch_parallel(init="indices", target="threads")
+    @inbatch_parallel(init="indices", target="threads")
     def _filter_channels(self, index, mnemonics=None, indices=None, invert_mask=False, *, components):
         mask = self._generate_mask(index, mnemonics, indices, invert_mask, components=components)
         if np.sum(mask) == 0:
@@ -191,7 +192,7 @@ class WellLogsBatch(bf.Batch):
         if mnemonics_key in self.meta[i]:
             self.meta[i][mnemonics_key] = np.asarray(self.meta[i][mnemonics_key])[mask]
 
-    @bf.action
+    @action
     @for_each_component
     def drop_channels(self, mnemonics=None, indices=None, *, components="logs"):
         """Drop channels from ``components`` whose names are in ``mnemonics``
@@ -226,7 +227,7 @@ class WellLogsBatch(bf.Batch):
             raise ValueError("Both mnemonics and indices cannot be empty")
         return self._filter_channels(mnemonics, indices, invert_mask=True, components=components)
 
-    @bf.action
+    @action
     @for_each_component
     def keep_channels(self, mnemonics=None, indices=None, *, components="logs"):
         """Drop channels from ``components`` whose names are not in
@@ -261,9 +262,9 @@ class WellLogsBatch(bf.Batch):
             raise ValueError("Both mnemonics and indices cannot be empty")
         return self._filter_channels(mnemonics, indices, invert_mask=False, components=components)
 
-    @bf.action
+    @action
     @for_each_component
-    @bf.inbatch_parallel(init="indices", target="threads")
+    @inbatch_parallel(init="indices", target="threads")
     def rename_channels(self, index, rename_dict, *, components="logs"):
         """Rename channels of ``components`` with corresponding values from
         ``rename_dict``.
@@ -289,9 +290,9 @@ class WellLogsBatch(bf.Batch):
             new_mnemonics = np.array([rename_dict.get(name, name) for name in old_mnemonics], dtype=object)
             self.meta[i][mnemonics_key] = new_mnemonics
 
-    @bf.action
+    @action
     @for_each_component
-    @bf.inbatch_parallel(init="indices", target="threads")
+    @inbatch_parallel(init="indices", target="threads")
     def reorder_channels(self, index, new_order, *, components="logs"):
         """Change the order of channels of specified ``components`` according
         to the ``new_order``.
@@ -335,8 +336,8 @@ class WellLogsBatch(bf.Batch):
         getattr(self, components)[i] = getattr(self, components)[i][indices]
         self.meta[i][mnemonics_key] = old_order[indices]
 
-    @bf.action
-    @bf.inbatch_parallel(init="indices", target="threads")
+    @action
+    @inbatch_parallel(init="indices", target="threads")
     def split_by_mnemonic(self, index, mnemonics, component_from, component_to):
         """Move channels with given ``mnemonics`` from ``component_from`` to
         ``component_to``.
@@ -373,25 +374,16 @@ class WellLogsBatch(bf.Batch):
         getattr(self, component_from)[i] = getattr(self, component_from)[i][~mask]
         self.meta[i][mnemonics_key_from] = self.meta[i][mnemonics_key_from][~mask]
 
-    @bf.action
-    @bf.inbatch_parallel(init="indices", target="threads")
-    def pad_channels(self, index, components, channels, dst, mask_component, value=0, axis=0):
-        """Create copies of components and pad `channels` by `value` in the copies.
+    @action
+    def copy_components(self, components, dst):
+        """Create copies of components.
 
         Parameters
         ----------
         components : str or list or tuple
             Components to be processed.
-        channels : list or tuple or callable
-            Channels to pad by `value`.
         dst : str or list or tuple
-            Components to save the copies. Must be converted to the list of the same length as `components`.
-        mask_component : str
-            Component to save binary mask with ones for padded channels.
-        value : float
-            Value to perform padding.
-        axis : int
-            Channels axis
+            Components to save the copies.
 
         Returns
         -------
@@ -401,19 +393,44 @@ class WellLogsBatch(bf.Batch):
         Raises
         ------
         ValueError
-            If `components` and `dst` have different types.
+            If `components` and `dst` have different types/lengthes.
         """
-        if isinstance(components, str):
-            components = [components]
-        if isinstance(dst, str):
-            dst = [dst]
+        components = self._preprocess_components(components)
+        dst = self._preprocess_components(dst)
         if len(dst) != len(components):
             raise ValueError(
                 'components and dst must be converted to lists of the same length but {} and {} were given'.format(
                     len(components), len(dst)
                 )
             )
+        for j, component in enumerate(components):
+            setattr(self, dst[j], deepcopy(getattr(self, component)))
+        return self
 
+    @action
+    @inbatch_parallel(init="indices", target="threads")
+    def fill_channels(self, index, components, channels, channels_mask=None, value=0, axis=0):
+        """Fill `channels` by `value`.
+
+        Parameters
+        ----------
+        components : str or list or tuple
+            Components to be processed.
+        channels : list or tuple or callable
+            Channels to fill by `value`.
+        channels_mask : str
+            Component to save binary mask with ones for padded channels. If None, mask will not be saved.
+        value : float
+            Value to perform padding.
+        axis : int
+            Channels axis
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with new components channels.
+        """
+        components = self._preprocess_components(components)
         i = self.get_pos(None, components[0], index)
         data = getattr(self, components[0])[i]
         n_channels = data.shape[axis]
@@ -424,17 +441,15 @@ class WellLogsBatch(bf.Batch):
         indices = [slice(None)] * len(data.shape)
         indices[axis] = channels
 
-        for j, component in enumerate(components):
-            data = getattr(self, component)[i]
-            new_data = data.copy()
-            new_data[indices] = value
-            getattr(self, dst[j])[i] = new_data
+        for component in components:
+            getattr(self, component)[i][indices] = value
 
-        getattr(self, mask_component)[i] = np.isin(np.arange(n_channels), channels).astype('float32')
+        if channels_mask:
+            getattr(self, channels_mask)[i] = np.isin(np.arange(n_channels), channels).astype('float32')
 
     # Logs processing methods
 
-    @bf.inbatch_parallel(init="indices", post="_assemble_drop_nans", target="threads")
+    @inbatch_parallel(init="indices", post="_assemble_drop_nans", target="threads")
     def _drop_nans(self, index, components_to_split, components_to_copy):
         components = self[index]
         not_nan_mask = np.all(~np.isnan(components.logs), axis=0)
@@ -454,14 +469,14 @@ class WellLogsBatch(bf.Batch):
         self._reraise_exceptions(results)
         results = sum(results, [])
         if len(results) == 0:
-            raise bf.SkipBatchException("All batch data was dropped")
+            raise SkipBatchException("All batch data was dropped")
         indices, *components = zip(*results)
-        batch = self.__class__(bf.DatasetIndex(indices))
+        batch = self.__class__(DatasetIndex(indices))
         for comp_name, comp_data in zip(components_to_split + components_to_copy, components):
             setattr(batch, comp_name, self._to_array(comp_data))
         return batch
 
-    @bf.action
+    @action
     def drop_nans(self, *, components_to_split=None, components_to_copy=None):
         """Select connected areas of well logs without ``nan`` values and
         store them in a new batch instance under modified indices.
@@ -493,9 +508,9 @@ class WellLogsBatch(bf.Batch):
         components_to_copy = sorted(_init_components(components_to_copy) | {"meta"})
         return self._drop_nans(components_to_split, components_to_copy)
 
-    @bf.action
+    @action
     @for_each_component
-    @bf.inbatch_parallel(init="indices", target="threads")
+    @inbatch_parallel(init="indices", target="threads")
     def fill_nans(self, index, fill_value=0, *, components):
         """Replace ``nan`` values in specified ``components`` with given
         ``fill_value``.
@@ -519,13 +534,13 @@ class WellLogsBatch(bf.Batch):
     def _filter_batch(self, keep_mask):
         indices = self.indices[keep_mask]
         if len(indices) == 0:
-            raise bf.SkipBatchException("All batch data was dropped")
-        batch = self.__class__(bf.DatasetIndex(indices))
+            raise SkipBatchException("All batch data was dropped")
+        batch = self.__class__(DatasetIndex(indices))
         for comp in self.components:
             setattr(batch, comp, getattr(self, comp)[keep_mask])
         return batch
 
-    @bf.action
+    @action
     def drop_short_logs(self, min_length, axis=-1):
         """Drop short logs from a batch.
 
@@ -571,8 +586,8 @@ class WellLogsBatch(bf.Batch):
         end_values = (dept[0] - (dept[1] - dept[0]) * pad_len, 0)
         return np.pad(dept, pad_width, "linear_ramp", end_values=end_values)
 
-    @bf.action
-    @bf.inbatch_parallel(init="indices", target="threads")
+    @action
+    @inbatch_parallel(init="indices", target="threads")
     def crop(self, index, length, step, pad_value=0, *, components):
         """Crop segments from ``components`` along the last axis with given
         ``length`` and ``step``.
@@ -630,8 +645,8 @@ class WellLogsBatch(bf.Batch):
             padded_comp = self._pad(getattr(self, comp)[i], new_length, pad_value)
             getattr(self, comp)[i] = bt.crop(padded_comp, length, crop_positions)
 
-    @bf.action
-    @bf.inbatch_parallel(init="indices", target="threads")
+    @action
+    @inbatch_parallel(init="indices", target="threads")
     def random_crop(self, index, length, n_crops, pad_value=0, *, components):
         """Crop ``n_crops`` segments from ``components`` along the last axis
         with random start positions and given ``length``.
@@ -686,7 +701,7 @@ class WellLogsBatch(bf.Batch):
         comp = self._to_array(np.split(getattr(self, components), split_indices))
         setattr(self, components, comp)
 
-    @bf.action
+    @action
     def split_by_well(self, *, components):
         """Split an array, stored in each of the specified ``components``,
         along axis 0 into an array of arrays so that the shape of the
@@ -714,7 +729,7 @@ class WellLogsBatch(bf.Batch):
         return self._split_by_well(split_indices, components=components)
 
     @for_each_component
-    @bf.inbatch_parallel(init="indices", target="for")
+    @inbatch_parallel(init="indices", target="for")
     def _aggregate(self, index, agg_fn, *, components):
         i = self.get_pos(None, components, index)
         comp = getattr(self, components)[i]
@@ -722,7 +737,7 @@ class WellLogsBatch(bf.Batch):
         tmp_comp = bt.aggregate(comp, meta["split_step"], agg_fn)
         getattr(self, components)[i] = tmp_comp[..., meta["pad_length"]:]
 
-    @bf.action
+    @action
     def aggregate(self, agg_fn="mean", *, components):
         """Undo the application of ``WellLogsBatch.crop`` method by
         aggregating the resulting crops using ``agg_fn``.
@@ -759,9 +774,9 @@ class WellLogsBatch(bf.Batch):
             raise ValueError("agg_fn must be a callable or a valid numpy aggregation function name")
         return self._aggregate(agg_fn, components=components)
 
-    @bf.action
+    @action
     @for_each_component
-    @bf.inbatch_parallel(init="indices", target="for")
+    @inbatch_parallel(init="indices", target="for")
     def standardize(self, index, axis=-1, eps=1e-10, *, components):
         """Standardize components along specified axes by removing the mean
         and scaling to unit variance.
