@@ -801,5 +801,5 @@ class WellLogsBatch(Batch):
         i = self.get_pos(None, components, index)
         comp = getattr(self, components)[i]
         comp = ((comp - np.nanmean(comp, axis=axis, keepdims=True)) /
-                np.nanstd(comp, axis=axis, keepdims=True) + eps)
+                (np.nanstd(comp, axis=axis, keepdims=True) + eps))
         getattr(self, components)[i] = comp
