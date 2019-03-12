@@ -731,3 +731,32 @@ class WellLogsBatch(Batch):
         for comp_mean, comp_std, comp in zip(mean, std, components):
             self._norm_mean_std(axis, comp_mean, comp_std, eps, component=comp)
         return self
+
+    @inbatch_parallel(init="indices", target="for")
+    def _norm_min_max(self, index, axis, min, max, *, component):
+        i = self.get_pos(None, component, index)
+        comp = getattr(self, component)[i]
+
+        if min is None:
+            min = np.nanmin(comp, axis=axis)
+        min = np.expand_dims(min, axis=axis)
+        if max is None:
+            max = np.nanmax(comp, axis=axis)
+        max = np.expand_dims(max, axis=axis)
+
+        getattr(self, component)[i] = (comp - min) / (max - min)
+
+    @action
+    def norm_min_max(self, axis=-1, min=None, max=None, *, components):
+        components = np.asarray(components).ravel()
+        if not isinstance(min, (tuple, list)):
+            min = [min] * len(components)
+        if not isinstance(max, (tuple, list)):
+            max = [max] * len(components)
+
+        if not (len(min) == len(max) == len(components)):
+            raise ValueError("Min, max and components lists must be of the same length")
+
+        for comp_min, comp_max, comp in zip(min, max, components):
+            self._norm_min_max(axis, comp_min, comp_max, component=comp)
+        return self
