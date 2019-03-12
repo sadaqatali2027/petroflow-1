@@ -701,32 +701,33 @@ class WellLogsBatch(Batch):
             raise ValueError("agg_fn must be a callable or a valid numpy aggregation function name")
         return self._aggregate(agg_fn, components=components)
 
-    @action
-    @for_each_component
     @inbatch_parallel(init="indices", target="for")
-    def standardize(self, index, axis=-1, eps=1e-10, *, components):
-        """Standardize components along specified axes by removing the mean
-        and scaling to unit variance.
+    def _norm_mean_std(self, index, axis, mean, std, eps, *, component):
+        i = self.get_pos(None, component, index)
+        comp = getattr(self, component)[i]
+        shape = np.ones(comp.ndim, dtype=np.int32)
+        shape[axis] = -1
 
-        Parameters
-        ----------
-        axis : ``None`` or int or tuple of ints, optional
-            Axis or axes along which standardization is performed. Defaults to
-            the last axis.
-        eps: float, optional
-            A small float to be added to the denominator to avoid division by
-            zero.
-        components : str or array-like
-            Components to be standardized.
+        if mean is None:
+            mean = np.nanmean(comp, axis=axis)
+        mean = np.expand_dims(mean, axis=axis)
+        if std is None:
+            std = np.nanstd(comp, axis=axis)
+        std = np.expand_dims(std, axis=axis)
 
-        Returns
-        -------
-        batch : WellLogsBatch
-            Batch with standardized components. Changes its ``components``
-            inplace.
-        """
-        i = self.get_pos(None, components, index)
-        comp = getattr(self, components)[i]
-        comp = ((comp - np.nanmean(comp, axis=axis, keepdims=True)) /
-                np.nanstd(comp, axis=axis, keepdims=True) + eps)
-        getattr(self, components)[i] = comp
+        getattr(self, component)[i] = (comp - mean) / (std + eps)
+
+    @action
+    def norm_mean_std(self, axis=-1, mean=None, std=None, eps=1e-10, *, components):
+        components = np.asarray(components).ravel()
+        if not isinstance(mean, (tuple, list)):
+            mean = [mean] * len(components)
+        if not isinstance(std, (tuple, list)):
+            std = [std] * len(components)
+
+        if not (len(mean) == len(std) == len(components)):
+            raise ValueError("Mean, std and components lists must be of the same length")
+
+        for comp_mean, comp_std, comp in zip(mean, std, components):
+            self._norm_mean_std(axis, comp_mean, comp_std, eps, component=comp)
+        return self
