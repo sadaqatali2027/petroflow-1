@@ -722,7 +722,7 @@ class WellLogsBatch(Batch):
         if std is None:
             std = np.nanstd(comp, axis=axis)
 
-        mean, std = self._insert_axes(mean, std, axes=axis)
+        mean, std = self._insert_axes(mean, std, axes=axis)  # pylint: disable=unbalanced-tuple-unpacking
         getattr(self, component)[i] = (comp - mean) / (std + eps)
 
     @action
@@ -780,7 +780,7 @@ class WellLogsBatch(Batch):
         if max is None:
             max = np.nanmax(comp, axis=axis)
 
-        min, max = self._insert_axes(min, max, axes=axis)
+        min, max = self._insert_axes(min, max, axes=axis)  # pylint: disable=unbalanced-tuple-unpacking
         getattr(self, component)[i] = (comp - min) / (max - min)
 
     @action
