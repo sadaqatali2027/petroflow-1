@@ -733,7 +733,7 @@ class WellLogsBatch(Batch):
         return self
 
     @inbatch_parallel(init="indices", target="for")
-    def _norm_min_max(self, index, axis, min, max, *, component):
+    def _norm_min_max(self, index, axis, min, max, *, component):  # pylint: disable=redefined-builtin
         i = self.get_pos(None, component, index)
         comp = getattr(self, component)[i]
 
@@ -747,7 +747,7 @@ class WellLogsBatch(Batch):
         getattr(self, component)[i] = (comp - min) / (max - min)
 
     @action
-    def norm_min_max(self, axis=-1, min=None, max=None, *, components):
+    def norm_min_max(self, axis=-1, min=None, max=None, *, components):  # pylint: disable=redefined-builtin
         components = np.asarray(components).ravel()
         if not isinstance(min, (tuple, list)):
             min = [min] * len(components)
