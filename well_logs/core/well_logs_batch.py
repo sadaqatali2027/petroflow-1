@@ -701,20 +701,28 @@ class WellLogsBatch(Batch):
             raise ValueError("agg_fn must be a callable or a valid numpy aggregation function name")
         return self._aggregate(agg_fn, components=components)
 
+    @staticmethod
+    def _insert_axes(*arrays, axes):
+        axes = np.array(axes).ravel()
+        res = []
+        for arr in arrays:
+            ndim = arr.ndim + len(axes)
+            axes = np.where(axes < 0, axes + ndim, axes)
+            shape = np.ones(ndim, dtype=np.int32)
+            shape[np.setdiff1d(np.arange(ndim), axes)] = arr.shape
+            res.append(arr.reshape(shape))
+        return tuple(res)
+
     @inbatch_parallel(init="indices", target="for")
     def _norm_mean_std(self, index, axis, mean, std, eps, *, component):
         i = self.get_pos(None, component, index)
         comp = getattr(self, component)[i]
-        shape = np.ones(comp.ndim, dtype=np.int32)
-        shape[axis] = -1
-
         if mean is None:
             mean = np.nanmean(comp, axis=axis)
-        mean = np.expand_dims(mean, axis=axis)
         if std is None:
             std = np.nanstd(comp, axis=axis)
-        std = np.expand_dims(std, axis=axis)
 
+        mean, std = self._insert_axes(mean, std, axes=axis)
         getattr(self, component)[i] = (comp - mean) / (std + eps)
 
     @action
@@ -736,14 +744,12 @@ class WellLogsBatch(Batch):
     def _norm_min_max(self, index, axis, min, max, *, component):  # pylint: disable=redefined-builtin
         i = self.get_pos(None, component, index)
         comp = getattr(self, component)[i]
-
         if min is None:
             min = np.nanmin(comp, axis=axis)
-        min = np.expand_dims(min, axis=axis)
         if max is None:
             max = np.nanmax(comp, axis=axis)
-        max = np.expand_dims(max, axis=axis)
 
+        min, max = self._insert_axes(min, max, axes=axis)
         getattr(self, component)[i] = (comp - min) / (max - min)
 
     @action
