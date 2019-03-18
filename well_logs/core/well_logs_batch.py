@@ -735,10 +735,10 @@ class WellLogsBatch(Batch):
         axis : ``None`` or int or tuple of ints, optional
             Axis or axes along which standardization is performed. Defaults to
             the last axis.
-        mean : None or ndarray
+        mean : None or ndarray or tuple or list of ndarrays
             Mean to be subtracted. If ``None``, it is calculated independently
             for each element of the batch along specified ``axis``.
-        std : None or ndarray
+        std : None or ndarray or tuple or list of ndarrays
             Standard deviation to be divided by. If ``None``, it is calculated
             independently for each element of the batch along specified
             ``axis``.
@@ -785,6 +785,33 @@ class WellLogsBatch(Batch):
 
     @action
     def norm_min_max(self, axis=-1, min=None, max=None, *, components):  # pylint: disable=redefined-builtin
+        """Linearly scale components to a [0, 1] range along specified axes.
+
+        Parameters
+        ----------
+        axis : ``None`` or int or tuple of ints, optional
+            Axis or axes along which scaling is performed. Defaults to the
+            last axis.
+        min : None or ndarray or tuple or list of ndarrays
+            Minimum values of the components. If ``None``, it is calculated
+            independently for each element of the batch along specified
+            ``axis``.
+        max : None or ndarray or tuple or list of ndarrays
+            Maximum values of the components. If ``None``, it is calculated
+            independently for each element of the batch along specified
+            ``axis``.
+        components : str or array-like
+            Components to be scaled. If multiple components are given, ``min``
+            and ``max`` must be either single ``ndarrays``, that will be used
+            for each component, or tuples or lists of the same length,
+            representing minimum and maximum values of the corresponding
+            components.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with scaled components. Changes its ``components`` inplace.
+        """
         components = np.asarray(components).ravel()
         if not isinstance(min, (tuple, list)):
             min = [min] * len(components)
