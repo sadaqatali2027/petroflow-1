@@ -727,6 +727,37 @@ class WellLogsBatch(Batch):
 
     @action
     def norm_mean_std(self, axis=-1, mean=None, std=None, eps=1e-10, *, components):
+        """Standardize components along specified axes by subtracting the mean
+        and scaling to unit variance.
+
+        Parameters
+        ----------
+        axis : ``None`` or int or tuple of ints, optional
+            Axis or axes along which standardization is performed. Defaults to
+            the last axis.
+        mean : None or ndarray
+            Mean to be subtracted. If ``None``, it is calculated independently
+            for each element of the batch along specified ``axis``.
+        std : None or ndarray
+            Standard deviation to be divided by. If ``None``, it is calculated
+            independently for each element of the batch along specified
+            ``axis``.
+        eps: float, optional
+            A small float to be added to the denominator to avoid division by
+            zero.
+        components : str or array-like
+            Components to be standardized. If multiple components are given,
+            ``mean`` and ``std`` must be either single ``ndarrays``, that will
+            be used for each component, or tuples or lists of the same length,
+            representing mean values and standard deviations of the
+            corresponding components.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with standardized components. Changes its ``components``
+            inplace.
+        """
         components = np.asarray(components).ravel()
         if not isinstance(mean, (tuple, list)):
             mean = [mean] * len(components)
