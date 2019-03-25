@@ -71,7 +71,7 @@ class WellLogsBatch(Batch):
 
     @staticmethod
     def _preprocess_components(components):
-        return list(np.unique(np.asarray(components).ravel()))
+        return set(np.unique(np.asarray(components).ravel()))
 
     # Input/output methods
 
@@ -373,79 +373,6 @@ class WellLogsBatch(Batch):
 
         getattr(self, component_from)[i] = getattr(self, component_from)[i][~mask]
         self.meta[i][mnemonics_key_from] = self.meta[i][mnemonics_key_from][~mask]
-
-    @action
-    def copy_components(self, components, dst):
-        """Create copies of components.
-
-        Parameters
-        ----------
-        components : str or list or tuple
-            Components to be processed.
-        dst : str or list or tuple
-            Components to save the copies.
-
-        Returns
-        -------
-        batch : WellLogsBatch
-            Batch with new components channels.
-
-        Raises
-        ------
-        ValueError
-            If `components` and `dst` have different types/lengthes.
-        """
-        components = self._preprocess_components(components)
-        dst = self._preprocess_components(dst)
-        if len(dst) != len(components):
-            raise ValueError(
-                'components and dst must be converted to lists of the same length but {} and {} were given'.format(
-                    len(components), len(dst)
-                )
-            )
-        for j, component in enumerate(components):
-            setattr(self, dst[j], deepcopy(getattr(self, component)))
-        return self
-
-    @action
-    @inbatch_parallel(init="indices", target="threads")
-    def fill_channels(self, index, components, channels, channels_mask=None, value=0, axis=0):
-        """Fill `channels` by `value`.
-
-        Parameters
-        ----------
-        components : str or list or tuple
-            Components to be processed.
-        channels : list or tuple or callable
-            Channels to fill by `value`.
-        channels_mask : str
-            Component to save binary mask with ones for padded channels. If None, mask will not be saved.
-        value : float
-            Value to perform padding.
-        axis : int
-            Channels axis
-
-        Returns
-        -------
-        batch : WellLogsBatch
-            Batch with new components channels.
-        """
-        components = self._preprocess_components(components)
-        i = self.get_pos(None, components[0], index)
-        data = getattr(self, components[0])[i]
-        n_channels = data.shape[axis]
-
-        if callable(channels):
-            channels = channels(n_channels)
-
-        indices = [slice(None)] * len(data.shape)
-        indices[axis] = channels
-
-        for component in components:
-            getattr(self, component)[i][indices] = value
-
-        if channels_mask:
-            getattr(self, channels_mask)[i] = np.isin(np.arange(n_channels), channels).astype('float32')
 
     # Logs processing methods
 
