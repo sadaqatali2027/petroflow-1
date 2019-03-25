@@ -11,7 +11,7 @@ good-names = _, i, j, k, m, n, t, x, y, z, ax, ix
 
 [MESSAGE CONTROL]
 disable = no-value-for-parameter, keyword-arg-before-vararg, len-as-condition,
-          arguments-differ
+          arguments-differ, superfluous-parens
 
 [TYPECHECK]
 ignored-modules = numpy

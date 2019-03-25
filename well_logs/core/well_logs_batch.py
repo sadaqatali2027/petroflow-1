@@ -774,11 +774,33 @@ class WellLogsBatch(Batch):
             raise ValueError("agg_fn must be a callable or a valid numpy aggregation function name")
         return self._aggregate(agg_fn, components=components)
 
-    @action
-    @for_each_component
+    @staticmethod
+    def _insert_axes(*arrays, axes):
+        axes = np.array(axes).ravel()
+        res = []
+        for arr in arrays:
+            ndim = arr.ndim + len(axes)
+            axes = np.where(axes < 0, axes + ndim, axes)
+            shape = np.ones(ndim, dtype=np.int32)
+            shape[np.setdiff1d(np.arange(ndim), axes)] = arr.shape
+            res.append(arr.reshape(shape))
+        return tuple(res)
+
     @inbatch_parallel(init="indices", target="for")
-    def standardize(self, index, axis=-1, eps=1e-10, *, components):
-        """Standardize components along specified axes by removing the mean
+    def _norm_mean_std(self, index, axis, mean, std, eps, *, component):
+        i = self.get_pos(None, component, index)
+        comp = getattr(self, component)[i]
+        if mean is None:
+            mean = np.nanmean(comp, axis=axis)
+        if std is None:
+            std = np.nanstd(comp, axis=axis)
+
+        mean, std = self._insert_axes(mean, std, axes=axis)  # pylint: disable=unbalanced-tuple-unpacking
+        getattr(self, component)[i] = (comp - mean) / (std + eps)
+
+    @action
+    def norm_mean_std(self, axis=-1, mean=None, std=None, eps=1e-10, *, components):
+        """Standardize components along specified axes by subtracting the mean
         and scaling to unit variance.
 
         Parameters
@@ -786,11 +808,22 @@ class WellLogsBatch(Batch):
         axis : ``None`` or int or tuple of ints, optional
             Axis or axes along which standardization is performed. Defaults to
             the last axis.
+        mean : None or ndarray or tuple or list of ndarrays
+            Mean to be subtracted. If ``None``, it is calculated independently
+            for each element of the batch along specified ``axis``.
+        std : None or ndarray or tuple or list of ndarrays
+            Standard deviation to be divided by. If ``None``, it is calculated
+            independently for each element of the batch along specified
+            ``axis``.
         eps: float, optional
             A small float to be added to the denominator to avoid division by
             zero.
         components : str or array-like
-            Components to be standardized.
+            Components to be standardized. If multiple components are given,
+            ``mean`` and ``std`` must be either single ``ndarrays``, that will
+            be used for each component, or tuples or lists of the same length,
+            representing mean values and standard deviations of the
+            corresponding components.
 
         Returns
         -------
@@ -798,8 +831,69 @@ class WellLogsBatch(Batch):
             Batch with standardized components. Changes its ``components``
             inplace.
         """
-        i = self.get_pos(None, components, index)
-        comp = getattr(self, components)[i]
-        comp = ((comp - np.nanmean(comp, axis=axis, keepdims=True)) /
-                (np.nanstd(comp, axis=axis, keepdims=True) + eps))
-        getattr(self, components)[i] = comp
+        components = np.asarray(components).ravel()
+        if not isinstance(mean, (tuple, list)):
+            mean = [mean] * len(components)
+        if not isinstance(std, (tuple, list)):
+            std = [std] * len(components)
+
+        if not (len(mean) == len(std) == len(components)):
+            raise ValueError("Mean, std and components lists must be of the same length")
+
+        for comp_mean, comp_std, comp in zip(mean, std, components):
+            self._norm_mean_std(axis, comp_mean, comp_std, eps, component=comp)
+        return self
+
+    @inbatch_parallel(init="indices", target="for")
+    def _norm_min_max(self, index, axis, min, max, *, component):  # pylint: disable=redefined-builtin
+        i = self.get_pos(None, component, index)
+        comp = getattr(self, component)[i]
+        if min is None:
+            min = np.nanmin(comp, axis=axis)
+        if max is None:
+            max = np.nanmax(comp, axis=axis)
+
+        min, max = self._insert_axes(min, max, axes=axis)  # pylint: disable=unbalanced-tuple-unpacking
+        getattr(self, component)[i] = (comp - min) / (max - min)
+
+    @action
+    def norm_min_max(self, axis=-1, min=None, max=None, *, components):  # pylint: disable=redefined-builtin
+        """Linearly scale components to a [0, 1] range along specified axes.
+
+        Parameters
+        ----------
+        axis : ``None`` or int or tuple of ints, optional
+            Axis or axes along which scaling is performed. Defaults to the
+            last axis.
+        min : None or ndarray or tuple or list of ndarrays
+            Minimum values of the components. If ``None``, it is calculated
+            independently for each element of the batch along specified
+            ``axis``.
+        max : None or ndarray or tuple or list of ndarrays
+            Maximum values of the components. If ``None``, it is calculated
+            independently for each element of the batch along specified
+            ``axis``.
+        components : str or array-like
+            Components to be scaled. If multiple components are given, ``min``
+            and ``max`` must be either single ``ndarrays``, that will be used
+            for each component, or tuples or lists of the same length,
+            representing minimum and maximum values of the corresponding
+            components.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with scaled components. Changes its ``components`` inplace.
+        """
+        components = np.asarray(components).ravel()
+        if not isinstance(min, (tuple, list)):
+            min = [min] * len(components)
+        if not isinstance(max, (tuple, list)):
+            max = [max] * len(components)
+
+        if not (len(min) == len(max) == len(components)):
+            raise ValueError("Min, max and components lists must be of the same length")
+
+        for comp_min, comp_max, comp in zip(min, max, components):
+            self._norm_min_max(axis, comp_min, comp_max, component=comp)
+        return self
