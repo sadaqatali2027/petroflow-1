@@ -71,7 +71,7 @@ class WellLogsBatch(Batch):
 
     @staticmethod
     def _preprocess_components(components):
-        return list(np.unique(np.asarray(components).ravel()))
+        return np.unique(np.asarray(components).ravel()).tolist()
 
     # Input/output methods
 
@@ -502,7 +502,7 @@ class WellLogsBatch(Batch):
             If all batch data was dropped.
         """
         def _init_components(components):
-            return set() if components is None else self._preprocess_components(components)
+            return set() if components is None else set(self._preprocess_components(components))
 
         components_to_split = sorted(_init_components(components_to_split) | {"dept", "logs"})
         components_to_copy = sorted(_init_components(components_to_copy) | {"meta"})
