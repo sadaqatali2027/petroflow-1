@@ -375,36 +375,34 @@ class WellLogsBatch(Batch):
         self.meta[i][mnemonics_key_from] = self.meta[i][mnemonics_key_from][~mask]
 
     @action
-    def copy_components(self, components, dst):
+    def copy_components(self, components_from, components_to):
         """Create copies of components.
 
         Parameters
         ----------
-        components : str or list or tuple
-            Components to be processed.
-        dst : str or list or tuple
+        components_from : str or list or tuple
+            Components to be copied.
+        components_to : str or list or tuple
             Components to save the copies.
 
         Returns
         -------
         batch : WellLogsBatch
-            Batch with new components channels.
+            Batch with copied components.
 
         Raises
         ------
         ValueError
-            If `components` and `dst` have different types/lengthes.
+            If `components_from` and `components_to` have different lengths.
         """
-        components = self._preprocess_components(components)
-        dst = self._preprocess_components(dst)
-        if len(dst) != len(components):
-            raise ValueError(
-                'components and dst must be converted to lists of the same length but {} and {} were given'.format(
-                    len(components), len(dst)
-                )
-            )
-        for j, component in enumerate(components):
-            setattr(self, dst[j], deepcopy(getattr(self, component)))
+        components_from = self._preprocess_components(components_from)
+        components_to = self._preprocess_components(components_to)
+        if len(components_from) != len(components_to):
+            err_msg = ("components_from and components_to must be convertible to lists of the same length, " +
+                       "but lists of lengths {} and {} were given").format(len(components_from), len(components_to))
+            raise ValueError(err_msg)
+        for component_from, component_to in zip(components_from, components_to):
+            setattr(self, component_to, deepcopy(getattr(self, component_from)))
         return self
 
     @action
