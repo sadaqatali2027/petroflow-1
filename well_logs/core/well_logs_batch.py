@@ -407,26 +407,30 @@ class WellLogsBatch(Batch):
 
     @action
     @inbatch_parallel(init="indices", target="threads")
-    def fill_channels(self, index, components, channels, channels_mask=None, value=0, axis=0):
-        """Fill `channels` by `value`.
+    def fill_channels(self, index, channels, channels_mask=None, value=0, axis=0, *, components):
+        """Fill `channels` with `value`.
 
         Parameters
         ----------
+        channels : list or tuple or callable
+            Indices of channels to be filled with `value`. If `callable`, it
+            should accept component length along specified `axis` and return
+            indices of channels to be filled.
+        channels_mask : str
+            Component to save a binary mask with ones for padded channels. If
+            `None`, the mask will not be saved.
+        value : float
+            Value to be used for filling.
+        axis : int
+            Channels axis.
         components : str or list or tuple
             Components to be processed.
-        channels : list or tuple or callable
-            Channels to fill by `value`.
-        channels_mask : str
-            Component to save binary mask with ones for padded channels. If None, mask will not be saved.
-        value : float
-            Value to perform padding.
-        axis : int
-            Channels axis
 
         Returns
         -------
         batch : WellLogsBatch
-            Batch with new components channels.
+            Batch with channels, filled with `value`. Changes its `components`
+            inplace.
         """
         components = self._preprocess_components(components)
         i = self.get_pos(None, components[0], index)
