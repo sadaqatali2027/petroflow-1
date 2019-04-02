@@ -44,8 +44,8 @@ class WellLogsBatch(Batch):
 
     components = "dept", "logs", "meta"
 
-    def __init__(self, index, preloaded=None):
-        super().__init__(index, preloaded)
+    def __init__(self, index, preloaded=None, **kwargs):
+        super().__init__(index, preloaded, **kwargs)
         self.dept = self.array_of_nones
         self.logs = self.array_of_nones
         self.meta = self.array_of_dicts
