@@ -44,8 +44,8 @@ class WellLogsBatch(Batch):
 
     components = "dept", "logs", "meta"
 
-    def __init__(self, index, preloaded=None):
-        super().__init__(index, preloaded)
+    def __init__(self, index, preloaded=None, **kwargs):
+        super().__init__(index, preloaded, **kwargs)
         self.dept = self.array_of_nones
         self.logs = self.array_of_nones
         self.meta = self.array_of_dicts
@@ -71,7 +71,7 @@ class WellLogsBatch(Batch):
 
     @staticmethod
     def _preprocess_components(components):
-        return set(np.unique(np.asarray(components).ravel()))
+        return np.unique(np.asarray(components).ravel()).tolist()
 
     # Input/output methods
 
@@ -338,7 +338,7 @@ class WellLogsBatch(Batch):
 
     @action
     @inbatch_parallel(init="indices", target="threads")
-    def split_by_mnemonic(self, index, mnemonics, component_from, component_to):
+    def split_by_mnemonics(self, index, mnemonics, component_from, component_to):
         """Move channels with given ``mnemonics`` from ``component_from`` to
         ``component_to``.
 
@@ -373,6 +373,81 @@ class WellLogsBatch(Batch):
 
         getattr(self, component_from)[i] = getattr(self, component_from)[i][~mask]
         self.meta[i][mnemonics_key_from] = self.meta[i][mnemonics_key_from][~mask]
+
+    @action
+    def copy_components(self, components_from, components_to):
+        """Create copies of components.
+
+        Parameters
+        ----------
+        components_from : str or list or tuple
+            Components to be copied.
+        components_to : str or list or tuple
+            Components to save the copies.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with copied components.
+
+        Raises
+        ------
+        ValueError
+            If `components_from` and `components_to` have different lengths.
+        """
+        components_from = self._preprocess_components(components_from)
+        components_to = self._preprocess_components(components_to)
+        if len(components_from) != len(components_to):
+            err_msg = ("components_from and components_to must be convertible to lists of the same length, " +
+                       "but lists of lengths {} and {} were given").format(len(components_from), len(components_to))
+            raise ValueError(err_msg)
+        for component_from, component_to in zip(components_from, components_to):
+            setattr(self, component_to, deepcopy(getattr(self, component_from)))
+        return self
+
+    @action
+    @inbatch_parallel(init="indices", target="threads")
+    def fill_channels(self, index, channels, channels_mask=None, value=0, axis=0, *, components):
+        """Fill `channels` with `value`.
+
+        Parameters
+        ----------
+        channels : list or tuple or callable
+            Indices of channels to be filled with `value`. If `callable`, it
+            should accept component length along specified `axis` and return
+            indices of channels to be filled.
+        channels_mask : str
+            Component to save a binary mask with ones for padded channels. If
+            `None`, the mask will not be saved.
+        value : float
+            Value to be used for filling.
+        axis : int
+            Channels axis.
+        components : str or list or tuple
+            Components to be processed.
+
+        Returns
+        -------
+        batch : WellLogsBatch
+            Batch with channels, filled with `value`. Changes its `components`
+            inplace.
+        """
+        components = self._preprocess_components(components)
+        i = self.get_pos(None, components[0], index)
+        data = getattr(self, components[0])[i]
+        n_channels = data.shape[axis]
+
+        if callable(channels):
+            channels = channels(n_channels)
+
+        indices = [slice(None)] * len(data.shape)
+        indices[axis] = channels
+
+        for component in components:
+            getattr(self, component)[i][indices] = value
+
+        if channels_mask:
+            getattr(self, channels_mask)[i] = np.isin(np.arange(n_channels), channels).astype('float32')
 
     # Logs processing methods
 
@@ -429,7 +504,7 @@ class WellLogsBatch(Batch):
             If all batch data was dropped.
         """
         def _init_components(components):
-            return set() if components is None else self._preprocess_components(components)
+            return set() if components is None else set(self._preprocess_components(components))
 
         components_to_split = sorted(_init_components(components_to_split) | {"dept", "logs"})
         components_to_copy = sorted(_init_components(components_to_copy) | {"meta"})
