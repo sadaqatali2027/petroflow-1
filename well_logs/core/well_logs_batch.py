@@ -338,7 +338,7 @@ class WellLogsBatch(Batch):
 
     @action
     @inbatch_parallel(init="indices", target="threads")
-    def split_by_mnemonic(self, index, mnemonics, component_from, component_to):
+    def split_by_mnemonics(self, index, mnemonics, component_from, component_to):
         """Move channels with given ``mnemonics`` from ``component_from`` to
         ``component_to``.
 
