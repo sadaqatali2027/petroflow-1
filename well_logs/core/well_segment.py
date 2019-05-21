@@ -57,21 +57,21 @@ class WellSegment(AbstractWell):
     @property
     def inclination(self):
         if self._inclination is None:
-            self._inclination = pd.read_csv(self.inclination_path)
+            self._inclination = pd.read_csv(self.inclination_path, sep=";")
             # TODO: keep only measurements at appropriate depths
         return self._inclination
 
     @property
     def layers(self):
         if self._layers is None:
-            self._layers = pd.read_csv(self.layers_path)
+            self._layers = pd.read_csv(self.layers_path, sep=";")
             # TODO: keep only layers at appropriate depths
         return self._layers
 
     @property
     def samples(self):
         if self._samples is None and self.has_samples:
-            samples = pd.read_csv(self.samples_path).set_index("SAMPLE")
+            samples = pd.read_csv(self.samples_path, sep=";").set_index("SAMPLE")
 
             depth_from = self.logs.index.min()
             depth_to = self.logs.index.max()
@@ -142,8 +142,8 @@ class WellSegment(AbstractWell):
             sample_depth_from, sample_depth_to = self.samples.loc[sample, ["DEPTH_FROM", "DEPTH_TO"]]
             sample_height = int(round((sample_depth_to - sample_depth_from) * 100)) * self.pixels_per_cm
 
-            dl_path = os.path.join(self.path, "samples_dl", str(sample) + ".jpg")
-            uv_path = os.path.join(self.path, "samples_uv", str(sample) + ".jpg")
+            dl_path = os.path.join(self.path, "samples_dl", str(sample) + ".png")
+            uv_path = os.path.join(self.path, "samples_uv", str(sample) + ".png")
 
             dl_img = self._load_image(dl_path)
             uv_img = self._load_image(uv_path)
@@ -200,12 +200,12 @@ class WellSegment(AbstractWell):
             for sample in samples:
                 depth_from, depth_to = self.samples.loc[sample, ["DEPTH_FROM", "DEPTH_TO"]]
 
-                sample_dl = self._encode(os.path.join(self.path, "samples_dl", str(sample) + ".jpg"))
+                sample_dl = self._encode(os.path.join(self.path, "samples_dl", str(sample) + ".png"))
                 sample_dl = go.layout.Image(source=sample_dl, xref="x"+str(dl_col), yref="y", x=0, y=depth_from,
                                             sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
                 images.append(sample_dl)
 
-                sample_uv = self._encode(os.path.join(self.path, "samples_uv", str(sample) + ".jpg"))
+                sample_uv = self._encode(os.path.join(self.path, "samples_uv", str(sample) + ".png"))
                 sample_uv = go.layout.Image(source=sample_uv, xref="x"+str(uv_col), yref="y", x=0, y=depth_from,
                                             sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
                 images.append(sample_uv)
