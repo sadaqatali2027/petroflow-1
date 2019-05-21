@@ -5,33 +5,163 @@ from copy import copy
 import numpy as np
 import pandas as pd
 import lasio
+import PIL
 from plotly import tools
-from plotly.offline import init_notebook_mode, iplot
-import plotly.graph_objs as go
+from plotly import graph_objs as go
+from plotly.offline import init_notebook_mode, plot
 
 from .abstract_well import AbstractWell
 
 
 class WellSegment(AbstractWell):
-    def __init__(self, well_dir, depth_mnemonic="DEPTH", field=None):
+    def __init__(self, path, field=None, depth_mnemonic="DEPTH", core_width=10, pixels_per_cm=5,
+                 force_load_logs=False, force_load_core=False):
         super().__init__()
+        self.path = path
         self.field = field
-        self.name = os.path.basename(os.path.dirname(well_dir))
-        self.well_dir = well_dir
+        self.name = os.path.basename(os.path.dirname(path))
 
-        logs_path = os.path.join(well_dir, "logs.las")
-        self.logs = self._load_logs(logs_path, depth_mnemonic)
+        self.logs_path = os.path.join(path, "logs.las")
+        self._logs = None
+        self.depth_mnemonic = depth_mnemonic
 
-        self.inclination = pd.read_csv(os.path.join(well_dir, "inclination.csv"))
-        self.layers = pd.read_csv(os.path.join(well_dir, "layers.csv"))
-        self.core = pd.read_csv(os.path.join(well_dir, "core.csv"))
-        self.samples = pd.read_csv(os.path.join(well_dir, "samples.csv")).set_index("SAMPLE")
+        self.inclination_path = os.path.join(path, "inclination.csv")
+        self._inclination = None
+
+        self.layers_path = os.path.join(path, "layers.csv")
+        self._layers = None
+
+        self.samples_path = os.path.join(self.path, "samples.csv")
+        self._samples = None
+        self.has_samples = os.path.isfile(self.samples_path)
+
+        if force_load_logs:
+            self.load_logs()
+
+        self._core_dl = None
+        self._core_uv = None
+        self.core_width = core_width
+        self.pixels_per_cm = pixels_per_cm
+
+        if force_load_core:
+            self.load_core()
+
+    @property
+    def logs(self):
+        if self._logs is None:
+            las = lasio.read(self.logs_path)
+            # TODO: check, that step is exactly 10 cm
+            self._logs = las.df().reset_index().set_index(self.depth_mnemonic)
+        return self._logs
+
+    @property
+    def inclination(self):
+        if self._inclination is None:
+            self._inclination = pd.read_csv(self.inclination_path)
+            # TODO: keep only measurements at appropriate depths
+        return self._inclination
+
+    @property
+    def layers(self):
+        if self._layers is None:
+            self._layers = pd.read_csv(self.layers_path)
+            # TODO: keep only layers at appropriate depths
+        return self._layers
+
+    @property
+    def samples(self):
+        if self._samples is None and self.has_samples:
+            samples = pd.read_csv(self.samples_path).set_index("SAMPLE")
+
+            depth_from = self.logs.index.min()
+            depth_to = self.logs.index.max()
+            mask = (samples["DEPTH_FROM"] < depth_to) & (depth_from < samples["DEPTH_TO"])
+
+            dl_samples_path = os.path.join(self.path, "samples_dl")
+            dl_samples_names = [int(os.path.splitext(os.path.basename(f))[0]) for f in os.listdir(dl_samples_path)
+                                if os.path.isfile(os.path.join(dl_samples_path, f))]
+            uv_samples_path = os.path.join(self.path, "samples_uv")
+            uv_samples_names = [int(os.path.splitext(os.path.basename(f))[0]) for f in os.listdir(uv_samples_path)
+                                if os.path.isfile(os.path.join(uv_samples_path, f))]
+            samples_names = np.union1d(dl_samples_names, uv_samples_names)
+            mask &= np.in1d(samples.index, samples_names)
+
+            self._samples = samples[mask]
+        return self._samples
+
+    def load_logs(self):
+        _ = self.logs
+        _ = self.inclination
+        _ = self.layers
+        _ = self.samples
+        return self
+
+    @property
+    def core_dl(self):
+        if self._core_dl is None:
+            self.load_core()
+        return self._core_dl
+
+    @property
+    def core_uv(self):
+        if self._core_uv is None:
+            self.load_core()
+        return self._core_uv
 
     @staticmethod
-    def _load_logs(logs_path, depth_mnemonic):
-        las = lasio.read(logs_path)
-        logs = las.df().reset_index().set_index(depth_mnemonic)
-        return logs
+    def _load_image(path):
+        return PIL.Image.open(path) if os.path.isfile(path) else None
+
+    @staticmethod
+    def _match_samples(dl_img, uv_img, height, width):
+        if (dl_img is not None) and (dl_img is not None):
+            # TODO: contour matching instead of resizing
+            dl_img = np.array(dl_img.resize((width, height), resample=PIL.Image.LANCZOS))
+            uv_img = np.array(uv_img.resize((width, height), resample=PIL.Image.LANCZOS))
+        elif dl_img is not None:
+            dl_img = np.array(dl_img.resize((width, height), resample=PIL.Image.LANCZOS))
+            uv_img = np.full((height, width, 3), np.nan, dtype=np.float32)
+        else:
+            dl_img = np.full((height, width, 3), np.nan, dtype=np.float32)
+            uv_img = np.array(uv_img.resize((width, height), resample=PIL.Image.LANCZOS))
+        return dl_img, uv_img
+
+    def load_core(self, core_width=None, pixels_per_cm=None):
+        self.core_width = core_width if core_width is not None else self.core_width
+        self.pixels_per_cm = pixels_per_cm if pixels_per_cm is not None else self.pixels_per_cm
+
+        depth_from = self.logs.index.min()
+        depth_to = self.logs.index.max()
+        height = int(round((depth_to - depth_from) * 100)) * self.pixels_per_cm
+        width = self.core_width * self.pixels_per_cm
+        core_dl = np.full((height, width, 3), np.nan, dtype=np.float32)
+        core_uv = np.full((height, width, 3), np.nan, dtype=np.float32)
+
+        sample_names = self.samples.index
+        for sample in sample_names:
+            sample_depth_from, sample_depth_to = self.samples.loc[sample, ["DEPTH_FROM", "DEPTH_TO"]]
+            sample_height = int(round((sample_depth_to - sample_depth_from) * 100)) * self.pixels_per_cm
+
+            dl_path = os.path.join(self.path, "samples_dl", str(sample) + ".jpg")
+            uv_path = os.path.join(self.path, "samples_uv", str(sample) + ".jpg")
+
+            dl_img = self._load_image(dl_path)
+            uv_img = self._load_image(uv_path)
+
+            dl_img, uv_img = self._match_samples(dl_img, uv_img, sample_height, width)
+
+            top_crop = max(0, int(round((depth_from - sample_depth_from) * 100)) * self.pixels_per_cm)
+            bottom_crop = sample_height - max(0, int(round((sample_depth_to - depth_to) * 100)) * self.pixels_per_cm)
+            dl_img = dl_img[top_crop:bottom_crop]
+            uv_img = uv_img[top_crop:bottom_crop]
+
+            insert_pos = max(0, int(round((sample_depth_from - depth_from) * 100)) * self.pixels_per_cm)
+            core_dl[insert_pos:insert_pos+dl_img.shape[0]] = dl_img
+            core_uv[insert_pos:insert_pos+uv_img.shape[0]] = uv_img
+
+        self._core_dl = core_dl / 255
+        self._core_uv = core_uv / 255
+        return self
 
     @staticmethod
     def _encode(img_path):
@@ -47,9 +177,11 @@ class WellSegment(AbstractWell):
 
         n_cols = len(self.logs.columns)
         subplot_titles = list(self.logs.columns)
-        if plot_core:
-            n_cols += 1
-            subplot_titles += ["CORE"]
+        if plot_core and self.has_samples:
+            n_cols += 2
+            subplot_titles += ["CORE DL", "CORE UV"]
+            dl_col = n_cols - 1
+            uv_col = n_cols
 
         fig = tools.make_subplots(rows=1, cols=n_cols, subplot_titles=subplot_titles, shared_yaxes=True,
                                   print_grid=False)
@@ -57,19 +189,26 @@ class WellSegment(AbstractWell):
             trace = go.Scatter(x=self.logs[mnemonic], y=self.logs.index, mode="lines", name=mnemonic)
             fig.append_trace(trace, 1, i)
 
-        if plot_core:
-            trace = go.Scatter(x=[0, 1], y=[depth_from, depth_to], opacity=0, name="CORE")
-            fig.append_trace(trace, 1, n_cols)
-
         images = []
-        samples_path = os.path.join(self.well_dir, "samples/")
-        for sample_path in os.listdir(samples_path):
-            sample_name = int(os.path.splitext(sample_path)[0])
-            img = self._encode(os.path.join(samples_path, sample_path))
-            depth_from, depth_to = self.samples.loc[sample_name, ["DEPTH_FROM", "DEPTH_TO"]]
-            img = go.layout.Image(source=img, xref="x"+str(n_cols), yref="y", x=0, y=depth_from,
-                                  sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
-            images.append(img)
+        if plot_core and self.has_samples:
+            trace = go.Scatter(x=[0, 1], y=[depth_from, depth_to], opacity=0, name="CORE DL")
+            fig.append_trace(trace, 1, dl_col)
+            trace = go.Scatter(x=[0, 1], y=[depth_from, depth_to], opacity=0, name="CORE UV")
+            fig.append_trace(trace, 1, uv_col)
+
+            samples = self.samples.index
+            for sample in samples:
+                depth_from, depth_to = self.samples.loc[sample, ["DEPTH_FROM", "DEPTH_TO"]]
+
+                sample_dl = self._encode(os.path.join(self.path, "samples_dl", str(sample) + ".jpg"))
+                sample_dl = go.layout.Image(source=sample_dl, xref="x"+str(dl_col), yref="y", x=0, y=depth_from,
+                                            sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
+                images.append(sample_dl)
+
+                sample_uv = self._encode(os.path.join(self.path, "samples_uv", str(sample) + ".jpg"))
+                sample_uv = go.layout.Image(source=sample_uv, xref="x"+str(uv_col), yref="y", x=0, y=depth_from,
+                                            sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
+                images.append(sample_uv)
 
         layout = fig.layout
         fig_layout = go.Layout(title="Скважина {}".format(self.name), showlegend=False, width=n_cols*subplot_width,
@@ -80,22 +219,37 @@ class WellSegment(AbstractWell):
             if key.startswith("xaxis"):
                 layout[key]["fixedrange"] = True
 
-        if plot_core:
-            layout["xaxis" + str(n_cols)]["showticklabels"] = False
-            layout["xaxis" + str(n_cols)]["showgrid"] = False
+        if plot_core and self.has_samples:
+            layout["xaxis" + str(dl_col)]["showticklabels"] = False
+            layout["xaxis" + str(dl_col)]["showgrid"] = False
+
+            layout["xaxis" + str(uv_col)]["showticklabels"] = False
+            layout["xaxis" + str(uv_col)]["showgrid"] = False
 
         for ann in layout["annotations"]:
             ann["font"]["size"] = 12
 
-        iplot(fig)
+        plot(fig)
         return self
 
     def __getitem__(self, key):
         if not isinstance(key, slice):
             return self.keep_logs(key)
         res = self.copy()
-        res.logs = res.logs[key]
+        res._logs = res.logs[key]
+
+        start, stop = key.start, key.stop
+        mask = (res.samples["DEPTH_FROM"] < stop) & (start < res.samples["DEPTH_TO"])
+        res._samples = res.samples[mask]
+
         # TODO: slice all other dataframes
+
+        if (res._core_dl is not None) and (res._core_uv is not None):
+            depth_from = self.logs.index.min()
+            start_pos = int(round((start - depth_from) * 100)) * self.pixels_per_cm
+            stop_pos = int(round((stop - depth_from) * 100)) * self.pixels_per_cm
+            res._core_dl = res._core_dl[start_pos:stop_pos]
+            res._core_uv = res._core_uv[start_pos:stop_pos]
         return res
 
     def copy(self):
@@ -103,13 +257,13 @@ class WellSegment(AbstractWell):
 
     def drop_logs(self, mnemonics=None):
         res = self.copy()
-        res.logs.drop(mnemonics, axis=1, inplace=True)
+        res._logs.drop(mnemonics, axis=1, inplace=True)
         return res
 
     def keep_logs(self, mnemonics=None):
         res = self.copy()
         mnemonics = np.asarray(mnemonics).tolist()
-        res.logs = res.logs[mnemonics]
+        res._logs = res.logs[mnemonics]
         return res
 
     def rename_logs(self, rename_dict):
