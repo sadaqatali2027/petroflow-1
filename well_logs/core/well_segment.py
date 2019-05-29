@@ -280,6 +280,26 @@ class WellSegment(AbstractWell):
     def rename_logs(self, rename_dict):
         self.logs.columns = [rename_dict.get(name, name) for name in self.logs.columns]
         return self
+    
+    def _core_chunks(self):
+        samples = self.samples.copy()
+        gaps = samples['DEPTH_FROM'][1:].values - samples['DEPTH_TO'][:-1].values
+
+        if any(gaps < 0):
+            raise ValueError('Core intersects the previous one: ', list(samples.index[1:][gaps < 0]))
+        
+        samples['TOP'] = True
+        samples['TOP'][1:] = (gaps != 0)
+
+        samples['BOTTOM'] = True
+        samples['BOTTOM'][:-1] = (gaps != 0)
+
+        chunks = pd.DataFrame({
+            'TOP': samples[samples.TOP].DEPTH_FROM.values,
+            'BOTTOM': samples[samples.BOTTOM].DEPTH_TO.values
+        })
+
+        return chunks
 
     def drop_layers(self):
         pass
