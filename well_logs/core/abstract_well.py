@@ -24,6 +24,10 @@ class AbstractWell(metaclass=ABCMeta):
     @abstractmethod
     def rename_logs(self):
         pass
+    
+    @abstractmethod
+    def split_by_core(self):
+        pass
 
     @abstractmethod
     def drop_layers(self):

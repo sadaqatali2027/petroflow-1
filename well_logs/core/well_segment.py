@@ -300,6 +300,13 @@ class WellSegment(AbstractWell):
         })
 
         return chunks
+    
+    def split_by_core(self):
+        chunks = self._core_chunks()
+        segments = []
+        for _, (top, bottom) in self._core_chunks().iterrows():
+            segments.append(self[top:bottom])
+        return segments
 
     def drop_layers(self):
         pass
