@@ -34,6 +34,9 @@ class WellSegment(AbstractWell):
         self.core_data_path = os.path.join(path, "core.csv")
         self._core_data = None
 
+        self.core_logs_path = os.path.join(path, "core_logs.csv")
+        self._core_logs = None
+
         self.samples_path = os.path.join(self.path, "samples.csv")
         self._samples = None
         self.has_samples = os.path.isfile(self.samples_path)
@@ -79,6 +82,12 @@ class WellSegment(AbstractWell):
         return self._core_data
 
     @property
+    def core_logs(self):
+        if self._core_logs is None:
+            self._core_logs = pd.read_csv(self.core_logs_path, sep=",").set_index("DEPTH")
+        return self._core_logs
+
+    @property
     def samples(self):
         if self._samples is None and self.has_samples:
             samples = pd.read_csv(self.samples_path, sep=";").set_index("SAMPLE")
@@ -105,6 +114,7 @@ class WellSegment(AbstractWell):
         _ = self.layers
         _ = self.samples
         _ = self.core_data
+        _ = self.core_logs
         return self
 
     @property
