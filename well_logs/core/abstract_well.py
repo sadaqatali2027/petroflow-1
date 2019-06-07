@@ -10,6 +10,10 @@ class AbstractWell(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def match_core_logs(self):
+        pass
+
+    @abstractmethod
     def plot(self):
         pass
 

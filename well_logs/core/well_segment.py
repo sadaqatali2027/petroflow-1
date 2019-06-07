@@ -6,11 +6,13 @@ import numpy as np
 import pandas as pd
 import lasio
 import PIL
+from scipy.interpolate import interp1d
 from plotly import tools
 from plotly import graph_objs as go
 from plotly.offline import init_notebook_mode, plot
 
 from .abstract_well import AbstractWell
+from .matching import select_contigious_intervals, join_samples, optimize_shift
 
 
 class WellSegment(AbstractWell):
@@ -275,6 +277,23 @@ class WellSegment(AbstractWell):
 
     def copy(self):
         return copy(self)
+
+    def match_core_logs(self, mnemonic="GK", max_shift=5, delta_from=-1, delta_to=1, delta_step=0.1):
+        log = self.logs[mnemonic]
+        core_log = self.core_logs[mnemonic]
+        log_interpolator = interp1d(log.index, log, kind="linear")
+        contigious_samples_list = select_contigious_intervals(self.samples, max_shift)
+
+        samples_df_list = []
+        for samples_df in contigious_samples_list:
+            joined_df = join_samples(samples_df, core_log)
+            _, best_deltas = optimize_shift(samples_df, joined_df, log_interpolator, max_shift,
+                                            delta_from, delta_to, delta_step)
+            samples_df["DELTA"] = best_deltas
+            samples_df_list.append(samples_df)
+
+        self._samples = pd.concat(samples_df_list)
+        return self
 
     def drop_logs(self, mnemonics=None):
         res = self.copy()
