@@ -6,11 +6,13 @@ import numpy as np
 import pandas as pd
 import lasio
 import PIL
+from scipy.interpolate import interp1d
 from plotly import tools
 from plotly import graph_objs as go
 from plotly.offline import init_notebook_mode, plot
 
 from .abstract_well import AbstractWell
+from .matching import select_contigious_intervals, join_samples, optimize_shift
 
 
 class WellSegment(AbstractWell):
@@ -33,6 +35,9 @@ class WellSegment(AbstractWell):
 
         self.core_data_path = os.path.join(path, "core.csv")
         self._core_data = None
+
+        self.core_logs_path = os.path.join(path, "core_logs.csv")
+        self._core_logs = None
 
         self.samples_path = os.path.join(self.path, "samples.csv")
         self._samples = None
@@ -79,6 +84,12 @@ class WellSegment(AbstractWell):
         return self._core_data
 
     @property
+    def core_logs(self):
+        if self._core_logs is None:
+            self._core_logs = pd.read_csv(self.core_logs_path, sep=",").set_index("DEPTH")
+        return self._core_logs
+
+    @property
     def samples(self):
         if self._samples is None and self.has_samples:
             samples = pd.read_csv(self.samples_path, sep=";").set_index("SAMPLE")
@@ -105,6 +116,7 @@ class WellSegment(AbstractWell):
         _ = self.layers
         _ = self.samples
         _ = self.core_data
+        _ = self.core_logs
         return self
 
     @property
@@ -265,6 +277,23 @@ class WellSegment(AbstractWell):
 
     def copy(self):
         return copy(self)
+
+    def match_core_logs(self, mnemonic="GK", max_shift=5, delta_from=-1, delta_to=1, delta_step=0.1):
+        log = self.logs[mnemonic]
+        core_log = self.core_logs[mnemonic]
+        log_interpolator = interp1d(log.index, log, kind="linear")
+        contigious_samples_list = select_contigious_intervals(self.samples, max_shift)
+
+        samples_df_list = []
+        for samples_df in contigious_samples_list:
+            joined_df = join_samples(samples_df, core_log)
+            _, best_deltas = optimize_shift(samples_df, joined_df, log_interpolator, max_shift,
+                                            delta_from, delta_to, delta_step)
+            samples_df["DELTA"] = best_deltas
+            samples_df_list.append(samples_df)
+
+        self._samples = pd.concat(samples_df_list)
+        return self
 
     def drop_logs(self, mnemonics=None):
         res = self.copy()
