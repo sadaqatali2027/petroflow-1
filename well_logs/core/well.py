@@ -47,7 +47,19 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 #    def drop_segments(self, indices):
 #        self.segments = [segment for i, segment in self.segments if not i in indices]
     
-    def random_crop(self, height, n_crops=1):
-        p = np.array([item.depth_to - item.depth_from for item in self.segments])
-        random_segments = Counter(np.random.choice(self.segments, n_crops, p=p/sum(p)))
-        self.segments = [s for segment, n_crops in random_segments.items() for s in segment.random_crop(height, n_crops)]
+    def random_crop(self, height, n_crops=1, divide_by=None):
+        if divide_by is None:
+            p = np.array([item.depth_to - item.depth_from for item in self.segments])
+            random_segments = Counter(np.random.choice(self.segments, n_crops, p=p/sum(p)))
+            self.segments = [s for segment, n_crops in random_segments.items() for s in segment.random_crop(height, n_crops)]
+        else:
+            positive = [segment for segment in self.segments if divide_by(segment) == 1]
+            negative = [segment for segment in self.segments if divide_by(segment) == 0]
+            self.segments = []
+            for segments in positive, negative:
+                p = np.array([item.depth_to - item.depth_from for item in segments])
+                random_segments = Counter(np.random.choice(segments, n_crops, p=p/sum(p)))
+                self.segments.extend(
+                    [s for segment, n_crops in random_segments.items() for s in segment.random_crop(height, n_crops)]
+                )
+            self.segments = np.random.choice(self.segments, size=2*n_crops, replace=False)

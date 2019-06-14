@@ -6,7 +6,7 @@ from ..batchflow import FilesIndex, Batch, action, inbatch_parallel
 from .well import Well
 
 class WellBatch(Batch):
-    components = "wells", 
+    components = "wells",
 
     def __init__(self, index, preloaded=None, **kwargs):
         super().__init__(index, preloaded, **kwargs)
@@ -35,6 +35,12 @@ class WellBatch(Batch):
 
     @action
     @inbatch_parallel(init="indices", target="threads")
-    def random_crop(self, index, n_crops, height, *args, **kwargs):
+    def random_crop(self, index, n_crops, height, divide_by=None, *args, **kwargs):
         pos = self.get_pos(None, "wells", index)
-        self.wells[pos].random_crop(height, n_crops)
+        self.wells[pos].random_crop(height, n_crops, divide_by)
+    
+    @action
+    @inbatch_parallel(init="indices", target="threads")
+    def crop(self, index, height, n_crops, *args, **kwargs):
+        pos = self.get_pos(None, "wells", index)
+        self.wells[pos].crop(height, n_crops)
