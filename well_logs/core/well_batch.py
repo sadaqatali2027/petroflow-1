@@ -1,3 +1,7 @@
+from collections import Counter
+
+import numpy as np
+
 from ..batchflow import FilesIndex, Batch, action, inbatch_parallel
 from .well import Well
 
@@ -22,9 +26,15 @@ class WellBatch(Batch):
         i = self.get_pos(None, "wells", index)
         
         self.wells[i] = well
-    
+
     @action
     @inbatch_parallel(init="indices", target="threads")
-    def split_by_core(self, index):
+    def split_segments(self, index, *args, **kwargs):
         i = self.get_pos(None, "wells", index)
-        self.wells[i] = self.wells[i].split_by_core()
+        self.wells[i].split_segments(*args, **kwargs)
+
+    @action
+    @inbatch_parallel(init="indices", target="threads")
+    def random_crop(self, index, n_crops, height, *args, **kwargs):
+        pos = self.get_pos(None, "wells", index)
+        self.wells[pos].random_crop(height, n_crops)

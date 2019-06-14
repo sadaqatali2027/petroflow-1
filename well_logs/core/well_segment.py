@@ -14,10 +14,25 @@ from plotly.offline import init_notebook_mode, plot
 from .abstract_well import AbstractWell
 from .matching import select_contigious_intervals, join_samples, optimize_shift
 
+def _min(x, y):
+    if x is None:
+        return y
+    elif y is None:
+        return x
+    else:
+        return min(x, y)
+
+def _max(x, y):
+    if x is None:
+        return y
+    elif y is None:
+        return x
+    else:
+        return max(x, y)
 
 class WellSegment(AbstractWell):
     def __init__(self, path, field=None, depth_mnemonic="DEPTH", core_width=10, pixels_per_cm=5,
-                 force_load_logs=False, force_load_core=False):
+                 force_load_logs=False, force_load_core=False, depth_from=None, depth_to=None):
         super().__init__()
         self.path = path
         self.field = field
@@ -26,6 +41,14 @@ class WellSegment(AbstractWell):
         self.logs_path = os.path.join(path, "logs.las")
         self._logs = None
         self.depth_mnemonic = depth_mnemonic
+
+        self._depth_from = depth_from
+        self._depth_to = depth_to
+
+        if os.path.exists(self.logs_path):
+            header = lasio.read(self.logs_path, ignore_data=True)
+            self._depth_from = _min(header.header["Well"]["STRT"].value, depth_from)
+            self._depth_to = _max(header.header["Well"]["STOP"].value, depth_to)
 
         self.inclination_path = os.path.join(path, "inclination.csv")
         self._inclination = None
@@ -59,7 +82,7 @@ class WellSegment(AbstractWell):
         if self._logs is None:
             las = lasio.read(self.logs_path)
             # TODO: check, that step is exactly 10 cm
-            self._logs = las.df().reset_index().set_index(self.depth_mnemonic)
+            self._logs = las.df().reset_index().set_index(self.depth_mnemonic)[self.depth_from:self.depth_to]
         return self._logs
 
     @property
@@ -92,23 +115,46 @@ class WellSegment(AbstractWell):
     @property
     def samples(self):
         if self._samples is None and self.has_samples:
-            samples = pd.read_csv(self.samples_path, sep=";").set_index("SAMPLE")
 
-            depth_from = self.logs.index.min()
-            depth_to = self.logs.index.max()
-            mask = (samples["DEPTH_FROM"] < depth_to) & (depth_from < samples["DEPTH_TO"])
+            samples = pd.read_csv(self.samples_path, sep=";", encoding='cp1251').set_index("SAMPLE")
 
             dl_samples_path = os.path.join(self.path, "samples_dl")
-            dl_samples_names = [int(os.path.splitext(os.path.basename(f))[0]) for f in os.listdir(dl_samples_path)
+            dl_samples_names = [os.path.basename(f) for f in os.listdir(dl_samples_path)
                                 if os.path.isfile(os.path.join(dl_samples_path, f))]
             uv_samples_path = os.path.join(self.path, "samples_uv")
-            uv_samples_names = [int(os.path.splitext(os.path.basename(f))[0]) for f in os.listdir(uv_samples_path)
+            uv_samples_names = [os.path.basename(f) for f in os.listdir(uv_samples_path)
                                 if os.path.isfile(os.path.join(uv_samples_path, f))]
             samples_names = np.union1d(dl_samples_names, uv_samples_names)
-            mask &= np.in1d(samples.index, samples_names)
+            mask = np.in1d(samples.index, samples_names)
+            if self._depth_to is not None:
+                mask &= (samples["DEPTH_FROM"] < self._depth_to)
+            if self._depth_from is not None:
+                mask &= (self._depth_from < samples["DEPTH_TO"])
 
             self._samples = samples[mask]
+            
+            if self._depth_to is None:
+                self._depth_to = self._samples['DEPTH_TO'].max()
+            if self._depth_from is None:
+                self._depth_from = self._samples['DEPTH_FROM'].min()
+
         return self._samples
+    
+    @property
+    def depth_from(self):
+        if self._depth_from is None:
+            _ = self.samples
+        return self._depth_from
+    
+    @property
+    def depth_to(self):
+        if self._depth_to is None:
+            _ = self.samples
+        return self._depth_to   
+    
+    @property
+    def depth(self):
+        return self.depth_to - self.depth_from
 
     def load_logs(self):
         _ = self.logs
@@ -153,8 +199,8 @@ class WellSegment(AbstractWell):
         self.core_width = core_width if core_width is not None else self.core_width
         self.pixels_per_cm = pixels_per_cm if pixels_per_cm is not None else self.pixels_per_cm
 
-        depth_from = self.logs.index.min()
-        depth_to = self.logs.index.max()
+        depth_from = self.depth_from
+        depth_to = self.depth_to
         height = int(round((depth_to - depth_from) * 100)) * self.pixels_per_cm
         width = self.core_width * self.pixels_per_cm
         core_dl = np.full((height, width, 3), np.nan, dtype=np.float32)
@@ -165,8 +211,8 @@ class WellSegment(AbstractWell):
             sample_depth_from, sample_depth_to = self.samples.loc[sample, ["DEPTH_FROM", "DEPTH_TO"]]
             sample_height = int(round((sample_depth_to - sample_depth_from) * 100)) * self.pixels_per_cm
 
-            dl_path = os.path.join(self.path, "samples_dl", str(sample) + ".png")
-            uv_path = os.path.join(self.path, "samples_uv", str(sample) + ".png")
+            dl_path = os.path.join(self.path, "samples_dl", str(sample))
+            uv_path = os.path.join(self.path, "samples_uv", str(sample))
 
             dl_img = self._load_image(dl_path)
             uv_img = self._load_image(uv_path)
@@ -223,12 +269,12 @@ class WellSegment(AbstractWell):
             for sample in samples:
                 depth_from, depth_to = self.samples.loc[sample, ["DEPTH_FROM", "DEPTH_TO"]]
 
-                sample_dl = self._encode(os.path.join(self.path, "samples_dl", str(sample) + ".png"))
+                sample_dl = self._encode(os.path.join(self.path, "samples_dl", str(sample)))
                 sample_dl = go.layout.Image(source=sample_dl, xref="x"+str(dl_col), yref="y", x=0, y=depth_from,
                                             sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
                 images.append(sample_dl)
 
-                sample_uv = self._encode(os.path.join(self.path, "samples_uv", str(sample) + ".png"))
+                sample_uv = self._encode(os.path.join(self.path, "samples_uv", str(sample)))
                 sample_uv = go.layout.Image(source=sample_uv, xref="x"+str(uv_col), yref="y", x=0, y=depth_from,
                                             sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
                 images.append(sample_uv)
@@ -259,8 +305,9 @@ class WellSegment(AbstractWell):
         if not isinstance(key, slice):
             return self.keep_logs(key)
         res = self.copy()
-        res._logs = res.logs[key]
-
+        # res._logs = res.logs[key]
+        res._depth_from = key.start
+        res._depth_to = key.stop
         start, stop = key.start, key.stop
         mask = (res.samples["DEPTH_FROM"] < stop) & (start < res.samples["DEPTH_TO"])
         res._samples = res.samples[mask]
@@ -329,13 +376,20 @@ class WellSegment(AbstractWell):
         })
 
         return chunks
-    
-    def split_by_core(self):
-        chunks = self._core_chunks()
+
+    def split_segments(self, connected=False):
         segments = []
-        for _, (top, bottom) in self._core_chunks().iterrows():
+        if connected:
+            df = self._core_chunks()
+        else:
+            df = self.samples[['DEPTH_FROM', 'DEPTH_TO']]
+        for _, (top, bottom) in df.iterrows():
             segments.append(self[top:bottom])
         return segments
+
+    def random_crop(self, height, n_crops=1):
+        positions = np.random.uniform(self.depth_from, self.depth_to-height, size=n_crops)
+        return [self[pos:pos+height] for pos in positions]
 
     def drop_layers(self):
         pass

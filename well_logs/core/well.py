@@ -1,10 +1,13 @@
 from abc import ABCMeta
 from functools import wraps
 from copy import copy
+from collections import Counter
+
+import numpy as np
 
 from .abstract_well import AbstractWell
 from .well_segment import WellSegment
-
+from ..batchflow import timeit
 
 class SegmentDelegatingMeta(ABCMeta):
     def __new__(mcls, name, bases, namespace):
@@ -37,3 +40,14 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     def copy(self):
         return copy(self)
+
+    def split_segments(self, connected=False):
+        self.segments = [item for segment in self.segments for item in segment.split_segments(connected)]
+    
+#    def drop_segments(self, indices):
+#        self.segments = [segment for i, segment in self.segments if not i in indices]
+    
+    def random_crop(self, height, n_crops=1):
+        p = np.array([item.depth_to - item.depth_from for item in self.segments])
+        random_segments = Counter(np.random.choice(self.segments, n_crops, p=p/sum(p)))
+        self.segments = [s for segment, n_crops in random_segments.items() for s in segment.random_crop(height, n_crops)]
