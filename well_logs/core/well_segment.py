@@ -315,7 +315,7 @@ class WellSegment(AbstractWell):
         # TODO: slice all other dataframes
 
         if (res._core_dl is not None) and (res._core_uv is not None):
-            depth_from = self.logs.index.min()
+            depth_from = self.depth_from
             start_pos = int(round((start - depth_from) * 100)) * self.pixels_per_cm
             stop_pos = int(round((stop - depth_from) * 100)) * self.pixels_per_cm
             res._core_dl = res._core_dl[start_pos:stop_pos]
@@ -389,6 +389,12 @@ class WellSegment(AbstractWell):
 
     def random_crop(self, height, n_crops=1):
         positions = np.random.uniform(self.depth_from, self.depth_to-height, size=n_crops)
+        return [self[pos:pos+height] for pos in positions]
+    
+    def crop(self, height, step, drop_last=True):
+        positions = np.arange(self.depth_from, self.depth_to, step)
+        if drop_last and positions[-1]+height >= self.depth:
+            positions = positions[:-1]
         return [self[pos:pos+height] for pos in positions]
 
     def drop_layers(self):
