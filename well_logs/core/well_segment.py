@@ -1,6 +1,9 @@
 import os
+import json
 import base64
 from copy import copy
+from glob import glob
+from itertools import chain, repeat
 
 import numpy as np
 import pandas as pd
@@ -30,140 +33,112 @@ def _max(x, y):
     else:
         return max(x, y)
 
+def add_attr_properties(cls):
+    for attr in cls.attrs_depth_index + cls.attrs_fdtd_index + cls.attrs_no_index:
+        def prop(self, attr=attr):
+            if getattr(self, "_" + attr) is None:
+                getattr(self, "load_" + attr)()
+            return getattr(self, "_" + attr)
+        setattr(cls, attr, property(prop))
+    return cls
+
+
+def add_attr_loaders(cls):
+    attr_iter = chain(
+        zip(cls.attrs_depth_index, repeat(cls._load_depth_df)),
+        zip(cls.attrs_fdtd_index, repeat(cls._load_fdtd_df)),
+        zip(cls.attrs_no_index, repeat(cls._load_df))
+    )
+    for attr, loader in attr_iter:
+        def load_factory(attr, loader):
+            def load(self, *args, **kwargs):
+                data = loader(self, self._get_full_name(self.path, attr), *args, **kwargs)
+                setattr(self, "_" + attr, data)
+                return self
+            return load
+        setattr(cls, "load_" + attr, load_factory(attr, loader))
+    return cls
+
+
+@add_attr_properties
+@add_attr_loaders
 class WellSegment(AbstractWell):
-    def __init__(self, path, field=None, depth_mnemonic="DEPTH", core_width=10, pixels_per_cm=5,
-                 force_load_logs=False, force_load_core=False, depth_from=None, depth_to=None):
+    attrs_depth_index = ("logs", "core_properties", "core_logs")
+    attrs_fdtd_index = ("layers", "boring_intervals", "core_lithology", "samples")
+    attrs_no_index = ("inclination",)
+
+    def __init__(self, path, core_width=10, pixels_per_cm=5):
         super().__init__()
         self.path = path
-        self.field = field
-        self.name = os.path.basename(os.path.dirname(path))
-
-        self.logs_path = os.path.join(path, "logs.las")
-        self._logs = None
-        self.depth_mnemonic = depth_mnemonic
-
-        self._depth_from = depth_from
-        self._depth_to = depth_to
-
-        if os.path.exists(self.logs_path):
-            header = lasio.read(self.logs_path, ignore_data=True)
-            self._depth_from = _min(header.header["Well"]["STRT"].value, depth_from)
-            self._depth_to = _max(header.header["Well"]["STOP"].value, depth_to)
-
-        self.inclination_path = os.path.join(path, "inclination.csv")
-        self._inclination = None
-
-        self.layers_path = os.path.join(path, "layers.csv")
-        self._layers = None
-
-        self.core_data_path = os.path.join(path, "core.csv")
-        self._core_data = None
-
-        self.core_logs_path = os.path.join(path, "core_logs.csv")
-        self._core_logs = None
-
-        self.samples_path = os.path.join(self.path, "samples.csv")
-        self._samples = None
-        self.has_samples = os.path.isfile(self.samples_path)
-
-        if force_load_logs:
-            self.load_logs()
-
-        self._core_dl = None
-        self._core_uv = None
         self.core_width = core_width
         self.pixels_per_cm = pixels_per_cm
 
-        if force_load_core:
-            self.load_core()
+        with open(os.path.join(self.path, "meta.json")) as meta_file:
+            meta = json.load(meta_file)
+        self.name = meta["name"]
+        self.field = meta["field"]
+        self.depth_from = meta["depth_from"]
+        self.depth_to = meta["depth_to"]
 
-    @property
-    def logs(self):
-        if self._logs is None:
-            las = lasio.read(self.logs_path)
-            # TODO: check, that step is exactly 10 cm
-            self._logs = las.df().reset_index().set_index(self.depth_mnemonic)[self.depth_from:self.depth_to]
-        return self._logs
+        self._logs = None
+        self._inclination = None
+        self._layers = None
+        self._boring_intervals = None
+        self._core_properties = None
+        self._core_lithology = None
+        self._core_logs = None
+        self._samples = None
+        self._core_dl = None
+        self._core_uv = None
 
-    @property
-    def inclination(self):
-        if self._inclination is None:
-            self._inclination = pd.read_csv(self.inclination_path, sep=";")
-            # TODO: keep only measurements at appropriate depths
-        return self._inclination
+    @staticmethod
+    def _get_extension(path):
+        return os.path.splitext(path)[1][1:]
 
-    @property
-    def layers(self):
-        if self._layers is None:
-            self._layers = pd.read_csv(self.layers_path, sep=";")
-            # TODO: keep only layers at appropriate depths
-        return self._layers
-    
-    @property
-    def core_data(self):
-        if self._core_data is None:
-            self._core_data = pd.read_csv(self.core_data_path, sep=",")
-            # TODO: keep only layers at appropriate depths
-        return self._core_data
+    @staticmethod
+    def _load_las(path, *args, **kwargs):
+        return lasio.read(path, *args, **kwargs).df().reset_index()
 
-    @property
-    def core_logs(self):
-        if self._core_logs is None:
-            self._core_logs = pd.read_csv(self.core_logs_path, sep=",").set_index("DEPTH")
-        return self._core_logs
+    @staticmethod
+    def _load_csv(path, *args, **kwargs):
+        return pd.read_csv(path, *args, **kwargs)
 
-    @property
-    def samples(self):
-        if self._samples is None and self.has_samples:
+    @staticmethod
+    def _load_feather(path, *args, **kwargs):
+        return pd.read_feather(path, *args, **kwargs)
 
-            samples = pd.read_csv(self.samples_path, sep=";", encoding='cp1251').set_index("SAMPLE")
+    def _load_df(self, path, *args, **kwargs):
+        ext = self._get_extension(path)
+        if not hasattr(self, "_load_" + ext):
+            raise ValueError("A loader for data in {} format is not implemented".format(ext))
+        return getattr(self, "_load_" + ext)(path, *args, **kwargs)
 
-            dl_samples_path = os.path.join(self.path, "samples_dl")
-            dl_samples_names = [os.path.basename(f) for f in os.listdir(dl_samples_path)
-                                if os.path.isfile(os.path.join(dl_samples_path, f))]
-            uv_samples_path = os.path.join(self.path, "samples_uv")
-            uv_samples_names = [os.path.basename(f) for f in os.listdir(uv_samples_path)
-                                if os.path.isfile(os.path.join(uv_samples_path, f))]
-            samples_names = np.union1d(dl_samples_names, uv_samples_names)
-            mask = np.in1d(samples.index, samples_names)
-            if self._depth_to is not None:
-                mask &= (samples["DEPTH_FROM"] < self._depth_to)
-            if self._depth_from is not None:
-                mask &= (self._depth_from < samples["DEPTH_TO"])
+    def _filter_depth_df(self, df):
+        return df[self.depth_from:self.depth_to]
 
-            self._samples = samples[mask]
-            
-            if self._depth_to is None:
-                self._depth_to = self._samples['DEPTH_TO'].max()
-            if self._depth_from is None:
-                self._depth_from = self._samples['DEPTH_FROM'].min()
+    def _load_depth_df(self, path, *args, **kwargs):
+        df = self._load_df(path, *args, **kwargs).set_index("DEPTH")
+        df = self._filter_depth_df(df)
+        return df
 
-        return self._samples
-    
-    @property
-    def depth_from(self):
-        if self._depth_from is None:
-            _ = self.samples
-        return self._depth_from
-    
-    @property
-    def depth_to(self):
-        if self._depth_to is None:
-            _ = self.samples
-        return self._depth_to   
-    
-    @property
-    def depth(self):
-        return self.depth_to - self.depth_from
+    def _filter_fdtd_df(self, df):
+        depth_from, depth_to = zip(*df.index.values)
+        mask = (np.array(depth_from) < self.depth_to) & (self.depth_from < np.array(depth_to))
+        return df[mask]
 
-    def load_logs(self):
-        _ = self.logs
-        _ = self.inclination
-        _ = self.layers
-        _ = self.samples
-        _ = self.core_data
-        _ = self.core_logs
-        return self
+    def _load_fdtd_df(self, path, *args, **kwargs):
+        df = self._load_df(path, *args, **kwargs).set_index(["DEPTH_FROM", "DEPTH_TO"])
+        df = self._filter_fdtd_df(df)
+        return df
+
+    @staticmethod
+    def _get_full_name(path, name):
+        files = glob(os.path.join(path, name + ".*"))
+        if len(files) == 0:
+            raise FileNotFoundError("A file {} does not exist in {}".format(name, path))
+        if len(files) > 1:
+            raise OSError("Several files called {} are found in {}".format(name, path))
+        return files[0]
 
     @property
     def core_dl(self):
@@ -195,36 +170,39 @@ class WellSegment(AbstractWell):
             uv_img = np.array(uv_img.resize((width, height), resample=PIL.Image.LANCZOS))
         return dl_img, uv_img
 
+    def _meters_to_pixels(self, meters):
+        return int(round(meters * 100)) * self.pixels_per_cm
+
     def load_core(self, core_width=None, pixels_per_cm=None):
         self.core_width = core_width if core_width is not None else self.core_width
         self.pixels_per_cm = pixels_per_cm if pixels_per_cm is not None else self.pixels_per_cm
 
-        depth_from = self.depth_from
-        depth_to = self.depth_to
-        height = int(round((depth_to - depth_from) * 100)) * self.pixels_per_cm
+        height = self._meters_to_pixels(self.depth_to - self.depth_from)
         width = self.core_width * self.pixels_per_cm
         core_dl = np.full((height, width, 3), np.nan, dtype=np.float32)
         core_uv = np.full((height, width, 3), np.nan, dtype=np.float32)
 
-        sample_names = self.samples.index
-        for sample in sample_names:
-            sample_depth_from, sample_depth_to = self.samples.loc[sample, ["DEPTH_FROM", "DEPTH_TO"]]
-            sample_height = int(round((sample_depth_to - sample_depth_from) * 100)) * self.pixels_per_cm
+        for (sample_depth_from, sample_depth_to), sample_name in self.samples["SAMPLE"].iteritems():
+            sample_height = self._meters_to_pixels(sample_depth_to - sample_depth_from)
 
-            dl_path = os.path.join(self.path, "samples_dl", str(sample))
-            uv_path = os.path.join(self.path, "samples_uv", str(sample))
+            sample_name = str(sample_name)
+            if self._get_extension(sample_name) == "":
+                dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
+                dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
+            else:
+                dl_path = os.path.join(self.path, "samples_dl", sample_name)
+                uv_path = os.path.join(self.path, "samples_uv", sample_name)
 
             dl_img = self._load_image(dl_path)
             uv_img = self._load_image(uv_path)
-
             dl_img, uv_img = self._match_samples(dl_img, uv_img, sample_height, width)
 
-            top_crop = max(0, int(round((depth_from - sample_depth_from) * 100)) * self.pixels_per_cm)
-            bottom_crop = sample_height - max(0, int(round((sample_depth_to - depth_to) * 100)) * self.pixels_per_cm)
+            top_crop = max(0, self._meters_to_pixels(self.depth_from - sample_depth_from))
+            bottom_crop = sample_height - max(0, self._meters_to_pixels(sample_depth_to - self.depth_to))
             dl_img = dl_img[top_crop:bottom_crop]
             uv_img = uv_img[top_crop:bottom_crop]
 
-            insert_pos = max(0, int(round((sample_depth_from - depth_from) * 100)) * self.pixels_per_cm)
+            insert_pos = max(0, self._meters_to_pixels(sample_depth_from - self.depth_from))
             core_dl[insert_pos:insert_pos+dl_img.shape[0]] = dl_img
             core_uv[insert_pos:insert_pos+uv_img.shape[0]] = uv_img
 
