@@ -182,7 +182,7 @@ class WellSegment(AbstractWell):
         core_dl = np.full((height, width, 3), np.nan, dtype=np.float32)
         core_uv = np.full((height, width, 3), np.nan, dtype=np.float32)
 
-        for (sample_depth_from, sample_depth_to), sample_name in self.samples["SAMPLE"].iteritems():
+        for (sample_depth_from, sample_depth_to), sample_name in self._samples["SAMPLE"].iteritems():
             sample_height = self._meters_to_pixels(sample_depth_to - sample_depth_from)
 
             sample_name = str(sample_name)
@@ -219,11 +219,11 @@ class WellSegment(AbstractWell):
 
     def plot(self, plot_core=True, subplot_height=500, subplot_width=150):
         init_notebook_mode(connected=True)
-        depth_from = self.logs.index.min()
-        depth_to = self.logs.index.max()
+        depth_from = self._logs.index.min()
+        depth_to = self._logs.index.max()
 
-        n_cols = len(self.logs.columns)
-        subplot_titles = list(self.logs.columns)
+        n_cols = len(self._logs.columns)
+        subplot_titles = list(self._logs.columns)
         if plot_core and self.has_samples:
             n_cols += 2
             subplot_titles += ["CORE DL", "CORE UV"]
@@ -283,19 +283,20 @@ class WellSegment(AbstractWell):
         if not isinstance(key, slice):
             return self.keep_logs(key)
         res = self.copy()
-        # res._logs = res.logs[key]
-        res._depth_from = key.start
-        res._depth_to = key.stop
-        start, stop = key.start, key.stop
-        mask = (res.samples["DEPTH_FROM"] < stop) & (start < res.samples["DEPTH_TO"])
-        res._samples = res.samples[mask]
+        res.depth_from, res.depth_to = key.start, key.stop
 
-        # TODO: slice all other dataframes
+        attr_iter = chain(
+            zip(res.attrs_depth_index, repeat(res._filter_depth_df)),
+            zip(res.attrs_fdtd_index, repeat(res._filter_fdtd_df))
+        )
+        for attr, filt in attr_iter:
+            attr_val = getattr(res, "_" + attr)
+            if attr_val is not None:
+                setattr(res, "_" + attr, filt(attr_val))
 
         if (res._core_dl is not None) and (res._core_uv is not None):
-            depth_from = self.depth_from
-            start_pos = int(round((start - depth_from) * 100)) * self.pixels_per_cm
-            stop_pos = int(round((stop - depth_from) * 100)) * self.pixels_per_cm
+            start_pos = self._meters_to_pixels(res.depth_from - self.depth_from)
+            stop_pos = self._meters_to_pixels(res.depth_to - self.depth_from)
             res._core_dl = res._core_dl[start_pos:stop_pos]
             res._core_uv = res._core_uv[start_pos:stop_pos]
         return res
