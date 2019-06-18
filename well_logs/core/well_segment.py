@@ -77,6 +77,10 @@ class WellSegment(AbstractWell):
         self._core_uv = None
 
     @staticmethod
+    def _get_extension(path):
+        return os.path.splitext(path)[1][1:]
+
+    @staticmethod
     def _load_las(path, *args, **kwargs):
         return lasio.read(path, *args, **kwargs).df().reset_index()
 
@@ -89,7 +93,7 @@ class WellSegment(AbstractWell):
         return pd.read_feather(path, *args, **kwargs)
 
     def _load_df(self, path, *args, **kwargs):
-        ext = os.path.splitext(path)[1][1:]
+        ext = self._get_extension(path)
         if not hasattr(self, "_load_" + ext):
             raise ValueError("A loader for data in {} format is not implemented".format(ext))
         return getattr(self, "_load_" + ext)(path, *args, **kwargs)
@@ -151,36 +155,39 @@ class WellSegment(AbstractWell):
             uv_img = np.array(uv_img.resize((width, height), resample=PIL.Image.LANCZOS))
         return dl_img, uv_img
 
+    def _meters_to_pixels(self, meters):
+        return int(round(meters * 100)) * self.pixels_per_cm
+
     def load_core(self, core_width=None, pixels_per_cm=None):
         self.core_width = core_width if core_width is not None else self.core_width
         self.pixels_per_cm = pixels_per_cm if pixels_per_cm is not None else self.pixels_per_cm
 
-        depth_from = self.logs.index.min()
-        depth_to = self.logs.index.max()
-        height = int(round((depth_to - depth_from) * 100)) * self.pixels_per_cm
+        height = self._meters_to_pixels(self.depth_to - self.depth_from)
         width = self.core_width * self.pixels_per_cm
         core_dl = np.full((height, width, 3), np.nan, dtype=np.float32)
         core_uv = np.full((height, width, 3), np.nan, dtype=np.float32)
 
-        sample_names = self.samples.index
-        for sample in sample_names:
-            sample_depth_from, sample_depth_to = self.samples.loc[sample, ["DEPTH_FROM", "DEPTH_TO"]]
-            sample_height = int(round((sample_depth_to - sample_depth_from) * 100)) * self.pixels_per_cm
+        for (sample_depth_from, sample_depth_to), sample_name in self.samples["SAMPLE"].iteritems():
+            sample_height = self._meters_to_pixels(sample_depth_to - sample_depth_from)
 
-            dl_path = os.path.join(self.path, "samples_dl", str(sample) + ".png")
-            uv_path = os.path.join(self.path, "samples_uv", str(sample) + ".png")
+            sample_name = str(sample_name)
+            if self._get_extension(sample_name) == "":
+                dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
+                dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
+            else:
+                dl_path = os.path.join(self.path, "samples_dl", sample_name)
+                uv_path = os.path.join(self.path, "samples_uv", sample_name)
 
             dl_img = self._load_image(dl_path)
             uv_img = self._load_image(uv_path)
-
             dl_img, uv_img = self._match_samples(dl_img, uv_img, sample_height, width)
 
-            top_crop = max(0, int(round((depth_from - sample_depth_from) * 100)) * self.pixels_per_cm)
-            bottom_crop = sample_height - max(0, int(round((sample_depth_to - depth_to) * 100)) * self.pixels_per_cm)
+            top_crop = max(0, self._meters_to_pixels(self.depth_from - sample_depth_from))
+            bottom_crop = sample_height - max(0, self._meters_to_pixels(sample_depth_to - self.depth_to))
             dl_img = dl_img[top_crop:bottom_crop]
             uv_img = uv_img[top_crop:bottom_crop]
 
-            insert_pos = max(0, int(round((sample_depth_from - depth_from) * 100)) * self.pixels_per_cm)
+            insert_pos = max(0, self._meters_to_pixels(sample_depth_from - self.depth_from))
             core_dl[insert_pos:insert_pos+dl_img.shape[0]] = dl_img
             core_uv[insert_pos:insert_pos+uv_img.shape[0]] = uv_img
 
