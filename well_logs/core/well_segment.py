@@ -10,12 +10,14 @@ import pandas as pd
 import lasio
 import PIL
 from scipy.interpolate import interp1d
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
 from plotly import tools
 from plotly import graph_objs as go
 from plotly.offline import init_notebook_mode, plot
 
 from .abstract_well import AbstractWell
-from .matching import select_contigious_intervals, join_samples, optimize_shift
+from .matching import select_contigious_intervals, match_segment
 
 
 def add_attr_properties(cls):
@@ -289,21 +291,92 @@ class WellSegment(AbstractWell):
     def copy(self):
         return copy(self)
 
-    def match_core_logs(self, mnemonic="GK", max_shift=5, delta_from=-1, delta_to=1, delta_step=0.1):
-        log = self.logs[mnemonic]
+    def _apply_matching(self):
+        core_lithology_deltas = self._core_lithology_deltas.reset_index()
+        core_lithology_deltas["key"] = 1
+
+        for attr in ["core_logs", "core_properties"]:
+            # TODO: load conditionally
+            attr_df = getattr(self, attr).reset_index()
+            columns = attr_df.columns
+
+            attr_df["key"] = 1
+            merged_df = pd.merge(attr_df, core_lithology_deltas, on="key")
+            merged_df = merged_df[((merged_df["DEPTH"] >= merged_df["DEPTH_FROM"]) &
+                                   (merged_df["DEPTH"] < merged_df["DEPTH_TO"]))]
+            merged_df["DEPTH"] += merged_df["DELTA"]
+            setattr(self, "_" + attr, merged_df[columns].set_index("DEPTH"))
+        # TODO: update fdtd dataframes
+
+    def match_core_logs(self, mnemonic="GK", max_shift=4, delta_from=-3, delta_to=3, delta_step=0.1):
+        well_log = self.logs[mnemonic]
         core_log = self.core_logs[mnemonic]
-        log_interpolator = interp1d(log.index, log, kind="linear")
-        contigious_samples_list = select_contigious_intervals(self.samples, max_shift)
 
-        samples_df_list = []
-        for samples_df in contigious_samples_list:
-            joined_df = join_samples(samples_df, core_log)
-            _, best_deltas = optimize_shift(samples_df, joined_df, log_interpolator, max_shift,
-                                            delta_from, delta_to, delta_step)
-            samples_df["DELTA"] = best_deltas
-            samples_df_list.append(samples_df)
+        lithology_intervals = self.core_lithology.reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
+        contigious_segments = select_contigious_intervals(self.boring_intervals.reset_index(), 2 * max_shift)
 
-        self._samples = pd.concat(samples_df_list)
+        segments = []
+        lithology_segments = []
+
+        for segment in contigious_segments:
+            segment, lithology_segment = match_segment(segment, lithology_intervals, well_log, core_log,
+                                                       max_shift, delta_from, delta_to, delta_step)
+            segments.append(segment)
+            lithology_segments.append(lithology_segment)
+        self._boring_intervals_deltas = pd.concat(segments)
+        self._core_lithology_deltas = pd.concat(lithology_segments)
+        self._apply_matching()
+        return self
+
+    @staticmethod
+    def calc_matching_r2(well_log, core_log):
+        reg = LinearRegression()
+        interpolator = interp1d(well_log.index, well_log, kind="linear")
+        well_log = interpolator(core_log.index).reshape(-1, 1)
+        reg.fit(well_log, core_log)
+        return r2_score(core_log, reg.predict(well_log))
+
+    def plot_matching(self, mnemonic="GK", subplot_height=750, subplot_width=200):
+        init_notebook_mode(connected=True)
+
+        well_log = self.logs[mnemonic]
+        core_log = self.core_logs[mnemonic]
+
+        contigious_segments = select_contigious_intervals(self.boring_intervals.reset_index(), 0)
+        n_cols = len(contigious_segments)
+
+        fig = tools.make_subplots(rows=1, cols=n_cols, print_grid=False, subplot_titles=[" "] * n_cols)
+
+        titles = []
+        for i, segment in enumerate(contigious_segments, 1):
+            depth_from = segment["DEPTH_FROM"].min()
+            depth_to = segment["DEPTH_TO"].max()
+            well_log_segment = well_log[depth_from - 3 : depth_to + 3]
+            core_log_segment = core_log[depth_from:depth_to]
+            well_log_trace = go.Scatter(x=well_log_segment, y=well_log_segment.index, name="Well " + mnemonic,
+                                        line=dict(color="rgb(255, 127, 14)"), showlegend=(i==1))
+            core_log_trace = go.Scatter(x=core_log_segment, y=core_log_segment.index, name="Core " + mnemonic,
+                                        line=dict(color="rgb(31, 119, 180)"), showlegend=(i==1))
+            fig.append_trace(well_log_trace, 1, i)
+            fig.append_trace(core_log_trace, 1, i)
+            matching_r2 = self.calc_matching_r2(well_log_segment, core_log_segment)
+            titles.append("R^2 = {:.3f}".format(matching_r2))
+
+        layout = fig.layout
+        fig_layout = go.Layout(title="Скважина {}".format(self.name), legend=dict(orientation="h"),
+                               width=n_cols*subplot_width, height=subplot_height)
+        layout.update(fig_layout)
+
+        for ann, title in zip(layout["annotations"], titles):
+            ann["font"]["size"] = 16
+            ann["text"] = title
+
+        for ix in range(n_cols):
+            axis_ix = str(ix + 1) if ix > 0 else ""
+            axis_name = "yaxis" + axis_ix
+            layout[axis_name]["autorange"] = "reversed"
+
+        plot(fig)
         return self
 
     def drop_logs(self, mnemonics=None):
@@ -320,14 +393,14 @@ class WellSegment(AbstractWell):
     def rename_logs(self, rename_dict):
         self.logs.columns = [rename_dict.get(name, name) for name in self.logs.columns]
         return self
-    
+
     def _core_chunks(self):
         samples = self.samples.copy()
         gaps = samples['DEPTH_FROM'][1:].values - samples['DEPTH_TO'][:-1].values
 
         if any(gaps < 0):
             raise ValueError('Core intersects the previous one: ', list(samples.index[1:][gaps < 0]))
-        
+
         samples['TOP'] = True
         samples['TOP'][1:] = (gaps != 0)
 
@@ -340,7 +413,7 @@ class WellSegment(AbstractWell):
         })
 
         return chunks
-    
+
     def split_by_core(self):
         chunks = self._core_chunks()
         segments = []
