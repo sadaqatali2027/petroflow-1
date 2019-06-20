@@ -32,8 +32,6 @@ def loss(deltas, n_lith_ints, core_depths, log_interpolator, core_log):
         shifted_depths.append(depths + deltas)
     shifted_depths = np.concatenate(shifted_depths)
     well_log = log_interpolator(shifted_depths).reshape(-1, 1)
-    # TODO: fix nans in well logs
-    well_log = np.nan_to_num(well_log)
 
     reg = LinearRegression().fit(well_log, core_log)
     r2 = r2_score(core_log, reg.predict(well_log))
@@ -45,7 +43,10 @@ def trunc(values, decimals=0):
 
 
 def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, delta_from, delta_to, delta_step):
-    log_interpolator = interp1d(well_log.index, well_log, kind="linear")
+    well_depth_from = well_log.index.min()
+    well_depth_to = well_log.index.max()
+    well_log = well_log.dropna()
+    log_interpolator = interp1d(well_log.index, well_log, kind="linear", fill_value="extrapolate")
 
     n_lith_ints = []
     gap_lengths = []
@@ -68,27 +69,31 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
 
     core_logs = np.concatenate(core_logs)
 
-    # Optimization
+    # Optimization constraints
     constraints = []
+
     starts = np.cumsum([0] + n_lith_ints) + 1
     for start, end, gap_length in zip(starts[:-1], starts[1:], gap_lengths):
-        def con(x, start=start, end=end, gap_length=gap_length):
+        def con_gap_length(x, start=start, end=end, gap_length=gap_length):
             return gap_length - x[start:end].sum()
-        constraints.append({"type": "ineq", "fun": con})
+        constraints.append({"type": "ineq", "fun": con_gap_length})
 
     for i in range(sum(n_lith_ints)):
-        def con_ge_zero(x, i=i):
+        def con_non_negative_gap(x, i=i):
             return x[i + 1]
-        constraints.append({"type": "ineq", "fun": con_ge_zero})
+        constraints.append({"type": "ineq", "fun": con_non_negative_gap})
 
-    def con_ge_max_shift(x):
-        return x[0] + max_shift
-    constraints.append({"type": "ineq", "fun": con_ge_max_shift})
+    max_shift_up = min(max_shift, max(0, segment["DEPTH_FROM"].min() - well_depth_from))
+    def con_max_shift_up(x):
+        return x[0] + max_shift_up
+    constraints.append({"type": "ineq", "fun": con_max_shift_up})
 
-    def con_le_max_shift(x):
-        return max_shift - x[0]
-    constraints.append({"type": "ineq", "fun": con_le_max_shift})
+    max_shift_down = min(max_shift, max(0, well_depth_to - segment["DEPTH_TO"].max()))
+    def con_max_shift_down(x):
+        return max_shift_down - x[0]
+    constraints.append({"type": "ineq", "fun": con_max_shift_down})
 
+    # Optimization
     init_deltas = generate_init_deltas(n_lith_ints, gap_lengths, delta_from, delta_to, delta_step)
 
     best_loss = None
