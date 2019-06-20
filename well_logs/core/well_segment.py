@@ -367,6 +367,10 @@ class WellSegment(AbstractWell):
                                width=n_cols*subplot_width, height=subplot_height)
         layout.update(fig_layout)
 
+        for key in layout:
+            if key.startswith("xaxis"):
+                layout[key]["fixedrange"] = True
+
         for ann, title in zip(layout["annotations"], titles):
             ann["font"]["size"] = 16
             ann["text"] = title
