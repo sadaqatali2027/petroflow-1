@@ -7,7 +7,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
 
-def select_contigious_intervals(df, max_gap):
+def select_contigious_intervals(df, max_gap=0):
     split_indices = np.where((df["DEPTH_FROM"] - df["DEPTH_TO"].shift()) > max_gap)[0]
     return np.split(df, split_indices)
 
@@ -31,7 +31,7 @@ def loss(deltas, n_lith_ints, core_depths, log_interpolator, core_log):
     for depths, deltas in zip(core_depths, interval_deltas):
         shifted_depths.append(depths + deltas)
     shifted_depths = np.concatenate(shifted_depths)
-    well_log = log_interpolator(shifted_depths).reshape(-1, 1)
+    well_log = np.nan_to_num(log_interpolator(shifted_depths)).reshape(-1, 1)
 
     reg = LinearRegression().fit(well_log, core_log)
     r2 = r2_score(core_log, reg.predict(well_log))

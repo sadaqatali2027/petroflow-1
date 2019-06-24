@@ -67,6 +67,8 @@ class WellSegment(AbstractWell):
         self.depth_from = meta["depth_from"]
         self.depth_to = meta["depth_to"]
 
+        self.has_samples = (len(glob(os.path.join(self.path, "samples.*"))) == 1)
+
         self._logs = None
         self._inclination = None
         self._layers = None
@@ -175,7 +177,7 @@ class WellSegment(AbstractWell):
             sample_name = str(sample_name)
             if self._get_extension(sample_name) == "":
                 dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
-                dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
+                uv_path = self._get_full_name(os.path.join(self.path, "samples_uv"), sample_name)
             else:
                 dl_path = os.path.join(self.path, "samples_dl", sample_name)
                 uv_path = os.path.join(self.path, "samples_uv", sample_name)
@@ -206,8 +208,6 @@ class WellSegment(AbstractWell):
 
     def plot(self, plot_core=True, subplot_height=500, subplot_width=150):
         init_notebook_mode(connected=True)
-        depth_from = self.logs.index.min()
-        depth_to = self.logs.index.max()
 
         n_cols = len(self.logs.columns)
         subplot_titles = list(self.logs.columns)
@@ -225,28 +225,35 @@ class WellSegment(AbstractWell):
 
         images = []
         if plot_core and self.has_samples:
-            trace = go.Scatter(x=[0, 1], y=[depth_from, depth_to], opacity=0, name="CORE DL")
+            trace = go.Scatter(x=[0, 1], y=[self.depth_from, self.depth_to], opacity=0, name="CORE DL")
             fig.append_trace(trace, 1, dl_col)
-            trace = go.Scatter(x=[0, 1], y=[depth_from, depth_to], opacity=0, name="CORE UV")
+            trace = go.Scatter(x=[0, 1], y=[self.depth_from, self.depth_to], opacity=0, name="CORE UV")
             fig.append_trace(trace, 1, uv_col)
 
-            samples = self.samples.index
-            for sample in samples:
-                depth_from, depth_to = self.samples.loc[sample, ["DEPTH_FROM", "DEPTH_TO"]]
+            samples = self.samples.reset_index()[["DEPTH_FROM", "DEPTH_TO", "SAMPLE"]]
+            for _, (depth_from, depth_to, sample_name) in samples.iterrows():
+                sample_name = str(sample_name)
+                if self._get_extension(sample_name) == "":
+                    dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
+                    uv_path = self._get_full_name(os.path.join(self.path, "samples_uv"), sample_name)
+                else:
+                    dl_path = os.path.join(self.path, "samples_dl", sample_name)
+                    uv_path = os.path.join(self.path, "samples_uv", sample_name)
 
-                sample_dl = self._encode(os.path.join(self.path, "samples_dl", str(sample) + ".png"))
+                sample_dl = self._encode(dl_path)
                 sample_dl = go.layout.Image(source=sample_dl, xref="x"+str(dl_col), yref="y", x=0, y=depth_from,
                                             sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
                 images.append(sample_dl)
 
-                sample_uv = self._encode(os.path.join(self.path, "samples_uv", str(sample) + ".png"))
+                sample_uv = self._encode(uv_path)
                 sample_uv = go.layout.Image(source=sample_uv, xref="x"+str(uv_col), yref="y", x=0, y=depth_from,
                                             sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
                 images.append(sample_uv)
 
         layout = fig.layout
         fig_layout = go.Layout(title="Скважина {}".format(self.name), showlegend=False, width=n_cols*subplot_width,
-                               height=subplot_height, yaxis=dict(range=[depth_to, depth_from]), images=images)
+                               height=subplot_height, yaxis=dict(range=[self.depth_to, self.depth_from]),
+                               images=images)
         layout.update(fig_layout)
 
         for key in layout:
@@ -342,7 +349,7 @@ class WellSegment(AbstractWell):
         well_log = self.logs[mnemonic]
         core_log = self.core_logs[mnemonic]
 
-        contigious_segments = select_contigious_intervals(self.boring_intervals.reset_index(), 0)
+        contigious_segments = select_contigious_intervals(self.boring_intervals.reset_index())
         n_cols = len(contigious_segments)
 
         fig = tools.make_subplots(rows=1, cols=n_cols, print_grid=False, subplot_titles=[" "] * n_cols)
