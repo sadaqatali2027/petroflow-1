@@ -22,6 +22,8 @@ from .matching import select_contigious_intervals, match_segment
 
 def add_attr_properties(cls):
     for attr in cls.attrs_depth_index + cls.attrs_fdtd_index + cls.attrs_no_index:
+        if hasattr(cls, attr):
+            continue
         def prop(self, attr=attr):
             if getattr(self, "_" + attr) is None:
                 getattr(self, "load_" + attr)()
@@ -37,6 +39,8 @@ def add_attr_loaders(cls):
         zip(cls.attrs_no_index, repeat(cls._load_df))
     )
     for attr, loader in attr_iter:
+        if hasattr(cls, "load_" + attr):
+            continue
         def load_factory(attr, loader):
             def load(self, *args, **kwargs):
                 data = loader(self, self._get_full_name(self.path, attr), *args, **kwargs)
@@ -51,7 +55,7 @@ def add_attr_loaders(cls):
 @add_attr_loaders
 class WellSegment(AbstractWell):
     attrs_depth_index = ("logs", "core_properties", "core_logs")
-    attrs_fdtd_index = ("layers", "boring_intervals", "core_lithology", "samples")
+    attrs_fdtd_index = ("layers", "matching_intervals", "boring_intervals", "core_lithology", "samples")
     attrs_no_index = ("inclination",)
 
     def __init__(self, path, core_width=10, pixels_per_cm=5):
@@ -72,6 +76,7 @@ class WellSegment(AbstractWell):
         self._logs = None
         self._inclination = None
         self._layers = None
+        self._matching_intervals = None
         self._boring_intervals = None
         self._core_properties = None
         self._core_lithology = None
@@ -79,6 +84,24 @@ class WellSegment(AbstractWell):
         self._samples = None
         self._core_dl = None
         self._core_uv = None
+
+    def load_matching_intervals(self, *args, **kwargs):
+        path = self._get_full_name(self.path, "matching_intervals")
+        self._matching_intervals = self._load_fdtd_df(path, *args, **kwargs)
+        return self
+
+    @property
+    def matching_intervals(self):
+        if self._matching_intervals is None:
+            if len(glob(os.path.join(self.path, "matching_intervals.*"))) == 1:
+                self.load_matching_intervals()
+            else:
+                data = []
+                for segment in select_contigious_intervals(self.boring_intervals.reset_index()):
+                    data.append([segment["DEPTH_FROM"].min(), segment["DEPTH_TO"].max()])
+                data = pd.DataFrame(data, columns=["DEPTH_FROM", "DEPTH_TO"]).set_index(["DEPTH_FROM", "DEPTH_TO"])
+                self._matching_intervals = data
+        return self._matching_intervals
 
     @staticmethod
     def _get_extension(path):
