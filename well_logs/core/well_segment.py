@@ -19,6 +19,7 @@ from plotly.offline import init_notebook_mode, plot
 
 from .abstract_well import AbstractWell
 from .matching import select_contigious_intervals, match_segment
+from .joins import cross_join
 
 
 def add_attr_properties(cls):
@@ -93,12 +94,23 @@ class WellSegment(AbstractWell):
             if len(glob(os.path.join(self.path, "matching_intervals.*"))) == 1:
                 self.load_matching_intervals()
             else:
-                data = []
-                for segment in select_contigious_intervals(self.boring_intervals.reset_index()):
-                    data.append([segment["DEPTH_FROM"].min(), segment["DEPTH_TO"].max()])
-                data = pd.DataFrame(data, columns=["DEPTH_FROM", "DEPTH_TO"]).set_index(["DEPTH_FROM", "DEPTH_TO"])
-                self._matching_intervals = data
+                self._calc_matching_intervals()
         return self._matching_intervals
+
+    def _calc_matching_intervals(self, mnemonic=None):
+        data = []
+        for segment in select_contigious_intervals(self.boring_intervals.reset_index()):
+            data.append([segment["DEPTH_FROM"].min(), segment["DEPTH_TO"].max()])
+        self._matching_intervals = pd.DataFrame(data, columns=["DEPTH_FROM", "DEPTH_TO"])
+
+        if mnemonic is not None:
+            well_log = self.logs[mnemonic]
+            core_log = self.core_logs[mnemonic]
+            r2_list = []
+            for _, (depth_from, depth_to) in self._matching_intervals.iterrows():
+                r2_list.append(self._calc_matching_r2(well_log, core_log[depth_from:depth_to]))
+            self._matching_intervals["R2"] = r2_list
+        self._matching_intervals.set_index(["DEPTH_FROM", "DEPTH_TO"], inplace=True)
 
     @staticmethod
     def _get_extension(path):
@@ -354,7 +366,15 @@ class WellSegment(AbstractWell):
     def copy(self):
         return copy(self)
 
-    def _apply_matching(self):
+    @staticmethod
+    def _calc_matching_r2(well_log, core_log):
+        well_log = well_log.dropna()
+        interpolator = interp1d(well_log.index, well_log, kind="linear", fill_value="extrapolate")
+        well_log = interpolator(core_log.index).reshape(-1, 1)
+        reg = LinearRegression().fit(well_log, core_log)
+        return r2_score(core_log, reg.predict(well_log))
+
+    def _apply_matching(self, mnemonic):
         core_lithology_deltas = self._core_lithology_deltas.reset_index()
         core_lithology_deltas["key"] = 1
 
@@ -369,10 +389,42 @@ class WellSegment(AbstractWell):
                                    (merged_df["DEPTH"] < merged_df["DEPTH_TO"]))]
             merged_df["DEPTH"] += merged_df["DELTA"]
             setattr(self, "_" + attr, merged_df[columns].set_index("DEPTH"))
+
         # TODO: update fdtd dataframes
         # TODO: carfully update samples
 
-    def match_core_logs(self, mnemonic="GK", max_shift=4, delta_from=-3, delta_to=3, delta_step=0.1):
+        boring_intervals = pd.merge(self._boring_intervals.reset_index(),
+                                    self._boring_intervals_deltas[["DEPTH_FROM", "DEPTH_TO", "DELTA"]],
+                                    on=["DEPTH_FROM", "DEPTH_TO"])
+        boring_intervals["DEPTH_FROM"] += boring_intervals["DELTA"]
+        boring_intervals["DEPTH_TO"] += boring_intervals["DELTA"]
+        self._boring_intervals = boring_intervals.drop("DELTA", axis=1).set_index(["DEPTH_FROM", "DEPTH_TO"])
+
+        self._calc_matching_intervals(mnemonic=mnemonic)
+
+    def _save_matching_report(self):
+        boring_intervals = self._boring_intervals_deltas
+        boring_intervals["DEPTH_FROM_DELTA"] = boring_intervals["DEPTH_FROM"] + boring_intervals["DELTA"]
+        boring_intervals["DEPTH_TO_DELTA"] = boring_intervals["DEPTH_TO"] + boring_intervals["DELTA"]
+        boring_intervals = boring_intervals[["DEPTH_FROM", "DEPTH_TO", "DEPTH_FROM_DELTA", "DEPTH_TO_DELTA"]]
+        boring_intervals.columns = ["Кровля интервала долбления", "Подошва интервала долбления",
+                                    "Увязанная кровля интервала долбления", "Увязанная подошва интервала долбления"]
+
+        lithology_intervals = self._core_lithology_deltas
+        lithology_intervals["DEPTH_FROM_DELTA"] = lithology_intervals["DEPTH_FROM"] + lithology_intervals["DELTA"]
+        lithology_intervals["DEPTH_TO_DELTA"] = lithology_intervals["DEPTH_TO"] + lithology_intervals["DELTA"]
+        lithology_intervals = lithology_intervals[["DEPTH_FROM", "DEPTH_TO", "DEPTH_FROM_DELTA", "DEPTH_TO_DELTA"]]
+        lithology_intervals.columns = ["Кровля интервала литописания", "Подошва интервала литописания",
+                                       "Увязанная кровля интервала литописания", "Увязанная подошва интервала литописания"]
+
+        cross = cross_join(boring_intervals, lithology_intervals)
+        mask = ((cross["Кровля интервала литописания"] >= cross["Кровля интервала долбления"]) &
+                (cross["Подошва интервала литописания"] <= cross["Подошва интервала долбления"]))
+        cross = cross[mask]
+        cross.to_csv(os.path.join(self.path, "matching_report.csv"), index=False)
+
+    def match_core_logs(self, mnemonic="GK", max_shift=4, delta_from=-3, delta_to=3, delta_step=0.1,
+                        save_report=False):
         well_log = self.logs[mnemonic]
         core_log = self.core_logs[mnemonic]
 
@@ -389,16 +441,11 @@ class WellSegment(AbstractWell):
             lithology_segments.append(lithology_segment)
         self._boring_intervals_deltas = pd.concat(segments)
         self._core_lithology_deltas = pd.concat(lithology_segments)
-        self._apply_matching()
-        return self
+        self._apply_matching(mnemonic=mnemonic)
 
-    @staticmethod
-    def calc_matching_r2(well_log, core_log):
-        reg = LinearRegression()
-        interpolator = interp1d(well_log.index, well_log, kind="linear")
-        well_log = interpolator(core_log.index).reshape(-1, 1)
-        reg.fit(well_log, core_log)
-        return r2_score(core_log, reg.predict(well_log))
+        if save_report:
+            self._save_matching_report()
+        return self
 
     def plot_matching(self, mnemonic="GK", subplot_height=750, subplot_width=200):
         init_notebook_mode(connected=True)
@@ -406,15 +453,13 @@ class WellSegment(AbstractWell):
         well_log = self.logs[mnemonic]
         core_log = self.core_logs[mnemonic]
 
-        contigious_segments = select_contigious_intervals(self.boring_intervals.reset_index())
-        n_cols = len(contigious_segments)
+        self._calc_matching_intervals(mnemonic=mnemonic)
+        n_cols = len(self._matching_intervals)
+        subplot_titles = ["R^2 = {:.3f}".format(r2) for _, r2 in self._matching_intervals["R2"].iteritems()]
+        fig = tools.make_subplots(rows=1, cols=n_cols, print_grid=False, subplot_titles=subplot_titles)
 
-        fig = tools.make_subplots(rows=1, cols=n_cols, print_grid=False, subplot_titles=[" "] * n_cols)
-
-        titles = []
-        for i, segment in enumerate(contigious_segments, 1):
-            depth_from = segment["DEPTH_FROM"].min()
-            depth_to = segment["DEPTH_TO"].max()
+        intervals = self._matching_intervals.reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
+        for i, (_, (depth_from, depth_to)) in enumerate(intervals.iterrows(), 1):
             well_log_segment = well_log[depth_from - 3 : depth_to + 3]
             core_log_segment = core_log[depth_from:depth_to]
             well_log_trace = go.Scatter(x=well_log_segment, y=well_log_segment.index, name="Well " + mnemonic,
@@ -423,8 +468,6 @@ class WellSegment(AbstractWell):
                                         line=dict(color="rgb(31, 119, 180)"), showlegend=(i==1))
             fig.append_trace(well_log_trace, 1, i)
             fig.append_trace(core_log_trace, 1, i)
-            matching_r2 = self.calc_matching_r2(well_log_segment, core_log_segment)
-            titles.append("R^2 = {:.3f}".format(matching_r2))
 
         layout = fig.layout
         fig_layout = go.Layout(title="Скважина {}".format(self.name), legend=dict(orientation="h"),
@@ -435,9 +478,8 @@ class WellSegment(AbstractWell):
             if key.startswith("xaxis"):
                 layout[key]["fixedrange"] = True
 
-        for ann, title in zip(layout["annotations"], titles):
+        for ann in layout["annotations"]:
             ann["font"]["size"] = 16
-            ann["text"] = title
 
         for ix in range(n_cols):
             axis_ix = str(ix + 1) if ix > 0 else ""
