@@ -1,6 +1,7 @@
 import os
 import json
 import base64
+import shutil
 from copy import copy
 from glob import glob
 from itertools import chain, repeat
@@ -45,6 +46,7 @@ def add_attr_loaders(cls):
             def load(self, *args, **kwargs):
                 data = loader(self, self._get_full_name(self.path, attr), *args, **kwargs)
                 setattr(self, "_" + attr, data)
+                # TODO: transform depths if core-to-log matching has already been performed
                 return self
             return load
         setattr(cls, "load_" + attr, load_factory(attr, loader))
@@ -84,11 +86,6 @@ class WellSegment(AbstractWell):
         self._samples = None
         self._core_dl = None
         self._core_uv = None
-
-    def load_matching_intervals(self, *args, **kwargs):
-        path = self._get_full_name(self.path, "matching_intervals")
-        self._matching_intervals = self._load_fdtd_df(path, *args, **kwargs)
-        return self
 
     @property
     def matching_intervals(self):
@@ -143,8 +140,15 @@ class WellSegment(AbstractWell):
         df = self._filter_fdtd_df(df)
         return df
 
-    @staticmethod
-    def _get_full_name(path, name):
+    @classmethod
+    def _get_full_name(cls, path, name):
+        ext = cls._get_extension(name)
+        if ext != "":
+            full_name = os.path.join(path, name)
+            if os.path.exists(full_name):
+                return full_name
+            raise FileNotFoundError("A file {} does not exist in {}".format(name, path))
+
         files = glob(os.path.join(path, name + ".*"))
         if len(files) == 0:
             raise FileNotFoundError("A file {} does not exist in {}".format(name, path))
@@ -196,16 +200,11 @@ class WellSegment(AbstractWell):
 
         for (sample_depth_from, sample_depth_to), sample_name in self.samples["SAMPLE"].iteritems():
             sample_height = self._meters_to_pixels(sample_depth_to - sample_depth_from)
-
             sample_name = str(sample_name)
-            if self._get_extension(sample_name) == "":
-                dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
-                uv_path = self._get_full_name(os.path.join(self.path, "samples_uv"), sample_name)
-            else:
-                dl_path = os.path.join(self.path, "samples_dl", sample_name)
-                uv_path = os.path.join(self.path, "samples_uv", sample_name)
 
+            dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
             dl_img = self._load_image(dl_path)
+            uv_path = self._get_full_name(os.path.join(self.path, "samples_uv"), sample_name)
             uv_img = self._load_image(uv_path)
             dl_img, uv_img = self._match_samples(dl_img, uv_img, sample_height, width)
 
@@ -220,6 +219,43 @@ class WellSegment(AbstractWell):
 
         self._core_dl = core_dl / 255
         self._core_uv = core_uv / 255
+        return self
+
+    def dump(self, path):
+        path = os.path.join(path, self.name)
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        meta = {
+            "name": self.name,
+            "field": self.field,
+            "depth_from": self.depth_from,
+            "depth_to": self.depth_to,
+        }
+        with open(os.path.join(path, "meta.json"), "w") as meta_file:
+            json.dump(meta, meta_file)
+
+        for attr in self.attrs_depth_index + self.attrs_fdtd_index + self.attrs_no_index:
+            attr_val = getattr(self, attr)
+            if attr_val is None:
+                try:
+                    shutil.copy2(self._get_full_name(self.path, attr), path)
+                except Exception:
+                    pass
+            else:
+                if attr not in self.attrs_no_index:
+                    attr_val = attr_val.reset_index()
+                attr_val.to_feather(os.path.join(path, attr + ".feather"))
+
+        # TODO: probably it makes sense to dump _boring_intervals_deltas and _core_lithology_deltas
+
+        samples_dl_path = os.path.join(self.path, "samples_dl")
+        if os.path.exists(samples_dl_path):
+            shutil.copytree(samples_dl_path, os.path.join(path, "samples_dl"), copy_function=os.link)
+
+        samples_uv_path = os.path.join(self.path, "samples_uv")
+        if os.path.exists(samples_uv_path):
+            shutil.copytree(samples_uv_path, os.path.join(path, "samples_uv"), copy_function=os.link)
         return self
 
     @staticmethod
@@ -256,18 +292,14 @@ class WellSegment(AbstractWell):
             samples = self.samples.reset_index()[["DEPTH_FROM", "DEPTH_TO", "SAMPLE"]]
             for _, (depth_from, depth_to, sample_name) in samples.iterrows():
                 sample_name = str(sample_name)
-                if self._get_extension(sample_name) == "":
-                    dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
-                    uv_path = self._get_full_name(os.path.join(self.path, "samples_uv"), sample_name)
-                else:
-                    dl_path = os.path.join(self.path, "samples_dl", sample_name)
-                    uv_path = os.path.join(self.path, "samples_uv", sample_name)
 
+                dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
                 sample_dl = self._encode(dl_path)
                 sample_dl = go.layout.Image(source=sample_dl, xref="x"+str(dl_col), yref="y", x=0, y=depth_from,
                                             sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
                 images.append(sample_dl)
 
+                uv_path = self._get_full_name(os.path.join(self.path, "samples_uv"), sample_name)
                 sample_uv = self._encode(uv_path)
                 sample_uv = go.layout.Image(source=sample_uv, xref="x"+str(uv_col), yref="y", x=0, y=depth_from,
                                             sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
@@ -337,6 +369,7 @@ class WellSegment(AbstractWell):
             merged_df["DEPTH"] += merged_df["DELTA"]
             setattr(self, "_" + attr, merged_df[columns].set_index("DEPTH"))
         # TODO: update fdtd dataframes
+        # TODO: carfully update samples
 
     def match_core_logs(self, mnemonic="GK", max_shift=4, delta_from=-3, delta_to=3, delta_step=0.1):
         well_log = self.logs[mnemonic]

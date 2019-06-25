@@ -32,6 +32,7 @@ def loss(deltas, n_lith_ints, core_depths, log_interpolator, core_log):
         shifted_depths.append(depths + deltas)
     shifted_depths = np.concatenate(shifted_depths)
     well_log = np.nan_to_num(log_interpolator(shifted_depths)).reshape(-1, 1)
+    # TODO: find out why NaNs appear
 
     reg = LinearRegression().fit(well_log, core_log)
     r2 = r2_score(core_log, reg.predict(well_log))
