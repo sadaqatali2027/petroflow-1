@@ -256,6 +256,7 @@ class WellSegment(AbstractWell):
         samples_uv_path = os.path.join(self.path, "samples_uv")
         if os.path.exists(samples_uv_path):
             shutil.copytree(samples_uv_path, os.path.join(path, "samples_uv"), copy_function=os.link)
+
         return self
 
     @staticmethod

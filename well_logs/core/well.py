@@ -37,3 +37,11 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     def copy(self):
         return copy(self)
+
+    def dump(self, path):
+        self.aggregate().segments[0].dump(path)
+        return self
+
+    def aggregate(self):
+        # TODO: aggregate all well segments into one
+        return self
