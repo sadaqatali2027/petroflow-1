@@ -4,7 +4,7 @@ class AbstractWell(metaclass=ABCMeta):
     @abstractmethod
     def __getitem__(self, key):
         pass
-    
+
     @abstractmethod
     def dump(self, key):
         pass
@@ -32,7 +32,11 @@ class AbstractWell(metaclass=ABCMeta):
     @abstractmethod
     def rename_logs(self):
         pass
-    
+
+    @abstractmethod
+    def keep_matched_intervals(self):
+        pass
+
     @abstractmethod
     def split_by_core(self):
         pass

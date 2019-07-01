@@ -43,7 +43,8 @@ def trunc(values, decimals=0):
     return np.trunc(values * 10**decimals) / (10**decimals)
 
 
-def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, delta_from, delta_to, delta_step):
+def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, delta_from, delta_to, delta_step,
+                  maxiter):
     well_depth_from = well_log.index.min()
     well_depth_to = well_log.index.max()
     well_log = well_log.dropna()
@@ -101,7 +102,7 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
     best_deltas = None
     for init_delta in init_deltas:
         res = minimize(loss, init_delta, args=(n_lith_ints, core_depths, log_interpolator, core_logs),
-                       constraints=constraints, method="COBYLA")
+                       constraints=constraints, method="COBYLA", options={"maxiter": maxiter})
         if best_loss is None or res.fun < best_loss:
             best_loss = res.fun
             best_deltas = res.x

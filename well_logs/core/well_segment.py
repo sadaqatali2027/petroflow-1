@@ -19,7 +19,7 @@ from plotly.offline import init_notebook_mode, plot
 
 from .abstract_well import AbstractWell
 from .matching import select_contigious_intervals, match_segment
-from .joins import cross_join
+from .joins import cross_join, between_join
 
 
 def add_attr_properties(cls):
@@ -388,7 +388,7 @@ class WellSegment(AbstractWell):
             merged_df = merged_df[((merged_df["DEPTH"] >= merged_df["DEPTH_FROM"]) &
                                    (merged_df["DEPTH"] < merged_df["DEPTH_TO"]))]
             merged_df["DEPTH"] += merged_df["DELTA"]
-            setattr(self, "_" + attr, merged_df[columns].set_index("DEPTH"))
+            setattr(self, "_" + attr, merged_df[columns].set_index("DEPTH").sort_index())
 
         # TODO: update fdtd dataframes
         # TODO: carfully update samples
@@ -398,11 +398,11 @@ class WellSegment(AbstractWell):
                                     on=["DEPTH_FROM", "DEPTH_TO"])
         boring_intervals["DEPTH_FROM"] += boring_intervals["DELTA"]
         boring_intervals["DEPTH_TO"] += boring_intervals["DELTA"]
-        self._boring_intervals = boring_intervals.drop("DELTA", axis=1).set_index(["DEPTH_FROM", "DEPTH_TO"])
+        self._boring_intervals = boring_intervals.drop("DELTA", axis=1).set_index(["DEPTH_FROM", "DEPTH_TO"]).sort_index()
 
         self._calc_matching_intervals(mnemonic=mnemonic)
 
-    def _save_matching_report(self):
+    def _save_matching_report(self, mnemonic):
         boring_intervals = self._boring_intervals_deltas
         boring_intervals["DEPTH_FROM_DELTA"] = boring_intervals["DEPTH_FROM"] + boring_intervals["DELTA"]
         boring_intervals["DEPTH_TO_DELTA"] = boring_intervals["DEPTH_TO"] + boring_intervals["DELTA"]
@@ -421,10 +421,24 @@ class WellSegment(AbstractWell):
         mask = ((cross["Кровля интервала литописания"] >= cross["Кровля интервала долбления"]) &
                 (cross["Подошва интервала литописания"] <= cross["Подошва интервала долбления"]))
         cross = cross[mask]
-        cross.to_csv(os.path.join(self.path, "matching_report.csv"), index=False)
 
-    def match_core_logs(self, mnemonic="GK", max_shift=4, delta_from=-3, delta_to=3, delta_step=0.1,
-                        save_report=False):
+        core_log = self.core_logs[mnemonic].reset_index()
+        core_log.columns = ["Глубина " + mnemonic, "Значение " + mnemonic]
+
+        report = between_join(core_log, cross, left_on="Глубина "+mnemonic,
+                              right_on=("Увязанная кровля интервала литописания",
+                                        "Увязанная подошва интервала литописания"))
+        report.to_csv(os.path.join(self.path, self.name + "_matching_report.csv"), index=False)
+
+    def match_core_logs(self, mnemonic="GK", max_shift=5, delta_from=-4, delta_to=4, delta_step=0.1,
+                        maxiter=100, save_report=False):
+        if max_shift <= 0:
+            raise ValueError("max_shift must be positive")
+        if delta_from > delta_to:
+            raise ValueError("delta_to must be greater than delta_from")
+        if max(np.abs(delta_from), np.abs(delta_to)) > max_shift:
+            raise ValueError("delta_from and delta_to must not exceed max_shift in absolute value")
+
         well_log = self.logs[mnemonic]
         core_log = self.core_logs[mnemonic]
 
@@ -436,7 +450,7 @@ class WellSegment(AbstractWell):
 
         for segment in contigious_segments:
             segment, lithology_segment = match_segment(segment, lithology_intervals, well_log, core_log,
-                                                       max_shift, delta_from, delta_to, delta_step)
+                                                       max_shift, delta_from, delta_to, delta_step, maxiter)
             segments.append(segment)
             lithology_segments.append(lithology_segment)
         self._boring_intervals_deltas = pd.concat(segments)
@@ -444,7 +458,7 @@ class WellSegment(AbstractWell):
         self._apply_matching(mnemonic=mnemonic)
 
         if save_report:
-            self._save_matching_report()
+            self._save_matching_report(mnemonic=mnemonic)
         return self
 
     def plot_matching(self, mnemonic="GK", subplot_height=750, subplot_width=200):
@@ -503,6 +517,14 @@ class WellSegment(AbstractWell):
     def rename_logs(self, rename_dict):
         self.logs.columns = [rename_dict.get(name, name) for name in self.logs.columns]
         return self
+
+    def keep_matched_intervals(self, threshold=0.6):
+        mask = self.matching_intervals["R2"] > threshold
+        intervals = self.matching_intervals[mask].reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
+        res_segments = []
+        for _, (depth_from, depth_to) in intervals.iterrows():
+            res_segments.append(self[depth_from:depth_to])
+        return res_segments
 
     def _core_chunks(self):
         samples = self.samples.copy()
