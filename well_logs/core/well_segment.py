@@ -248,7 +248,7 @@ class WellSegment(AbstractWell):
             json.dump(meta, meta_file)
 
         for attr in self.attrs_depth_index + self.attrs_fdtd_index + self.attrs_no_index:
-            attr_val = getattr(self, attr)
+            attr_val = getattr(self, "_" + attr)
             if attr_val is None:
                 try:
                     shutil.copy2(self._get_full_name(self.path, attr), path)

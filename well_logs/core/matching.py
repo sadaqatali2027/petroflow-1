@@ -1,3 +1,4 @@
+import multiprocess as mp
 from itertools import product
 
 import numpy as np
@@ -97,15 +98,21 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
 
     # Optimization
     init_deltas = generate_init_deltas(n_lith_ints, gap_lengths, delta_from, delta_to, delta_step)
-
-    best_loss = None
-    best_deltas = None
-    for init_delta in init_deltas:
-        res = minimize(loss, init_delta, args=(n_lith_ints, core_depths, log_interpolator, core_logs),
-                       constraints=constraints, method="COBYLA", options={"maxiter": maxiter})
-        if best_loss is None or res.fun < best_loss:
-            best_loss = res.fun
-            best_deltas = res.x
+    futures = []
+    with mp.Pool() as pool:
+        for init_delta in init_deltas:
+            args = (loss, init_delta)
+            kwargs = {
+                "args": (n_lith_ints, core_depths, log_interpolator, core_logs),
+                "method": "COBYLA",
+                "options": {"maxiter": maxiter},
+                "constraints": constraints
+            }
+            # TODO: add a callback to stop optimization if time limit is exceeded
+            futures.append(pool.apply_async(minimize, args=args, kwds=kwargs))
+        results = [future.get() for future in futures]
+    best_loss_ix = np.argmin([res.fun for res in results])
+    best_deltas = results[best_loss_ix].x
 
     # Computing of final deltas
     segment_delta = trunc(best_deltas[0], 2)
