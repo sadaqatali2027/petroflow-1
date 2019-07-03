@@ -1,11 +1,16 @@
-import multiprocess as mp
 from itertools import product
+from collections import namedtuple
 
+import multiprocess as mp
 import numpy as np
 from scipy.optimize import minimize
 from scipy.interpolate import interp1d
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
+
+
+def trunc(values, decimals=0):
+    return np.trunc(values * 10**decimals) / (10**decimals)
 
 
 def select_contigious_intervals(df, max_gap=0):
@@ -32,20 +37,13 @@ def loss(deltas, n_lith_ints, core_depths, log_interpolator, core_log):
     for depths, deltas in zip(core_depths, interval_deltas):
         shifted_depths.append(depths + deltas)
     shifted_depths = np.concatenate(shifted_depths)
-    well_log = np.nan_to_num(log_interpolator(shifted_depths)).reshape(-1, 1)
+    well_log = np.nan_to_num(log_interpolator(shifted_depths))
     # TODO: find out why NaNs appear
-
-    reg = LinearRegression().fit(well_log, core_log)
-    r2 = r2_score(core_log, reg.predict(well_log))
-    return -r2
-
-
-def trunc(values, decimals=0):
-    return np.trunc(values * 10**decimals) / (10**decimals)
+    return -np.corrcoef(well_log, core_log)[0, 1]
 
 
 def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, delta_from, delta_to, delta_step,
-                  maxiter):
+                  max_iter, timeout):
     well_depth_from = well_log.index.min()
     well_depth_to = well_log.index.max()
     well_log = well_log.dropna()
@@ -104,15 +102,24 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
             args = (loss, init_delta)
             kwargs = {
                 "args": (n_lith_ints, core_depths, log_interpolator, core_logs),
-                "method": "COBYLA",
-                "options": {"maxiter": maxiter},
-                "constraints": constraints
+                "method": "SLSQP",
+                "options": {"maxiter": max_iter, "ftol": 1e-3},
+                "constraints": constraints,
             }
-            # TODO: add a callback to stop optimization if time limit is exceeded
             futures.append(pool.apply_async(minimize, args=args, kwds=kwargs))
-        results = [future.get() for future in futures]
-    best_loss_ix = np.argmin([res.fun for res in results])
-    best_deltas = results[best_loss_ix].x
+
+        best_loss = None
+        best_deltas = None
+        for future, init_delta in zip(futures, init_deltas):
+            try:
+                res = future.get(timeout=timeout)
+            except mp.TimeoutError:
+                OptResult = namedtuple("OptResult", ["x", "fun"])
+                res = OptResult(init_delta, loss(init_delta, n_lith_ints, core_depths, log_interpolator, core_logs))
+                print("TimeoutError!")
+            if best_loss is None or res.fun < best_loss:
+                best_loss = res.fun
+                best_deltas = res.x
 
     # Computing of final deltas
     segment_delta = trunc(best_deltas[0], 2)

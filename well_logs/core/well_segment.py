@@ -431,7 +431,7 @@ class WellSegment(AbstractWell):
         report.to_csv(os.path.join(self.path, self.name + "_matching_report.csv"), index=False)
 
     def match_core_logs(self, mnemonic="GK", max_shift=5, delta_from=-4, delta_to=4, delta_step=0.1,
-                        maxiter=100, save_report=False):
+                        max_iter=50, max_iter_time=0.25, save_report=False):
         if max_shift <= 0:
             raise ValueError("max_shift must be positive")
         if delta_from > delta_to:
@@ -450,7 +450,8 @@ class WellSegment(AbstractWell):
 
         for segment in contigious_segments:
             segment, lithology_segment = match_segment(segment, lithology_intervals, well_log, core_log,
-                                                       max_shift, delta_from, delta_to, delta_step, maxiter)
+                                                       max_shift, delta_from, delta_to, delta_step,
+                                                       max_iter, timeout=max_iter*max_iter_time)
             segments.append(segment)
             lithology_segments.append(lithology_segment)
         self._boring_intervals_deltas = pd.concat(segments)
