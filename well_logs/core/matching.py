@@ -116,7 +116,6 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
             except mp.TimeoutError:
                 OptResult = namedtuple("OptResult", ["x", "fun"])
                 res = OptResult(init_delta, loss(init_delta, n_lith_ints, core_depths, log_interpolator, core_logs))
-                print("TimeoutError!")
             if best_loss is None or res.fun < best_loss:
                 best_loss = res.fun
                 best_deltas = res.x
