@@ -376,22 +376,27 @@ class WellSegment(AbstractWell):
 
     def _apply_matching(self, mnemonic):
         core_lithology_deltas = self._core_lithology_deltas.reset_index()
-        core_lithology_deltas["key"] = 1
 
-        for attr in ["core_logs", "core_properties"]:
-            # TODO: load conditionally
-            attr_df = getattr(self, attr).reset_index()
+        # Update DataFrames with depth index
+        attrs_depth_index = [attr for attr in self.attrs_depth_index if attr.startswith("core_")]
+        for attr in attrs_depth_index:
+            try:
+                attr_df = getattr(self, attr).reset_index()
+            except FileNotFoundError:
+                continue
             columns = attr_df.columns
-
-            attr_df["key"] = 1
-            merged_df = pd.merge(attr_df, core_lithology_deltas, on="key")
-            merged_df = merged_df[((merged_df["DEPTH"] >= merged_df["DEPTH_FROM"]) &
-                                   (merged_df["DEPTH"] < merged_df["DEPTH_TO"]))]
+            merged_df = between_join(attr_df, core_lithology_deltas)
             merged_df["DEPTH"] += merged_df["DELTA"]
             setattr(self, "_" + attr, merged_df[columns].set_index("DEPTH").sort_index())
 
-        # TODO: update fdtd dataframes
-        # TODO: carfully update samples
+        # TODO: carfully update samples and reload core images if needed
+
+        core_lithology = pd.merge(self._core_lithology.reset_index(),
+                                  self._core_lithology_deltas[["DEPTH_FROM", "DEPTH_TO", "DELTA"]],
+                                  on=["DEPTH_FROM", "DEPTH_TO"])
+        core_lithology["DEPTH_FROM"] += core_lithology["DELTA"]
+        core_lithology["DEPTH_TO"] += core_lithology["DELTA"]
+        self._core_lithology = core_lithology.drop("DELTA", axis=1).set_index(["DEPTH_FROM", "DEPTH_TO"]).sort_index()
 
         boring_intervals = pd.merge(self._boring_intervals.reset_index(),
                                     self._boring_intervals_deltas[["DEPTH_FROM", "DEPTH_TO", "DELTA"]],
@@ -403,14 +408,14 @@ class WellSegment(AbstractWell):
         self._calc_matching_intervals(mnemonic=mnemonic)
 
     def _save_matching_report(self, mnemonic):
-        boring_intervals = self._boring_intervals_deltas
+        boring_intervals = self._boring_intervals_deltas.reset_index()
         boring_intervals["DEPTH_FROM_DELTA"] = boring_intervals["DEPTH_FROM"] + boring_intervals["DELTA"]
         boring_intervals["DEPTH_TO_DELTA"] = boring_intervals["DEPTH_TO"] + boring_intervals["DELTA"]
         boring_intervals = boring_intervals[["DEPTH_FROM", "DEPTH_TO", "DEPTH_FROM_DELTA", "DEPTH_TO_DELTA"]]
         boring_intervals.columns = ["Кровля интервала долбления", "Подошва интервала долбления",
                                     "Увязанная кровля интервала долбления", "Увязанная подошва интервала долбления"]
 
-        lithology_intervals = self._core_lithology_deltas
+        lithology_intervals = self._core_lithology_deltas.reset_index()
         lithology_intervals["DEPTH_FROM_DELTA"] = lithology_intervals["DEPTH_FROM"] + lithology_intervals["DELTA"]
         lithology_intervals["DEPTH_TO_DELTA"] = lithology_intervals["DEPTH_TO"] + lithology_intervals["DELTA"]
         lithology_intervals = lithology_intervals[["DEPTH_FROM", "DEPTH_TO", "DEPTH_FROM_DELTA", "DEPTH_TO_DELTA"]]
@@ -443,17 +448,25 @@ class WellSegment(AbstractWell):
         core_log = self.core_logs[mnemonic]
 
         lithology_intervals = self.core_lithology.reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
-        contigious_segments = select_contigious_intervals(self.boring_intervals.reset_index(), 2 * max_shift)
+
+        # matching_segments is a list of DataFrames, containing a number of core segments, extracted close to each
+        # other. They are considered together because they can possibly overlap during optimization.
+        matching_segments = select_contigious_intervals(self.boring_intervals.reset_index(), max_gap=2*max_shift)
 
         segments = []
         lithology_segments = []
 
-        for segment in contigious_segments:
-            segment, lithology_segment = match_segment(segment, lithology_intervals, well_log, core_log,
-                                                       max_shift, delta_from, delta_to, delta_step,
-                                                       max_iter, timeout=max_iter*max_iter_time)
-            segments.append(segment)
-            lithology_segments.append(lithology_segment)
+        for matching_segment in matching_segments:
+            # contigious_segments is a list of DataFrames, containing contigious core segments
+            contigious_segments = select_contigious_intervals(matching_segment)
+            for contigious_segment in contigious_segments:
+                segment, lithology_segment = match_segment(contigious_segment, lithology_intervals, well_log, core_log,
+                                                           max_shift, delta_from, delta_to, delta_step,
+                                                           max_iter, timeout=max_iter*max_iter_time)
+                segments.append(segment)
+                lithology_segments.append(lithology_segment)
+            # TODO: handle the case of overlapping segments
+
         self._boring_intervals_deltas = pd.concat(segments)
         self._core_lithology_deltas = pd.concat(lithology_segments)
         self._apply_matching(mnemonic=mnemonic)
