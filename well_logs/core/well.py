@@ -78,3 +78,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         for i in range(len(self.segments)):
             self.segments[i] = [self.segments[i], func([getattr(subsegment, name) for subsegment in self.segments[i]])]
 
+    def dump(self, path):
+        self.aggregate().segments[0].dump(path)
+        return self

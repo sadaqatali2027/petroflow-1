@@ -6,6 +6,10 @@ class AbstractWell(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def dump(self, key):
+        pass
+
+    @abstractmethod
     def copy(self):
         pass
 
@@ -28,7 +32,11 @@ class AbstractWell(metaclass=ABCMeta):
     @abstractmethod
     def rename_logs(self):
         pass
-    
+
+    @abstractmethod
+    def keep_matched_intervals(self):
+        pass
+
     @abstractmethod
     def split_segments(self):
         pass
