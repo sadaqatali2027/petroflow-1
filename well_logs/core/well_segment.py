@@ -4,7 +4,7 @@ import base64
 import shutil
 from copy import copy
 from glob import glob
-from itertools import chain, repeat
+from itertools import chain, repeat, product
 
 import numpy as np
 import pandas as pd
@@ -371,8 +371,7 @@ class WellSegment(AbstractWell):
         well_log = well_log.dropna()
         interpolator = interp1d(well_log.index, well_log, kind="linear", fill_value="extrapolate")
         well_log = interpolator(core_log.index).reshape(-1, 1)
-        reg = LinearRegression().fit(well_log, core_log)
-        return r2_score(core_log, reg.predict(well_log))
+        return np.corrcoef(core_log, well_log)[0, 1]**2
 
     def _apply_matching(self, mnemonic):
         core_lithology_deltas = self._core_lithology_deltas.reset_index()
@@ -459,13 +458,36 @@ class WellSegment(AbstractWell):
         for matching_segment in matching_segments:
             # contigious_segments is a list of DataFrames, containing contigious core segments
             contigious_segments = select_contigious_intervals(matching_segment)
+            cs_shifts = []
             for contigious_segment in contigious_segments:
-                segment, lithology_segment = match_segment(contigious_segment, lithology_intervals, well_log, core_log,
-                                                           max_shift, delta_from, delta_to, delta_step,
-                                                           max_iter, timeout=max_iter*max_iter_time)
-                segments.append(segment)
-                lithology_segments.append(lithology_segment)
-            # TODO: handle the case of overlapping segments
+                shifts = match_segment(contigious_segment, lithology_intervals, well_log, core_log,
+                                       max_shift, delta_from, delta_to, delta_step,
+                                       max_iter, timeout=max_iter*max_iter_time)
+                cs_shifts.append(shifts)
+
+            best_shifts = None
+            best_r2 = None
+            for shifts in product(*cs_shifts):
+                sorted_shifts = sorted(shifts, key=lambda x: x.depth_from)
+                do_overlap = False
+                for int1, int2 in zip(sorted_shifts[:-1], sorted_shifts[1:]):
+                    if int1.depth_to > int2.depth_from:
+                        do_overlap = True
+                        break
+                r2 = sum(interval.r2 for interval in sorted_shifts) / len(sorted_shifts)
+                if (not do_overlap) and (best_shifts is None or r2 > best_r2):
+                    best_shifts = shifts
+                    best_r2 = r2
+
+            for contigious_segment, shift in zip(contigious_segments, best_shifts):
+                mask = ((lithology_intervals["DEPTH_FROM"] >= contigious_segment["DEPTH_FROM"].min()) &
+                        (lithology_intervals["DEPTH_TO"] <= contigious_segment["DEPTH_TO"].max()))
+                segment_lithology_intervals = lithology_intervals[mask]
+                segment_lithology_intervals["DELTA"] = shift.interval_deltas
+                contigious_segment["DELTA"] = shift.segment_delta
+
+                segments.append(contigious_segment)
+                lithology_segments.append(segment_lithology_intervals)
 
         self._boring_intervals_deltas = pd.concat(segments)
         self._core_lithology_deltas = pd.concat(lithology_segments)

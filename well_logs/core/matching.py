@@ -95,8 +95,10 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
     constraints.append({"type": "ineq", "fun": con_max_shift_down})
 
     # Optimization
-    init_deltas = generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, delta_from, delta_to, delta_step)
+    Shift = namedtuple("Shift", ["depth_from", "depth_to", "segment_delta", "interval_deltas", "r2"])
+    shifts = []
     futures = []
+    init_deltas = generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, delta_from, delta_to, delta_step)
     with mp.Pool() as pool:
         for init_delta in init_deltas:
             args = (loss, init_delta)
@@ -108,29 +110,21 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
             }
             futures.append(pool.apply_async(minimize, args=args, kwds=kwargs))
 
-        best_loss = None
-        best_deltas = None
         for future, init_delta in zip(futures, init_deltas):
             try:
                 res = future.get(timeout=timeout)
-                future_delta = res.x
+                future_deltas = res.x
                 future_loss = res.fun
             except mp.TimeoutError:
-                future_delta = init_delta
-                future_loss = loss(future_delta, bi_n_lith_ints, core_depths, log_interpolator, core_logs)
-            if best_loss is None or future_loss < best_loss:
-                best_loss = future_loss
-                best_deltas = future_delta
+                future_deltas = init_delta
+                future_loss = loss(future_deltas, bi_n_lith_ints, core_depths, log_interpolator, core_logs)
 
-    # Computing of final deltas
-    segment_delta = trunc(best_deltas[0], 2)
-    interval_deltas = np.clip(trunc(best_deltas[1:], 2), 0, None)
-    interval_deltas = np.concatenate([np.cumsum(d) for d in np.split(interval_deltas, np.cumsum(bi_n_lith_ints)[:-1])])
-    interval_deltas += segment_delta
+            segment_delta = trunc(future_deltas[0], 2)
+            interval_deltas = np.clip(trunc(future_deltas[1:], 2), 0, None)
+            interval_deltas = np.concatenate([np.cumsum(d) for d in np.split(interval_deltas, np.cumsum(bi_n_lith_ints)[:-1])])
+            interval_deltas += segment_delta
 
-    mask = ((lithology_intervals["DEPTH_FROM"] >= segment["DEPTH_FROM"].min()) &
-            (lithology_intervals["DEPTH_TO"] <= segment["DEPTH_TO"].max()))
-    segment_lithology_intervals = lithology_intervals[mask]
-    segment_lithology_intervals["DELTA"] = interval_deltas
-    segment["DELTA"] = segment_delta
-    return segment, segment_lithology_intervals
+            shift = Shift(segment["DEPTH_FROM"].min() + segment_delta, segment["DEPTH_TO"].max() + segment_delta,
+                          segment_delta, interval_deltas, future_loss**2)
+            shifts.append(shift)
+    return shifts
