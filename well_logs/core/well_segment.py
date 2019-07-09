@@ -88,7 +88,6 @@ class WellSegment(AbstractWell):
         self.field = meta["field"]
         self.depth_from = meta["depth_from"]
         self.depth_to = meta["depth_to"]
-        self.depth = self.depth_to - self.depth_from
 
         self.has_samples = (len(glob(os.path.join(self.path, "samples.*"))) == 1)
 
@@ -103,6 +102,10 @@ class WellSegment(AbstractWell):
         self._samples = None
         self._core_dl = None
         self._core_uv = None
+
+    @property
+    def length(self):
+        return self.depth_to - self.depth_from
 
     @property
     def matching_intervals(self):
@@ -579,8 +582,10 @@ class WellSegment(AbstractWell):
     
     def crop(self, height, step, drop_last=True):
         positions = np.arange(self.depth_from, self.depth_to, step)
-        if drop_last and positions[-1]+height >= self.depth_to: # >= or > ??
+        if drop_last and positions[-1]+height > self.depth_to:
             positions = positions[:-1]
+        else:
+            height = min(height, self.depth_to-positions[-1])
         return [self[pos:pos+height] for pos in positions]
 
     def drop_layers(self):
