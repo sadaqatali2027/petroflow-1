@@ -90,6 +90,7 @@ class WellSegment(AbstractWell):
         self.depth_to = meta["depth_to"]
 
         self.has_samples = (len(glob(os.path.join(self.path, "samples.*"))) == 1)
+        self.segments = []
 
         self._logs = None
         self._inclination = None
@@ -562,25 +563,23 @@ class WellSegment(AbstractWell):
 
         return chunks
 
-    def split_by_core(self):
-        segments = []
+    def split_by_core(self, connected=True):
         if connected:
             df = self._core_chunks()
         else:
             df = self.samples[['DEPTH_FROM', 'DEPTH_TO']]
         for _, (top, bottom) in df.iterrows():
-            segments.append(self[top:bottom])
-        return segments
+            self.segments.append(self[top:bottom])
 
     def random_crop(self, height, n_crops=1):
         positions = np.random.uniform(self.depth_from, self.depth_to-height, size=n_crops)
-        return [self[pos:pos+height] for pos in positions]
+        self.segments = [self[pos:pos+height] for pos in positions]
     
     def crop(self, height, step, drop_last=True):
         positions = np.arange(self.depth_from, self.depth_to, step)
-        if drop_last and positions[-1]+height >= self.depth:
+        if drop_last and positions[-1]+height >= self.depth_to: # >= or > ??
             positions = positions[:-1]
-        return [self[pos:pos+height] for pos in positions]
+        self.segments = [self[pos:pos+height] for pos in positions]
 
     def drop_layers(self):
         pass
