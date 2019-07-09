@@ -7,7 +7,6 @@ import numpy as np
 
 from .abstract_well import AbstractWell
 from .well_segment import WellSegment
-from ..batchflow import timeit
 
 class SegmentDelegatingMeta(ABCMeta):
     def __new__(mcls, name, bases, namespace):
@@ -34,49 +33,43 @@ class SegmentDelegatingMeta(ABCMeta):
 
 
 class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, segments=None, *args, **kwargs):
         super().__init__()
-        self.segments = [WellSegment(*args, **kwargs)]
+        if segments is None:
+            self.segments = [WellSegment(*args, **kwargs)]
+        else:
+            self.segments = segments
 
     def copy(self):
         return copy(self)
 
     def split_segments(self, connected=False):
-        self.segments = [item for segment in self.segments for item in segment.split_segments(connected)]
+        self.segments = [segment.split_segments(connected) for segment in self.segments]
+
+    def depth(self):
+        return sum([segment.depth for segment in self.segments])
     
 #    def drop_segments(self, indices):
 #        self.segments = [segment for i, segment in self.segments if not i in indices]
     
     def random_crop(self, height, n_crops=1, divide_by=None):
-        if divide_by is None:
-            p = np.array([item.depth_to - item.depth_from for item in self.segments])
-            random_segments = Counter(np.random.choice(self.segments, n_crops, p=p/sum(p)))
-            self.segments = [s for segment, n_crops in random_segments.items() for s in segment.random_crop(height, n_crops)]
-        else:
-            positive = [segment for segment in self.segments if divide_by(segment) == 1]
-            negative = [segment for segment in self.segments if divide_by(segment) == 0]
-            self.segments = []
-            for segments in positive, negative:
-                p = np.array([item.depth_to - item.depth_from for item in segments])
-                random_segments = Counter(np.random.choice(segments, n_crops, p=p/sum(p)))
-                self.segments.extend(
-                    [s for segment, n_crops in random_segments.items() for s in segment.random_crop(height, n_crops)]
-                )
-            self.segments = np.random.choice(self.segments, size=2*n_crops, replace=False)
+        p = np.array([item.depth for item in self.segments])
+        random_segments = Counter(np.random.choice(self.segments, n_crops, p=p/sum(p)))
+        self.segments = Well([segment.random_crop(height, n_crops) for segment, n_crops in random_segments.items()])
 
     def crop(self, height, step, drop_last=True):
-        self.segments = [segment.crop(height, step, drop_last) for segment in self.segments]
+        self.segments = Well([segment.crop(height, step, drop_last) for segment in self.segments])
 
-    def assemble_crops(self, crops, name):
-        i = 0
-        for segment in self.segments:
-            for subsegment in segment:
-                setattr(subsegment, name, crops[i])
-                i += 1
+    # def assemble_crops(self, crops, name):
+    #     i = 0
+    #     for segment in self.segments:
+    #         for subsegment in segment:
+    #             setattr(subsegment, name, crops[i])
+    #             i += 1
 
-    def aggregate(self, name, func):
-        for i in range(len(self.segments)):
-            self.segments[i] = [self.segments[i], func([getattr(subsegment, name) for subsegment in self.segments[i]])]
+    # def aggregate(self, name, func):
+    #     for i in range(len(self.segments)):
+    #         self.segments[i] = [self.segments[i], func([getattr(subsegment, name) for subsegment in self.segments[i]])]
 
     def dump(self, path):
         self.aggregate().segments[0].dump(path)
