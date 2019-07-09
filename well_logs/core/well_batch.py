@@ -6,7 +6,7 @@ from ..batchflow import FilesIndex, Batch, action, inbatch_parallel
 from .well import Well
 
 class WellBatch(Batch):
-    components = "wells", 
+    components = "wells",
 
     def __init__(self, index, preloaded=None, **kwargs):
         super().__init__(index, preloaded, **kwargs)
@@ -35,6 +35,27 @@ class WellBatch(Batch):
 
     @action
     @inbatch_parallel(init="indices", target="threads")
-    def random_crop(self, index, n_crops, height, *args, **kwargs):
+    def random_crop(self, index, n_crops, height, divide_by=None, *args, **kwargs):
         pos = self.get_pos(None, "wells", index)
-        self.wells[pos].random_crop(height, n_crops)
+        self.wells[pos].random_crop(height, n_crops, divide_by)
+    
+    @action
+    @inbatch_parallel(init="indices", target="threads")
+    def crop(self, index, height, step, *args, **kwargs):
+        pos = self.get_pos(None, "wells", index)
+        self.wells[pos].crop(height, step)
+    
+    @action
+    def assemble_crops(self, crops, name):
+        pos = 0
+        res = []
+        for well in self.wells:
+            length = sum([len(segment) for segment in well.segments])
+            well.assemble_crops(crops[pos:pos+length], name)
+        return self
+    
+    @action
+    @inbatch_parallel(init="indices", target="threads")
+    def aggregate(self, index, name, func):
+        pos = self.get_pos(None, "wells", index)
+        self.wells[pos].aggregate(name, func)

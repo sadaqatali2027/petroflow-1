@@ -47,7 +47,37 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 #    def drop_segments(self, indices):
 #        self.segments = [segment for i, segment in self.segments if not i in indices]
     
-    def random_crop(self, height, n_crops=1):
-        p = np.array([item.depth_to - item.depth_from for item in self.segments])
-        random_segments = Counter(np.random.choice(self.segments, n_crops, p=p/sum(p)))
-        self.segments = [s for segment, n_crops in random_segments.items() for s in segment.random_crop(height, n_crops)]
+    def random_crop(self, height, n_crops=1, divide_by=None):
+        if divide_by is None:
+            p = np.array([item.depth_to - item.depth_from for item in self.segments])
+            random_segments = Counter(np.random.choice(self.segments, n_crops, p=p/sum(p)))
+            self.segments = [s for segment, n_crops in random_segments.items() for s in segment.random_crop(height, n_crops)]
+        else:
+            positive = [segment for segment in self.segments if divide_by(segment) == 1]
+            negative = [segment for segment in self.segments if divide_by(segment) == 0]
+            self.segments = []
+            for segments in positive, negative:
+                p = np.array([item.depth_to - item.depth_from for item in segments])
+                random_segments = Counter(np.random.choice(segments, n_crops, p=p/sum(p)))
+                self.segments.extend(
+                    [s for segment, n_crops in random_segments.items() for s in segment.random_crop(height, n_crops)]
+                )
+            self.segments = np.random.choice(self.segments, size=2*n_crops, replace=False)
+
+    def crop(self, height, step, drop_last=True):
+        self.segments = [segment.crop(height, step, drop_last) for segment in self.segments]
+
+    def assemble_crops(self, crops, name):
+        i = 0
+        for segment in self.segments:
+            for subsegment in segment:
+                setattr(subsegment, name, crops[i])
+                i += 1
+
+    def aggregate(self, name, func):
+        for i in range(len(self.segments)):
+            self.segments[i] = [self.segments[i], func([getattr(subsegment, name) for subsegment in self.segments[i]])]
+
+    def dump(self, path):
+        self.aggregate().segments[0].dump(path)
+        return self
