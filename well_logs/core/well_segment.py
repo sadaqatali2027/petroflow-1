@@ -563,12 +563,12 @@ class WellSegment(AbstractWell):
 
         return chunks
 
-    def split_by_core(self, connected=True):
+    def split_segments(self, connected=True):
         segments = []
         if connected:
             df = self._core_chunks()
         else:
-            df = self.samples[['DEPTH_FROM', 'DEPTH_TO']]
+            df = self.samples.reset_index()[['DEPTH_FROM', 'DEPTH_TO']]
         for _, (top, bottom) in df.iterrows():
             segments.append(self[top:bottom])
         return segments

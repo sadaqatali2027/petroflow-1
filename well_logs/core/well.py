@@ -44,8 +44,10 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return copy(self)
 
     def split_segments(self, connected=False):
-        self.segments = [segment.split_segments(connected) for segment in self.segments]
-
+        self.segments = [Well(segments=segment.split_segments(connected)) for segment in self.segments]
+        return self.segments
+    
+    @property
     def depth(self):
         return sum([segment.depth for segment in self.segments])
     
@@ -55,10 +57,12 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     def random_crop(self, height, n_crops=1, divide_by=None):
         p = np.array([item.depth for item in self.segments])
         random_segments = Counter(np.random.choice(self.segments, n_crops, p=p/sum(p)))
-        self.segments = Well([segment.random_crop(height, n_crops) for segment, n_crops in random_segments.items()])
+        self.segments = [Well(segments=segment.random_crop(height, n_crops)) for segment, n_crops in random_segments.items()]
+        print('self.segments:', self.segments)
+        return self.segments
 
     def crop(self, height, step, drop_last=True):
-        self.segments = Well([segment.crop(height, step, drop_last) for segment in self.segments])
+        self.segments = [Well(segments=segment.crop(height, step, drop_last)) for segment in self.segments]
 
     # def assemble_crops(self, crops, name):
     #     i = 0
