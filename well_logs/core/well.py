@@ -7,7 +7,6 @@ import numpy as np
 
 from .abstract_well import AbstractWell
 from .well_segment import WellSegment
-from ..batchflow import timeit
 
 class SegmentDelegatingMeta(ABCMeta):
     def __new__(mcls, name, bases, namespace):

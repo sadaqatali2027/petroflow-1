@@ -59,19 +59,16 @@ class CoreBatch(ImagesBatch):
     
     @action
     @inbatch_parallel(init='indices', post='_assemble', dst=('dl', 'uv'), target="threads")
-    def normalize(self, index):
+    def normalize(self, index, bounds):
         res = []
         src = ('dl', 'uv')
+        well = index.split('_')[0]
         for i in range(len(src)):
             pos = self.get_pos(None, src[i], index)
             image = np.array(getattr(self, src[i])[pos])
-            _min = np.min(image)
-            _max = np.max(image)
-            if _max - _min != 0:
-                image = (image - _min) / (_max - _min)
-                res.append(PIL.Image.fromarray(image))
-            else:
-                res.append(getattr(self, src[i])[pos])
+            image[image > bounds[well][src[i]]] = bounds[well][src[i]]
+            image = image / bounds[well][src[i]]
+            res.append(PIL.Image.fromarray(image))
         return res
     
     @action
