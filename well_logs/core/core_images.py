@@ -9,24 +9,25 @@ from well_logs.batchflow import ImagesBatch, action, inbatch_parallel
 
 class CoreBatch(ImagesBatch):
     """ Batch class for bad core images detecting. Contains core images in daylight (DL)
-        and ultraviolet light (UV) and labels for that pairs: 1 if the pair has defects
-        and 0 otherwise. Path to images must have the following form:
-        '*/well_name/samples_{uv, dl}/*'.
+    and ultraviolet light (UV) and labels for that pairs: 1 if the pair has defects
+    and 0 otherwise. Path to images must have the following form:
+    '*/well_name/samples_{uv, dl}/*'.
 
-        Parameters
-        ----------
-        index : DatasetIndex
-            Unique identifiers of core images in the batch.
-        Attributes
-        ----------
-        index : DatasetIndex
-            Unique identifiers of core images in the batch.
-        dl : 1-D ndarray
-            Array of 3-D ndarrays with DL images.
-        uv : 1-D ndarray
-            Array of 3-D ndarrays with UV images.
-        labels : 1-D ndarray
-            Labels for images.
+    Parameters
+    ----------
+    index : DatasetIndex
+        Unique identifiers of core images in the batch.
+
+    Attributes
+    ----------
+    index : DatasetIndex
+        Unique identifiers of core images in the batch.
+    dl : 1-D ndarray
+        Array of 3-D ndarrays with DL images.
+    uv : 1-D ndarray
+        Array of 3-D ndarrays with UV images.
+    labels : 1-D ndarray
+        Labels for images.
     """
     def _get_components(self, index, components=('dl', 'uv', 'labels')):
         pos = self.get_pos(None, components[0], index)
@@ -59,14 +60,17 @@ class CoreBatch(ImagesBatch):
 
     @action
     @inbatch_parallel(init='indices', post='_assemble', dst=('dl', 'uv', 'labels'))
-    def flip(self, index, proba=0.5):
+    def flip(self, index, proba=0.5, **kwargs):
         """ Randomly flip UV images. Flipped images always will have label 1.
 
         Parameters
         ----------
-        p : float
+        proba : float
             probability of flip.
+        dst : tuple of str
+            attributes to save resulting DL, UV images and labels.
         """
+        _ = kwargs
         img1, img2, label = self._get_components(index)
         if np.random.rand() < proba:
             img2 = PIL.ImageOps.flip(img2)
@@ -74,29 +78,34 @@ class CoreBatch(ImagesBatch):
         return img1, img2, label
 
     @action
-    def shuffle(self, proba=0.5):
+    def shuffle(self, proba=0.5, dst=('dl', 'uv', 'labels')):
         """ Shuffle DL and UV images. Shuffled images will have label 1.
 
         Parameters
         ----------
-        p : float
+        proba : float
             probability that pair in the batch will be changed.
+        dst : tuple of str
+            attributes to save resulting DL, UV images and labels.
         """
         n_permutations = int(np.ceil(len(self.indices) * proba / 2))
         shuffled_indices = np.random.choice(self.indices, n_permutations, replace=False)
+        setattr(self, dst[0], self.dl)
+        setattr(self, dst[1], self.uv)
+        setattr(self, dst[2], self.labels)
         for i, j in zip(self.indices[:n_permutations], shuffled_indices):
             if i != j:
                 _, uv1, _ = self._get_components(i)
                 _, uv2, _ = self._get_components(j)
-                self.uv[self.get_pos(None, 'uv', i)] = uv2
-                self.uv[self.get_pos(None, 'uv', j)] = uv1
-                self.labels[self.get_pos(None, 'uv', i)] = 1
-                self.labels[self.get_pos(None, 'uv', j)] = 1
+                getattr(self, dst[1])[self.get_pos(None, 'uv', i)] = uv2
+                getattr(self, dst[1])[self.get_pos(None, 'uv', j)] = uv1
+                getattr(self, dst[2])[self.get_pos(None, 'uv', i)] = 1
+                getattr(self, dst[2])[self.get_pos(None, 'uv', j)] = 1
         return self
 
     @action
     @inbatch_parallel(init='indices', post='_assemble', target="threads")
-    def short_cores(self, index, shape, dst):
+    def find_short_cores(self, index, shape, dst):
         """ Find images which shape is less than some fixed value.
 
         Parameters
@@ -104,7 +113,7 @@ class CoreBatch(ImagesBatch):
         shape : tuple
             minimal shape that images must have.
         dst : str
-            name of the aatribute to save result
+            name of the attribute to save result of check
         """
         _ = dst
         img1, img2, _ = self._get_components(index)
@@ -113,18 +122,36 @@ class CoreBatch(ImagesBatch):
         return _x <= shape[0] or _y <= shape[1]
 
     @action
-    @inbatch_parallel(init='indices', post='_assemble', dst=('dl', 'uv'), target="threads")
-    def normalize(self, index, bounds, cut=False):
+    @inbatch_parallel(init='indices', post='_assemble', target="threads")
+    def check_shapes(self, index, dst):
+        """ Check that DL and UV images have the same shape.
+
+        Parameters
+        ----------
+        dst : str
+            attributes to save result of check.
+        """
+
+        _ = dst
+        img1, img2, _ = self._get_components(index)
+        return img1.size[0] != img2.size[0] or img1.size[1] != img2.size[1]
+
+    @action
+    @inbatch_parallel(init='indices', post='_assemble', target="threads", dst=('dl', 'uv'))
+    def normalize(self, index, bounds, cut=False, **kwargs):
         """ Normalize images.
 
-            Parameters
-            ----------
-            bounds : dict of dicts
-                keys are well names, values are dicts of the form {'dl': dl_bound, 'uv': uv_bound}.
-                Arrays with DL and UV images will divided by corresponding bounds.
-            cut : bool
-                if True, all values which are greater than 1 will be defined as 1.
+        Parameters
+        ----------
+        bounds : dict of dicts
+            keys are well names, values are dicts of the form {'dl': dl_bound, 'uv': uv_bound}.
+            Arrays with DL and UV images will divided by corresponding bounds.
+        cut : bool
+            if True, all values which are greater than 1 will be defined as 1.
+        dst : tuple of str
+            attributes to save DL, UV images.
         """
+        _ = kwargs
         res = []
         src = ('dl', 'uv')
         well = index.split('_')[0]
@@ -135,21 +162,22 @@ class CoreBatch(ImagesBatch):
                 image[image > bounds[well][component]] = bounds[well][component]
             image = image / bounds[well][component]
             res.append(PIL.Image.fromarray(image))
-        return res
+        return tuple(res)
 
     @action
-    @inbatch_parallel(init='indices', post='_assemble', dst=('dl', 'uv', 'labels'), target="threads")
+    @inbatch_parallel(init='indices', post='_assemble', target="threads", dst=('dl', 'uv', 'labels'))
     def random_crop(self, index, shape, proba=0.5, **kwargs):
         """ Get random crops from images.
 
-            Parameters
-            ----------
-            shape : tuple
+        Parameters
+        ----------
+        shape : tuple
 
-            proba : float
-                probability that cropping from DL and UV images will be performed
-                from different positions.
-
+        proba : float
+            probability that cropping from DL and UV images will be performed
+            from different positions.
+        dst : tuple of str
+            attributes to save DL, UV images and labels.
         """
         _ = kwargs
         img1, img2, label = self._get_components(index)
@@ -172,19 +200,20 @@ class CoreBatch(ImagesBatch):
         return img1, img2, label
 
     @action
-    @inbatch_parallel(init='indices', post='_assemble', target="threads")
-    def crop(self, index, shape, step, dst):
+    @inbatch_parallel(init='indices', post='_assemble', target="threads", dst=('dl', 'uv', 'labels'))
+    def crop(self, index, shape, step, **kwargs):
         """ Get crops from images.
 
-            Parameters
-            ----------
-            shape : tuple
+        Parameters
+        ----------
+        shape : tuple
 
-            step : float
+        step : float
 
-            dst : tuple
-                attributes to save DL, UV images and labels.
+        dst : tuple of str
+            attributes to save DL, UV images and labels.
         """
+        _ = kwargs
         img1, img2, label = self._get_components(index)
         _x = min(img1.shape[1], img2.shape[1])
         _y = min(img1.shape[2], img2.shape[2])
@@ -202,27 +231,19 @@ class CoreBatch(ImagesBatch):
         return np.concatenate(crops1), np.concatenate(crops2), np.array([label] * len(positions))
 
     @action
-    @inbatch_parallel(init='indices', post='_assemble')
-    def concatenate(self, index, dst='images'):
+    @inbatch_parallel(init='indices', post='_assemble', dst='images')
+    def concatenate(self, index, **kwargs):
         """ Concatenate DL and UV images into array and save into images attribute.
 
-            Parameters
-            ----------
-            dst : str
-                attribute to save concatenated images.
+        Parameters
+        ----------
+        dst : str
+            attribute to save concatenated images.
         """
-        _ = dst
+        _ = kwargs
         img1, img2, _ = self._get_components(index)
         if img1.ndim == 2:
             res = np.stack((img1, img2), axis=0)
         else:
             res = np.concatenate((img1, img2), axis=0)
         return np.array(res, "float32")
-
-    @action
-    @inbatch_parallel(init='indices', post='_assemble', target="threads")
-    def check_shapes(self, index, dst):
-        """ Check that DL and UV images have the same shape. """
-        _ = dst
-        img1, img2, _ = self._get_components(index)
-        return img1.size[0] != img2.size[0] or img1.size[1] != img2.size[1], img1.size, img2.size
