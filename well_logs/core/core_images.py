@@ -95,8 +95,8 @@ class CoreBatch(ImagesBatch):
         return self
 
     @action
-    @inbatch_parallel(init='indices', post='_assemble', dst='short', target="threads")
-    def short_cores(self, index, shape):
+    @inbatch_parallel(init='indices', post='_assemble', target="threads")
+    def short_cores(self, index, shape, dst):
         """ Find images which shape is less than some fixed value.
 
         Parameters
@@ -106,6 +106,7 @@ class CoreBatch(ImagesBatch):
         dst : str
             name of the aatribute to save result
         """
+        _ = dst
         img1, img2, _ = self._get_components(index)
         _x = min(img1.size[1], img2.size[1])
         _y = min(img1.size[0], img2.size[0])
@@ -138,7 +139,7 @@ class CoreBatch(ImagesBatch):
 
     @action
     @inbatch_parallel(init='indices', post='_assemble', dst=('dl', 'uv', 'labels'), target="threads")
-    def random_crop(self, index, shape, proba=0.5):
+    def random_crop(self, index, shape, proba=0.5, **kwargs):
         """ Get random crops from images.
 
             Parameters
@@ -150,6 +151,7 @@ class CoreBatch(ImagesBatch):
                 from different positions.
 
         """
+        _ = kwargs
         img1, img2, label = self._get_components(index)
         _x = min(img1.shape[1], img2.shape[1])
         _y = min(img1.shape[2], img2.shape[2])
@@ -170,8 +172,8 @@ class CoreBatch(ImagesBatch):
         return img1, img2, label
 
     @action
-    @inbatch_parallel(init='indices', post='_assemble', dst=('dl_crops', 'uv_crops', 'labels_crops'), target="threads")
-    def crop(self, index, shape, step):
+    @inbatch_parallel(init='indices', post='_assemble', target="threads")
+    def crop(self, index, shape, step, dst):
         """ Get crops from images.
 
             Parameters
@@ -179,6 +181,9 @@ class CoreBatch(ImagesBatch):
             shape : tuple
 
             step : float
+
+            dst : tuple
+                attributes to save DL, UV images and labels.
         """
         img1, img2, label = self._get_components(index)
         _x = min(img1.shape[1], img2.shape[1])
@@ -197,9 +202,16 @@ class CoreBatch(ImagesBatch):
         return np.concatenate(crops1), np.concatenate(crops2), np.array([label] * len(positions))
 
     @action
-    @inbatch_parallel(init='indices', post='_assemble', dst='images')
-    def concatenate(self, index):
-        """ Concatenate DL and UV images into array and save into images attribute. """
+    @inbatch_parallel(init='indices', post='_assemble')
+    def concatenate(self, index, dst='images'):
+        """ Concatenate DL and UV images into array and save into images attribute.
+
+            Parameters
+            ----------
+            dst : str
+                attribute to save concatenated images.
+        """
+        _ = dst
         img1, img2, _ = self._get_components(index)
         if img1.ndim == 2:
             res = np.stack((img1, img2), axis=0)
@@ -208,8 +220,9 @@ class CoreBatch(ImagesBatch):
         return np.array(res, "float32")
 
     @action
-    @inbatch_parallel(init='indices', post='_assemble', dst=('check', 's1', 's2'), target="threads")
-    def check_shapes(self, index):
+    @inbatch_parallel(init='indices', post='_assemble', target="threads")
+    def check_shapes(self, index, dst):
         """ Check that DL and UV images have the same shape. """
+        _ = dst
         img1, img2, _ = self._get_components(index)
         return img1.size[0] != img2.size[0] or img1.size[1] != img2.size[1], img1.size, img2.size
