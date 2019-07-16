@@ -113,9 +113,9 @@ def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=10):
         plt.title(index[i] + '      ' + str(labels[i]) + '     ' + str(proba[i][1]))
         plt.show()
 
-def fix_annotation(ppl, df, threshold=0.5):
+def fix_annotation(ppl, annotation, threshold=0.5):
     """ Fix annotation for images where model provides wrong predictions. """
-    df = df.copy()
+    df = annotation.copy()
     stat = ppl.get_variable('stat')
     dl_images = np.concatenate([_split(item[0]) for item in stat])
     uv_images = np.concatenate([_split(item[1]) for item in stat])
