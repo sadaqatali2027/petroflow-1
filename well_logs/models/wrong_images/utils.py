@@ -115,7 +115,7 @@ def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=10):
 
 def fix_annotation(ppl, annotation, threshold=0.5):
     """ Fix annotation for images where model provides wrong predictions. """
-    df = annotation.copy()
+    new_annotation = annotation.copy()
     stat = ppl.get_variable('stat')
     dl_images = np.concatenate([_split(item[0]) for item in stat])
     uv_images = np.concatenate([_split(item[1]) for item in stat])
@@ -144,6 +144,6 @@ def fix_annotation(ppl, annotation, threshold=0.5):
         plt.xticks(np.arange(0, image.shape[0], 100))
         plt.grid(True, color='red', markevery='100')
         plt.show()
-        df['QC'][index[i]] = int(input())
+        new_annotation['QC'][index[i]] = int(input())
 
-    return df
+    return new_annotation
