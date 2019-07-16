@@ -84,7 +84,7 @@ def _split(arr):
         arr = np.array(arr)[:-1]
     return arr
 
-def plot_predictions(ppl, mode='fn', threshold=0.5, n_images=10):
+def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=10):
     """ Plot examples of predictions. """
     stat = ppl.get_variable('stat')
     dl_images = np.concatenate([_split(item[0]) for item in stat])
