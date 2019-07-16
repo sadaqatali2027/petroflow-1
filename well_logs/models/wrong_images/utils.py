@@ -75,7 +75,7 @@ def plot_crops_predictions(batch):
         print(batch.indices[i])
         print('Label: ', str(batch.labels[i]) + '   Prediction:' + str(batch.proba[i][1]))
         shape = np.min((img1.shape[0], img2.shape[0])), np.min((img1.shape[1], img2.shape[1]))
-        plt.imshow(np.concatenate((img1[:shape[0], :shape[1]], img2[:shape[0],:shape[1]]), axis=1), cmap='gray')
+        plt.imshow(np.concatenate((img1[:shape[0], :shape[1]], img2[:shape[0], :shape[1]]), axis=1), cmap='gray')
         plt.show()
 
 def _split(arr):
@@ -107,7 +107,8 @@ def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=10):
         img1[img1 > 1] = 1
         img2[img2 > 1] = 1
         shape = np.min((img1.shape[0], img2.shape[0])), np.min((img1.shape[1], img2.shape[1]))
-        plt.figure(figsize=(15,10))
-        plt.imshow(np.concatenate((img1[:shape[0],:shape[1]], img2[:shape[0],:shape[1]]), axis=1).transpose(), cmap='gray')
+        plt.figure(figsize=(15, 10))
+        image = np.concatenate((img1[:shape[0], :shape[1]], img2[:shape[0], :shape[1]]), axis=1)
+        plt.imshow(image.transpose(), cmap='gray')
         plt.title(index[i] + '      ' + str(labels[i]) + '     ' + str(proba[i][1]))
         plt.show()
