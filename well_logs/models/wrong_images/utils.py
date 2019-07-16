@@ -112,3 +112,38 @@ def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=10):
         plt.imshow(image.transpose(), cmap='gray')
         plt.title(index[i] + '      ' + str(labels[i]) + '     ' + str(proba[i][1]))
         plt.show()
+
+def fix_annotation(ppl, df, threshold=0.5):
+    """ Fix annotation for images where model provides wrong predictions. """
+    df = df.copy()
+    stat = ppl.get_variable('stat')
+    dl_images = np.concatenate([_split(item[0]) for item in stat])
+    uv_images = np.concatenate([_split(item[1]) for item in stat])
+    proba = np.concatenate([item[2] for item in stat])
+    labels = np.concatenate([item[3] for item in stat])
+
+    indices = dict(
+        fn=[i for i in range(len(labels)) if (labels[i] == 1) & (proba[i][1] < threshold)],
+        fp=[i for i in range(len(labels)) if (labels[i] == 0) & (proba[i][1] > threshold)],
+        tn=[i for i in range(len(labels)) if (labels[i] == 0) & (proba[i][1] < threshold)],
+        tp=[i for i in range(len(labels)) if (labels[i] == 1) & (proba[i][1] > threshold)]
+    )
+
+    index = ppl.dataset.indices
+
+    for i in indices['fn'] + indices['fp']:
+        img1 = np.squeeze(dl_images[i])
+        img2 = np.squeeze(uv_images[i])
+        img1[img1 > 1] = 1
+        img2[img2 > 1] = 1
+        shape = np.min((img1.shape[0], img2.shape[0])), np.min((img1.shape[1], img2.shape[1]))
+        plt.figure(figsize=(15, 10))
+        image = np.concatenate((img1[:shape[0], :shape[1]], img2[:shape[0], :shape[1]]), axis=1)
+        plt.imshow(image.transpose(), cmap='gray')
+        plt.title(index[i] + '      ' + str(labels[i]) + '     ' + str(proba[i][1]))
+        plt.xticks(np.arange(0, image.shape[0], 100))
+        plt.grid(True, color='red', markevery='100')
+        plt.show()
+        df['QC'][index[i]] = int(input())
+
+    return df

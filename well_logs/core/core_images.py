@@ -7,6 +7,12 @@ import PIL
 
 from well_logs.batchflow import ImagesBatch, action, inbatch_parallel
 
+def _get_well_name(path):
+    well = path
+    for _ in range(2):
+        well = os.path.split(well)[-2]
+    return os.path.split(well)[-1]
+
 class CoreBatch(ImagesBatch):
     """ Batch class for bad core images detecting. Contains core images in daylight (DL)
     and ultraviolet light (UV) and labels for that pairs: 1 if the pair has defects
@@ -154,7 +160,7 @@ class CoreBatch(ImagesBatch):
         _ = kwargs
         res = []
         src = ('dl', 'uv')
-        well = index.split('_')[0]
+        well = _get_well_name(self._get_file_name(index, src=None))
         for component in src:
             pos = self.get_pos(None, component, index)
             image = np.array(getattr(self, component)[pos])
