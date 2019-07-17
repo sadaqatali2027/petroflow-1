@@ -84,7 +84,7 @@ class CoreBatch(ImagesBatch):
         filename = _path[1]
         dirname_uv = _path[0][:-2] + 'uv'
         full_path_uv = os.path.join(dirname_uv, filename)
-        label = 0 if df is None else df.loc[filename]['QC']
+        label = 0 if df is None else df.loc[index]['QC']
         res = (PIL.Image.open(full_path_dl), PIL.Image.open(full_path_uv))
         if grayscale:
             res = [item.convert('L') for item in res]
@@ -121,11 +121,11 @@ class CoreBatch(ImagesBatch):
         img1, img2, _ = self._get_components(index)
         img1 = np.array(img1)
         img2 = np.array(img2)
-
+        
         shape = (min(img1.shape[0], img2.shape[0]), min(img1.shape[1], img2.shape[1]))
 
         return PIL.Image.fromarray(img1[:shape[0], :shape[1]]), PIL.Image.fromarray(img2[:shape[0], :shape[1]])
-
+    
     @action
     @inbatch_parallel(init='indices', post='_assemble', dst=('dl', 'uv', 'labels'))
     def flip(self, index, proba=0.5, **kwargs):
