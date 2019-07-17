@@ -25,10 +25,10 @@ def plot_pair(path, name, length=1000):
     plt.imshow(uv_image / np.max(uv_image))
     plt.show()
 
-def read_annotation(path, filename='samples.feather'):
+def read_annotation(path, df_name='samples.feather'):
     """ Read annotation for all wells in path/glob. """
     annotation = []
-    for filename in glob.glob(os.path.join(path, filename)):
+    for filename in glob.glob(os.path.join(path, df_name)):
         _df = pd.read_feather(filename)
         _df['SAMPLE'] = os.path.split(os.path.split(filename)[0])[1] + '_' + _df['SAMPLE']
         annotation.append(_df)
@@ -113,7 +113,7 @@ def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None):
     )
 
     index = ppl.dataset.indices
-    
+
     n_images = len(indices[mode]) if n_images is None else n_images
     for i in indices[mode][:n_images]:
         img1 = np.squeeze(dl_images[i])
