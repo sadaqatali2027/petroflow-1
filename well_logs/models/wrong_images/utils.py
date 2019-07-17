@@ -5,6 +5,7 @@ import glob
 
 import PIL
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 
 def plot_pair(path, name, length=1000):
@@ -23,6 +24,18 @@ def plot_pair(path, name, length=1000):
     plt.title('uv')
     plt.imshow(uv_image / np.max(uv_image))
     plt.show()
+
+def read_annotation(path):
+    """ Read annotation for all wells in path/glob. """
+    df = []
+    for filename in glob.glob(path+'/new_samples.feather'):
+        _df = pd.read_feather(filename)
+        _df['SAMPLE'] = os.path.split(os.path.split(filename)[0])[1] + '_' + _df['SAMPLE']
+        df.append(_df)
+    df = pd.concat(df)
+    df['QC'] = 1 - df['QC']
+    df = df.set_index('SAMPLE')
+    return df
 
 def make_data(batch):
     """ Transform array of arrays into array. """

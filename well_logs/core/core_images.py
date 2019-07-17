@@ -5,13 +5,39 @@ import os
 import numpy as np
 import PIL
 
-from well_logs.batchflow import ImagesBatch, action, inbatch_parallel
+from well_logs.batchflow import FilesIndex, ImagesBatch, action, inbatch_parallel
 
 def _get_well_name(path):
     well = path
     for _ in range(2):
         well = os.path.split(well)[-2]
     return os.path.split(well)[-1]
+
+def _mirror_padding(image, shape):
+    new_shape = (np.array(shape) - image.size) * (np.array(shape) - image.size > 0)
+    padding_shape = ((new_shape[1], new_shape[1]), (new_shape[0], new_shape[0]), (0, 0))
+    image = np.array(image)
+    if image.ndim == 2:
+        padding_shape = padding_shape[:-1]
+    return PIL.Image.fromarray(np.pad(image, padding_shape, mode='reflect'))
+
+class CoreIndex(FilesIndex):
+    """ FilesIndex that include well name to indices. """
+    @staticmethod
+    def build_key(fullpathname, no_ext=False):
+        """ Create index item from full path name. """
+        folder_name = fullpathname
+        splitted_path = []
+        for _ in range(3):
+            folder_name, _key_name = os.path.split(folder_name)
+            splitted_path.append(_key_name)
+        key_name = splitted_path[2] + '_' + splitted_path[0]
+        if no_ext:
+            dot_position = key_name.rfind('.')
+            dot_position = dot_position if dot_position > 0 else len(key_name)
+            key_name = key_name[:dot_position]
+
+        return key_name, fullpathname
 
 class CoreBatch(ImagesBatch):
     """ Batch class for bad core images detecting. Contains core images in daylight (DL)
@@ -64,6 +90,42 @@ class CoreBatch(ImagesBatch):
             res = [item.convert('L') for item in res]
         return res[0], res[1], label
 
+    @action
+    @inbatch_parallel(init='indices', post='_assemble', dst=('dl', 'uv'))
+    def mirror_padding(self, index, shape, **kwargs):
+        """ Randomly flip UV images. Flipped images always will have label 1.
+
+        Parameters
+        ----------
+        shape : tuple
+            if image shape is less than size, image will be padded by reflections
+        dst : tuple of str
+            attributes to save resulting DL and UV images.
+        """
+        _ = kwargs
+        img1, img2, _ = self._get_components(index)
+
+        return _mirror_padding(img1, shape), _mirror_padding(img2, shape)
+
+    @action
+    @inbatch_parallel(init='indices', post='_assemble', dst=('dl', 'uv'))
+    def fix_shape(self, index, **kwargs):
+        """ Transform shapes of DL and UV to the same values.
+
+        Parameters
+        ----------
+        dst : tuple of str
+            attributes to save resulting DL and UV images.
+        """
+        _ = kwargs
+        img1, img2, _ = self._get_components(index)
+        img1 = np.array(img1)
+        img2 = np.array(img2)
+        
+        shape = (min(img1.shape[0], img2.shape[0]), min(img1.shape[1], img2.shape[1]))
+
+        return PIL.Image.fromarray(img1[:shape[0], :shape[1]]), PIL.Image.fromarray(img2[:shape[0], :shape[1]])
+    
     @action
     @inbatch_parallel(init='indices', post='_assemble', dst=('dl', 'uv', 'labels'))
     def flip(self, index, proba=0.5, **kwargs):
@@ -189,8 +251,8 @@ class CoreBatch(ImagesBatch):
         img1, img2, label = self._get_components(index)
         _x = min(img1.shape[1], img2.shape[1])
         _y = min(img1.shape[2], img2.shape[2])
-        x = np.random.randint(0, _x - shape[0])
-        y = np.random.randint(0, _y - shape[1])
+        x = np.random.randint(0, _x - shape[0] + 1)
+        y = np.random.randint(0, _y - shape[1] + 1)
         _slice = [slice(None)] * img1.ndim
         _slice[-2] = slice(x, x + shape[0])
         _slice[-1] = slice(y, y + shape[1])
