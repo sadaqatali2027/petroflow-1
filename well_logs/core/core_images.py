@@ -121,11 +121,11 @@ class CoreBatch(ImagesBatch):
         img1, img2, _ = self._get_components(index)
         img1 = np.array(img1)
         img2 = np.array(img2)
-        
+
         shape = (min(img1.shape[0], img2.shape[0]), min(img1.shape[1], img2.shape[1]))
 
         return PIL.Image.fromarray(img1[:shape[0], :shape[1]]), PIL.Image.fromarray(img2[:shape[0], :shape[1]])
-    
+
     @action
     @inbatch_parallel(init='indices', post='_assemble', dst=('dl', 'uv', 'labels'))
     def flip(self, index, proba=0.5, **kwargs):

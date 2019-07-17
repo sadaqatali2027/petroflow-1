@@ -27,15 +27,15 @@ def plot_pair(path, name, length=1000):
 
 def read_annotation(path):
     """ Read annotation for all wells in path/glob. """
-    df = []
+    annotation = []
     for filename in glob.glob(path+'/new_samples.feather'):
         _df = pd.read_feather(filename)
         _df['SAMPLE'] = os.path.split(os.path.split(filename)[0])[1] + '_' + _df['SAMPLE']
-        df.append(_df)
-    df = pd.concat(df)
-    df['QC'] = 1 - df['QC']
-    df = df.set_index('SAMPLE')
-    return df
+        annotation.append(_df)
+    annotation = pd.concat(annotation)
+    annotation['QC'] = 1 - annotation['QC']
+    annotation = annotation.set_index('SAMPLE')
+    return annotation
 
 def make_data(batch):
     """ Transform array of arrays into array. """
