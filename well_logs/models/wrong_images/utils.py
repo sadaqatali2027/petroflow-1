@@ -109,13 +109,18 @@ def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None):
         fn=[i for i in range(len(labels)) if (labels[i] == 1) & (proba[i][1] < threshold)],
         fp=[i for i in range(len(labels)) if (labels[i] == 0) & (proba[i][1] > threshold)],
         tn=[i for i in range(len(labels)) if (labels[i] == 0) & (proba[i][1] < threshold)],
-        tp=[i for i in range(len(labels)) if (labels[i] == 1) & (proba[i][1] > threshold)]
+        tp=[i for i in range(len(labels)) if (labels[i] == 1) & (proba[i][1] > threshold)],
+        all=np.arange(len(labels))
     )
 
     index = ppl.dataset.indices
 
     n_images = len(indices[mode]) if n_images is None else n_images
-    for i in indices[mode][:n_images]:
+    if not isinstance(mode, list):
+        mode = [mode]
+    _indices = [item for m in mode for item in indices[m]]
+
+    for i in _indices[:n_images]:
         img1 = np.squeeze(dl_images[i])
         img2 = np.squeeze(uv_images[i])
         img1[img1 > 1] = 1
