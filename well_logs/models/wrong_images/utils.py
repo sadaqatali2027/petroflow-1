@@ -144,6 +144,14 @@ def fix_annotation(ppl, annotation, threshold=0.5):
         plt.xticks(np.arange(0, image.shape[0], 100))
         plt.grid(True, color='red', markevery='100')
         plt.show()
-        new_annotation['QC'][index[i]] = int(input())
+
+        flag = True
+        while flag:
+            try:
+                new_annotation['QC'][index[i]] = int(input())
+            except ValueError:
+                print('Please enter the number')
+            else:
+                flag = False
 
     return new_annotation
