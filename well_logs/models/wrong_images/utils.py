@@ -61,6 +61,8 @@ def assemble(batch):
 def get_bounds(path, percentile=90):
     """ Get percentiles for values for each well. """
     well_stat = dict()
+    if not isinstance(percentile, list):
+        percentile = [percentile, percentile]
     for well_path in glob.glob(path):
         well_stat[well_path] = {'dl': [], 'uv': []}
         for image in glob.glob(os.path.join(well_path, 'samples_uv', '*')):
@@ -75,8 +77,8 @@ def get_bounds(path, percentile=90):
     bounds = dict()
     for well in well_stat:
         bounds[well.split('/')[-1]] = {
-            'dl': np.percentile(well_stat[well]['dl'], percentile),
-            'uv': np.percentile(well_stat[well]['uv'], percentile)
+            'dl': np.percentile(well_stat[well]['dl'], percentile[0]),
+            'uv': np.percentile(well_stat[well]['uv'], percentile[1])
         }
     return bounds
 

@@ -206,7 +206,7 @@ class CoreBatch(ImagesBatch):
 
     @action
     @inbatch_parallel(init='indices', post='_assemble', target="threads", dst=('dl', 'uv'))
-    def normalize(self, index, bounds, cut=False, **kwargs):
+    def normalize(self, index, bounds=None, cut=False, percentile=None, **kwargs):
         """ Normalize images.
 
         Parameters
@@ -223,12 +223,22 @@ class CoreBatch(ImagesBatch):
         res = []
         src = ('dl', 'uv')
         well = _get_well_name(self._get_file_name(index, src=None))
+        if not isinstance(percentile, list):
+            percentile = [percentile, percentile]
+        percentile = {
+            'dl': percentile[0],
+            'uv': percentile[1]
+        }
         for component in src:
             pos = self.get_pos(None, component, index)
             image = np.array(getattr(self, component)[pos])
+            if bounds is None:
+                _bounds = np.percentile(image.flatten(), percentile[component])
+            else:
+                _bounds = bounds[well][component]
             if cut:
-                image[image > bounds[well][component]] = bounds[well][component]
-            image = image / bounds[well][component]
+                image[image > _bounds] = _bounds
+            image = image / _bounds
             res.append(PIL.Image.fromarray(image))
         return tuple(res)
 
