@@ -33,36 +33,67 @@ class SegmentDelegatingMeta(ABCMeta):
 
 
 class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
-    def __init__(self, segments=None, *args, **kwargs):
+    def __init__(self, *args, segments=None, **kwargs):
         super().__init__()
         if segments is None:
             self.segments = [WellSegment(*args, **kwargs)]
         else:
             self.segments = segments
+        
+        self.tree_depth = 2 if self._has_segments() else self.segments[0].tree_depth + 1
+
+    def _has_segments(self):
+        return all([isinstance(item, WellSegment) for item in self.segments])
+
+    def iter_level(self, level=-1):
+        level = level if level >= 0 else self.tree_depth + level
+        if level > self.tree_depth:
+            raise ValueError("Level ({}) can't exceed depth ({})".format(level, self.tree_depth))
+        if level == 0:
+            return [self]
+        elif level == 1:
+            return self.segments
+        else:
+            return [item for well in self.segments for item in well.iter_level(level-1)]
 
     def copy(self):
         return copy(self)
 
     def split_segments(self, connected=False):
-        self.segments = [Well(segments=segment.split_segments(connected)) for segment in self.segments]
-        return self.segments
-    
+        segments = self.iter_level(-1)
+        self.segments = [Well(segments=segment.split_segments(connected)) for segment in segments]
+        self.tree_depth += 1
+
     @property
-    def depth(self):
-        return sum([segment.depth for segment in self.segments])
+    def length(self):
+        return sum([segment.length for segment in self.segments])
     
-#    def drop_segments(self, indices):
-#        self.segments = [segment for i, segment in self.segments if not i in indices]
-    
-    def random_crop(self, height, n_crops=1, divide_by=None):
-        p = np.array([item.depth for item in self.segments])
-        random_segments = Counter(np.random.choice(self.segments, n_crops, p=p/sum(p)))
-        self.segments = [Well(segments=segment.random_crop(height, n_crops)) for segment, n_crops in random_segments.items()]
-        return self.segments
+    # def drop_segments(self, indices):
+    #     self.segments = [segment for i, segment in self.segments if not i in indices]
+
+    def random_crop(self, height, n_crops=1):
+        wells = self.iter_level(-2)
+        p = np.array([item.length for item in wells])
+        random_wells = Counter(np.random.choice(wells, n_crops, p=p/sum(p)))
+        for well, n_well_crops in random_wells.items():
+            p = np.array([item.length for item in well.segments])
+            random_segments = Counter(np.random.choice(well.segments, n_well_crops, p=p/sum(p)))
+            well.segments = [
+                Well(segments=segment.random_crop(height, n_segment_crops))
+                for segment, n_segment_crops in random_segments.items()
+            ]
+
+        self.tree_depth += 1
 
     def crop(self, height, step, drop_last=True):
-        self.segments = [Well(segments=segment.crop(height, step, drop_last)) for segment in self.segments]
-        return self.segments
+        wells = self.iter_level(-2)
+        for well in wells:
+            well.segments = [
+                Well(segments=segment.crop(height, step, drop_last))
+                for segment in well.segments
+            ]
+        self.tree_depth += 1
+
 
     # def assemble_crops(self, crops, name):
     #     i = 0
@@ -75,6 +106,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     #     for i in range(len(self.segments)):
     #         self.segments[i] = [self.segments[i], func([getattr(subsegment, name) for subsegment in self.segments[i]])]
 
-    def dump(self, path):
-        self.aggregate().segments[0].dump(path)
-        return self
+    # def dump(self, path):
+    #     self.aggregate().segments[0].dump(path)
+    #     return self
