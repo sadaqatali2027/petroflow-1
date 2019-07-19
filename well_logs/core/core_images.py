@@ -233,12 +233,20 @@ class CoreBatch(ImagesBatch):
             pos = self.get_pos(None, component, index)
             image = np.array(getattr(self, component)[pos])
             if bounds is None:
-                _bounds = np.percentile(image.flatten(), percentile[component])
+                perc = percentile[component]
+                _bounds = 0
+                while (_bounds == 0 ) and (perc <= 100):
+                    _bounds = np.percentile(image.flatten(), perc)
+                    if perc <= 90:
+                        perc = 95
+                    else:
+                        perc += 1
             else:
                 _bounds = bounds[well][component]
             if cut:
                 image[image > _bounds] = _bounds
-            image = image / _bounds
+            if _bounds != 0:
+                image = image / _bounds
             res.append(PIL.Image.fromarray(image))
         return tuple(res)
 
