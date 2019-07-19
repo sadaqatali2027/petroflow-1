@@ -2,7 +2,7 @@ from collections import Counter
 
 import numpy as np
 
-from ..batchflow import FilesIndex, Batch, action, inbatch_parallel
+from ..batchflow import Dataset, FilesIndex, Batch, action, inbatch_parallel
 from .well import Well
 
 class WellBatch(Batch):
@@ -59,3 +59,9 @@ class WellBatch(Batch):
     def aggregate(self, index, name, func):
         pos = self.get_pos(None, "wells", index)
         self.wells[pos].aggregate(name, func)
+
+class WellDataset(Dataset):
+    def __init__(self, index=None, batch_class=WellBatch, preloaded=None, index_class=FilesIndex, *args, **kwargs):
+        if index is None:
+            index = index_class(*args, **kwargs)
+        super().__init__(index, batch_class, preloaded)
