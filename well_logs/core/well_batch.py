@@ -47,36 +47,5 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
             raise ValueError("Source path is not specified")
         
         well = Well(path, *args, **kwargs)
-        i = self.get_pos(None, "wells", index)
-        
+        i = self.get_pos(None, "wells", index)     
         self.wells[i] = well
-
-#     @action
-#     @inbatch_parallel(init="indices", target="threads")
-#     def create_segments(self, index, *args, **kwargs):
-#         i = self.get_pos(None, "wells", index)
-#         self.wells[i].create_segments(*args, **kwargs)
-
-#     @action
-#     @inbatch_parallel(init="indices", target="threads")
-#     def random_crop(self, index, *args, **kwargs):
-#         pos = self.get_pos(None, "wells", index)
-#         self.wells[pos].random_crop(*args, **kwargs)
-    
-#     @action
-#     @inbatch_parallel(init="indices", target="threads")
-#     def crop(self, index, *args, **kwargs):
-#         pos = self.get_pos(None, "wells", index)
-#         self.wells[pos].crop(*args, **kwargs)
-    
-#     @action
-#     @inbatch_parallel(init="indices", target="threads")
-#     def create_mask(self, index, *args, **kwargs):
-#         pos = self.get_pos(None, "wells", index)
-#         self.wells[pos].create_mask(*args, **kwargs)
-    
-#     @action
-#     @inbatch_parallel(init="indices", target="threads")
-#     def aggregate(self, index, name, func):
-#         pos = self.get_pos(None, "wells", index)
-#         self.wells[pos].aggregate(name, func)

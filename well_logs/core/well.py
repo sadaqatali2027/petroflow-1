@@ -78,9 +78,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     @property
     def depth_to(self):
         return self.segments[-1].depth_to
-    
-    # def drop_segments(self, indices):
-    #     self.segments = [segment for i, segment in self.segments if not i in indices]
 
     def random_crop(self, height, n_crops=1):
         wells = self.iter_level(-2)
