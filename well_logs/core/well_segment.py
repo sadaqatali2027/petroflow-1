@@ -569,7 +569,7 @@ class WellSegment(AbstractWell):
             gaps = df['DEPTH_FROM'][1:].values - df['DEPTH_TO'][:-1].values
 
             if any(gaps < 0):
-                raise ValueError('Row data intersects the previous one: ', list(df.index[1:][gaps < 0]))
+                raise ValueError('Well {}, row data intersects the previous one: {}'.format(self.name, list(df.index[1:][gaps < 0])))
 
             df['TOP'] = True
             df['TOP'][1:] = (gaps != 0)
