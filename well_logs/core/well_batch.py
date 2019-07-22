@@ -1,11 +1,35 @@
+from abc import ABCMeta
+from functools import wraps
 from collections import Counter
 
 import numpy as np
 
-from ..batchflow import Dataset, FilesIndex, Batch, action, inbatch_parallel
+from ..batchflow import FilesIndex, Batch, Dataset, action, inbatch_parallel
 from .well import Well
 
-class WellBatch(Batch):
+from .abstract_well import AbstractWell
+from .well_segment import WellSegment
+
+class WellDelegatingMeta(ABCMeta):
+    def __new__(mcls, name, bases, namespace):
+        abstract_methods = frozenset().union(*(
+            base.__abstractmethods__ for base in bases if hasattr(base, '__abstractmethods__')
+        ))
+        for name in abstract_methods:
+            if name not in namespace:
+                namespace[name] = mcls._make_parallel_action(name)
+        return super().__new__(mcls, name, bases, namespace)
+
+    @staticmethod
+    def _make_parallel_action(name):
+        @wraps(getattr(Well, name))
+        def batch_delegator(self, index, *args, **kwargs):
+            pos = self.get_pos(None, "wells", index)
+            res = (getattr(Well, name))(self.wells[pos], *args, **kwargs)
+            return res
+        return action()(inbatch_parallel(init="indices", target="threads")(batch_delegator))
+
+class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
     components = "wells",
 
     def __init__(self, index, preloaded=None, **kwargs):
@@ -27,41 +51,32 @@ class WellBatch(Batch):
         
         self.wells[i] = well
 
-    @action
-    @inbatch_parallel(init="indices", target="threads")
-    def split_segments(self, index, *args, **kwargs):
-        i = self.get_pos(None, "wells", index)
-        self.wells[i].split_segments(*args, **kwargs)
+#     @action
+#     @inbatch_parallel(init="indices", target="threads")
+#     def create_segments(self, index, *args, **kwargs):
+#         i = self.get_pos(None, "wells", index)
+#         self.wells[i].create_segments(*args, **kwargs)
 
-    @action
-    @inbatch_parallel(init="indices", target="threads")
-    def random_crop(self, index, n_crops, height, divide_by=None, *args, **kwargs):
-        pos = self.get_pos(None, "wells", index)
-        self.wells[pos].random_crop(height, n_crops, divide_by)
+#     @action
+#     @inbatch_parallel(init="indices", target="threads")
+#     def random_crop(self, index, *args, **kwargs):
+#         pos = self.get_pos(None, "wells", index)
+#         self.wells[pos].random_crop(*args, **kwargs)
     
-    @action
-    @inbatch_parallel(init="indices", target="threads")
-    def crop(self, index, height, step, *args, **kwargs):
-        pos = self.get_pos(None, "wells", index)
-        self.wells[pos].crop(height, step)
+#     @action
+#     @inbatch_parallel(init="indices", target="threads")
+#     def crop(self, index, *args, **kwargs):
+#         pos = self.get_pos(None, "wells", index)
+#         self.wells[pos].crop(*args, **kwargs)
     
-    @action
-    def assemble_crops(self, crops, name):
-        pos = 0
-        res = []
-        for well in self.wells:
-            length = sum([len(segment) for segment in well.segments])
-            well.assemble_crops(crops[pos:pos+length], name)
-        return self
+#     @action
+#     @inbatch_parallel(init="indices", target="threads")
+#     def create_mask(self, index, *args, **kwargs):
+#         pos = self.get_pos(None, "wells", index)
+#         self.wells[pos].create_mask(*args, **kwargs)
     
-    @action
-    @inbatch_parallel(init="indices", target="threads")
-    def aggregate(self, index, name, func):
-        pos = self.get_pos(None, "wells", index)
-        self.wells[pos].aggregate(name, func)
-
-class WellDataset(Dataset):
-    def __init__(self, index=None, batch_class=WellBatch, preloaded=None, index_class=FilesIndex, *args, **kwargs):
-        if index is None:
-            index = index_class(*args, **kwargs)
-        super().__init__(index, batch_class, preloaded)
+#     @action
+#     @inbatch_parallel(init="indices", target="threads")
+#     def aggregate(self, index, name, func):
+#         pos = self.get_pos(None, "wells", index)
+#         self.wells[pos].aggregate(name, func)
