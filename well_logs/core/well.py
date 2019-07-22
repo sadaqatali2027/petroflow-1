@@ -59,14 +59,25 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     def copy(self):
         return copy(self)
 
-    def split_segments(self, connected=False):
-        segments = self.iter_level(-1)
-        self.segments = [Well(segments=segment.split_segments(connected)) for segment in segments]
+    def create_segments(self, src, connected=True):
+        wells = self.iter_level(-2)
+        for well in wells:
+            well.segments = [
+                Well(segments=segment.create_segments(src, connected)) for segment in well.segments
+            ]
         self.tree_depth += 1
 
     @property
     def length(self):
         return sum([segment.length for segment in self.segments])
+    
+    @property
+    def depth_from(self):
+        return self.segments[0].depth_from
+    
+    @property
+    def depth_to(self):
+        return self.segments[-1].depth_to
     
     # def drop_segments(self, indices):
     #     self.segments = [segment for i, segment in self.segments if not i in indices]

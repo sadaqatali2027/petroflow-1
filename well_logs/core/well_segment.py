@@ -546,35 +546,46 @@ class WellSegment(AbstractWell):
             res_segments.append(self[depth_from:depth_to])
         return res_segments
 
-    def _core_chunks(self):
-        samples = self.samples.copy()
-        gaps = samples['DEPTH_FROM'][1:].values - samples['DEPTH_TO'][:-1].values
+    def create_segments(self, src, connected=True):
+        if src in self.attrs_fdtd_index:
+            return self._create_segments_by_fdtd(src, connected)
+        else:
+            # TODO: create_segments from depth_index
+            pass
 
-        if any(gaps < 0):
-            raise ValueError('Core intersects the previous one: ', list(samples.index[1:][gaps < 0]))
-
-        samples['TOP'] = True
-        samples['TOP'][1:] = (gaps != 0)
-
-        samples['BOTTOM'] = True
-        samples['BOTTOM'][:-1] = (gaps != 0)
-
-        chunks = pd.DataFrame({
-            'TOP': samples[samples.TOP].DEPTH_FROM.values,
-            'BOTTOM': samples[samples.BOTTOM].DEPTH_TO.values
-        })
-
-        return chunks
-
-    def split_segments(self, connected=True):
+    def _create_segments_by_fdtd(self, src, connected):
         segments = []
         if connected:
-            df = self._core_chunks()
+            df = self._core_chunks(src)
         else:
-            df = self.samples.reset_index()[['DEPTH_FROM', 'DEPTH_TO']]
+            df = getattr(self, src).reset_index()[['DEPTH_FROM', 'DEPTH_TO']]
         for _, (top, bottom) in df.iterrows():
             segments.append(self[top:bottom])
-        return segments
+        return segments        
+
+    def _core_chunks(self, src):
+        if src in self.attrs_fdtd_index:
+            df = getattr(self, src).copy().reset_index()
+            gaps = df['DEPTH_FROM'][1:].values - df['DEPTH_TO'][:-1].values
+
+            if any(gaps < 0):
+                raise ValueError('Row data intersects the previous one: ', list(df.index[1:][gaps < 0]))
+
+            df['TOP'] = True
+            df['TOP'][1:] = (gaps != 0)
+
+            df['BOTTOM'] = True
+            df['BOTTOM'][:-1] = (gaps != 0)
+
+            chunks = pd.DataFrame({
+                'DEPTH_FROM': df[df.TOP].DEPTH_FROM.values,
+                'DEPTH_TO': df[df.BOTTOM].DEPTH_TO.values
+            })[['DEPTH_FROM', 'DEPTH_TO']]
+        else:
+           # TODO: _core_chunks from depth_index
+           pass
+
+        return chunks
 
     def random_crop(self, height, n_crops=1):
         positions = np.random.uniform(self.depth_from, self.depth_to-height, size=n_crops)
@@ -592,7 +603,7 @@ class WellSegment(AbstractWell):
         if src in self.attrs_fdtd_index:
             self._create_mask_fdtf(src, column, labels, mode, default, dst)
         else:
-            # TODO: create mask from depth_index
+            # TODO: create_mask from depth_index
             pass
 
     def _create_mask_fdtf(self, src, column, labels, mode, default=-1, dst='mask'):
@@ -611,7 +622,6 @@ class WellSegment(AbstractWell):
             end = np.ceil((min(depth_to, self.depth_to) - self.depth_from) * factor)
             mask[int(start):int(end)] = labels[row[1][column]]
         setattr(self, dst, mask)
-        
 
     def drop_layers(self):
         pass
