@@ -8,21 +8,28 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def plot_pair(path, name, length=1000):
+def plot_pair(path, name, threshold=0.5, length=1000):
     """ Plot DL and UV images. """
     dl_image = PIL.Image.open(os.path.join(path, 'samples_dl', name))
     dl_image = np.array(dl_image)[:length]
 
-    uv_image = PIL.Image.open(os.path.join(path, 'samples_uv', name))
+    uv_image = PIL.Image.open(os.path.join(path, 'samples_uv', name)).convert('L')
     uv_image = np.array(uv_image)[:length]
 
     plt.figure(figsize=(5, 15))
     plt.subplot(1, 2, 1)
     plt.title('dl')
     plt.imshow(dl_image)
+    plt.xticks([])
+    plt.yticks([])
     plt.subplot(1, 2, 2)
     plt.title('uv')
-    plt.imshow(uv_image / np.max(uv_image))
+    uv_image = uv_image / np.max(uv_image)
+    uv_image[uv_image > threshold] = threshold
+    uv_image = uv_image / threshold
+    plt.imshow(uv_image, cmap='gray')
+    plt.xticks([])
+    plt.yticks([])
     plt.show()
 
 def read_annotation(path, df_name='samples.feather'):
