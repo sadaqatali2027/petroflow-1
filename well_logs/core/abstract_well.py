@@ -43,7 +43,15 @@ class AbstractWell(metaclass=ABCMeta):
     
     @abstractmethod
     def random_crop(self):
-        pass   
+        pass  
+
+    @abstractmethod
+    def crop(self):
+        pass  
+
+    @abstractmethod
+    def create_mask(self):
+        pass
 
     @abstractmethod
     def drop_layers(self):

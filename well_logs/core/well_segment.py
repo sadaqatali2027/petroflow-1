@@ -229,7 +229,7 @@ class WellSegment(AbstractWell):
         core_dl = np.full((height, width, 3), np.nan, dtype=np.float32)
         core_uv = np.full((height, width, 3), np.nan, dtype=np.float32)
 
-        for (sample_depth_from, sample_depth_to), sample_name in self._samples["SAMPLE"].iteritems():
+        for (sample_depth_from, sample_depth_to), sample_name in self.samples["SAMPLE"].iteritems():
             sample_height = self._meters_to_pixels(sample_depth_to - sample_depth_from)
             sample_name = str(sample_name)
 
@@ -587,6 +587,31 @@ class WellSegment(AbstractWell):
         else:
             height = min(height, self.depth_to-positions[-1])
         return [self[pos:pos+height] for pos in positions]
+
+    def create_mask(self, src, column, labels, mode, default=-1, dst='mask'):
+        if src in self.attrs_fdtd_index:
+            self._create_mask_fdtf(src, column, labels, mode, default, dst)
+        else:
+            # TODO: create mask from depth_index
+            pass
+
+    def _create_mask_fdtf(self, src, column, labels, mode, default=-1, dst='mask'):
+        if mode == 'core':
+            mask = np.ones(len(self.core_dl)) * default
+        elif mode == 'logs':
+            mask = np.ones(len(self.logs)) * default
+        else:
+            raise ValueError('Unknown mode: ', mode)
+
+        table = getattr(self, src)
+        for row in table.iterrows():
+            factor = len(mask) / self.length if mode == 'core' else len(mask)
+            depth_from, depth_to = row[1].name
+            start = np.floor((max(depth_from, self.depth_from) - self.depth_from) * factor)
+            end = np.ceil((min(depth_to, self.depth_to) - self.depth_from) * factor)
+            mask[int(start):int(end)] = labels[row[1][column]]
+        setattr(self, dst, mask)
+        
 
     def drop_layers(self):
         pass
