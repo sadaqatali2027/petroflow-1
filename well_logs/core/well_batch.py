@@ -25,7 +25,8 @@ class WellDelegatingMeta(ABCMeta):
         @wraps(getattr(Well, name))
         def batch_delegator(self, index, *args, **kwargs):
             pos = self.get_pos(None, "wells", index)
-            res = (getattr(Well, name))(self.wells[pos], *args, **kwargs)
+            func = getattr(Well, name)
+            res = func(self.wells[pos], *args, **kwargs)
             return res
         return action()(inbatch_parallel(init="indices", target="threads")(batch_delegator))
 

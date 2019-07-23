@@ -21,6 +21,8 @@ from .abstract_well import AbstractWell
 from .matching import select_contigious_intervals, match_segment
 from .joins import cross_join, between_join
 
+from functools import wraps
+
 def _min(x, y):
     if x is None:
         return y
@@ -545,46 +547,31 @@ class WellSegment(AbstractWell):
         for _, (depth_from, depth_to) in intervals.iterrows():
             res_segments.append(self[depth_from:depth_to])
         return res_segments
-
+    
     def create_segments(self, src, connected=True):
         if src in self.attrs_fdtd_index:
-            return self._create_segments_by_fdtd(src, connected)
+            res = self._create_segments_by_fdtd(src, connected)
         else:
             # TODO: create_segments from depth_index
             pass
+        return res
 
     def _create_segments_by_fdtd(self, src, connected):
-        segments = []
         if connected:
             df = self._core_chunks(src)
         else:
-            df = getattr(self, src).reset_index()[['DEPTH_FROM', 'DEPTH_TO']]
-        for _, (top, bottom) in df.iterrows():
-            segments.append(self[top:bottom])
+            df = getattr(self, src).reset_index()
+        segments = [self[top:bottom] for _, (top, bottom) in df[['DEPTH_FROM', 'DEPTH_TO']].iterrows()]
         return segments        
 
     def _core_chunks(self, src):
         if src in self.attrs_fdtd_index:
-            df = getattr(self, src).copy().reset_index()
-            gaps = df['DEPTH_FROM'][1:].values - df['DEPTH_TO'][:-1].values
-
-            if any(gaps < 0):
-                raise ValueError('Well {}, row data intersects the previous one: {}'.format(self.name, list(df.index[1:][gaps < 0])))
-
-            df['TOP'] = True
-            df['TOP'][1:] = (gaps != 0)
-
-            df['BOTTOM'] = True
-            df['BOTTOM'][:-1] = (gaps != 0)
-
-            chunks = pd.DataFrame({
-                'DEPTH_FROM': df[df.TOP].DEPTH_FROM.values,
-                'DEPTH_TO': df[df.BOTTOM].DEPTH_TO.values
-            })[['DEPTH_FROM', 'DEPTH_TO']]
+            df = getattr(self, src).reset_index()
+            chunks = [(item.DEPTH_FROM.min(), item.DEPTH_TO.max()) for item in select_contigious_intervals(df)]
+            chunks = pd.DataFrame(chunks, columns=["DEPTH_FROM", "DEPTH_TO"])
         else:
            # TODO: _core_chunks from depth_index
            pass
-
         return chunks
 
     def random_crop(self, height, n_crops=1):
