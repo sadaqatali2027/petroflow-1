@@ -567,12 +567,15 @@ class WellSegment(AbstractWell):
     def _core_chunks(self, src):
         if src in self.attrs_fdtd_index:
             df = getattr(self, src).reset_index()
-            chunks = [(item.DEPTH_FROM.min(), item.DEPTH_TO.max()) for item in select_contigious_intervals(df)]
-            chunks = pd.DataFrame(chunks, columns=["DEPTH_FROM", "DEPTH_TO"])
+            if len(df) > 0:
+                chunks = [(item.DEPTH_FROM.min(), item.DEPTH_TO.max()) for item in select_contigious_intervals(df)]
+                chunks = pd.DataFrame(chunks, columns=["DEPTH_FROM", "DEPTH_TO"])
+                return chunks
+            else:
+                return pd.DataFrame(columns=["DEPTH_FROM", "DEPTH_TO"])
         else:
            # TODO: _core_chunks from depth_index
            pass
-        return chunks
 
     def random_crop(self, height, n_crops=1):
         positions = np.random.uniform(self.depth_from, self.depth_to-height, size=n_crops)
