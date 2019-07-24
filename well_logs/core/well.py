@@ -65,7 +65,12 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [
                 Well(segments=segment.create_segments(src, connected)) for segment in well.segments
             ]
-        self.tree_depth += 1
+        self._inc_depth()
+    
+    def _inc_depth(self):
+        for level in range(self.tree_depth-1):
+            for well in self.iter_level(level):
+                well.tree_depth += 1
 
     @property
     def length(self):
@@ -78,6 +83,12 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     @property
     def depth_to(self):
         return self.segments[-1].depth_to
+    
+    @property
+    def n_segments(self):
+        well_children = [well for well in self.segments if isinstance(well, Well)]
+        segment_children = [segment for segment in self.segments if isinstance(segment, WellSegment)]
+        return sum([well.n_segments for well in well_children]) + len(segment_children)
 
     def random_crop(self, height, n_crops=1):
         wells = self.iter_level(-2)
@@ -95,12 +106,14 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     ]
                 else:    
                     well.segments = []
-            self.tree_depth += 1
+            self._inc_depth()
+        self.prunning()
     
-    def n_segments(self):
-        well_children = [well for well in self.segments if isinstance(well, Well)]
-        segment_children = [segment for segment in self.segments if isinstance(segment, WellSegment)]
-        return sum([well.n_segments() for well in well_children]) + len(segment_children)
+    def prunning(self):
+        self.segments = [well for well in self.segments if isinstance(well, WellSegment) or well.n_segments > 0]
+        for well in self.segments:
+            if isinstance(well, Well):
+                well.prunning()
 
     def crop(self, height, step, drop_last=True):
         wells = self.iter_level(-2)
@@ -109,7 +122,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 Well(segments=segment.crop(height, step, drop_last))
                 for segment in well.segments
             ]
-        self.tree_depth += 1
+        self._inc_depth()
 
 
     # def assemble_crops(self, crops, name):
