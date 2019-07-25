@@ -50,3 +50,16 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
         well = Well(path, *args, **kwargs)
         i = self.get_pos(None, "wells", index)     
         self.wells[i] = well
+
+    @action
+    def get_crops(self, src, dst):
+        if not isinstance(src, (tuple, list)):
+            src = [src]
+        if not isinstance(dst, (tuple, list)):
+            dst = [dst]
+        for attr_from, attr_to in zip(src, dst):
+            crops = [getattr(segment, attr_from) for well in self.wells for segment in well.iter_level()]
+            setattr(self, attr_to, crops)
+        return self
+        
+        

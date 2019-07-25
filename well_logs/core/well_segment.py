@@ -5,6 +5,7 @@ import shutil
 from copy import copy
 from glob import glob
 from itertools import chain, repeat
+from functools import reduce
 
 import numpy as np
 import pandas as pd
@@ -19,7 +20,7 @@ from plotly.offline import init_notebook_mode, plot
 
 from .abstract_well import AbstractWell
 from .matching import select_contigious_intervals, match_segment
-from .joins import cross_join, between_join
+from .joins import cross_join, between_join, fdtd_join
 
 from functools import wraps
 
@@ -549,7 +550,9 @@ class WellSegment(AbstractWell):
         return res_segments
     
     def create_segments(self, src, connected=True):
-        if src in self.attrs_fdtd_index:
+        if not isinstance(src, list):
+            src = [src]
+        if all([item in self.attrs_fdtd_index for item in src]):
             res = self._create_segments_by_fdtd(src, connected)
         else:
             # TODO: create_segments from depth_index
@@ -557,25 +560,20 @@ class WellSegment(AbstractWell):
         return res
 
     def _create_segments_by_fdtd(self, src, connected):
+        tables = [getattr(self, item).reset_index() for item in src]
+        df = tables[0] if len(tables) == 1 else reduce(fdtd_join, tables)
         if connected:
-            df = self._core_chunks(src)
-        else:
-            df = getattr(self, src).reset_index()
+            df = self._core_chunks(df)
         segments = [self[top:bottom] for _, (top, bottom) in df[['DEPTH_FROM', 'DEPTH_TO']].iterrows()]
         return segments        
 
-    def _core_chunks(self, src):
-        if src in self.attrs_fdtd_index:
-            df = getattr(self, src).reset_index()
-            if len(df) > 0:
-                chunks = [(item.DEPTH_FROM.min(), item.DEPTH_TO.max()) for item in select_contigious_intervals(df)]
-                chunks = pd.DataFrame(chunks, columns=["DEPTH_FROM", "DEPTH_TO"])
-                return chunks
-            else:
-                return pd.DataFrame(columns=["DEPTH_FROM", "DEPTH_TO"])
+    def _core_chunks(self, df):
+        if len(df) > 0:
+            chunks = [(item.DEPTH_FROM.min(), item.DEPTH_TO.max()) for item in select_contigious_intervals(df)]
+            chunks = pd.DataFrame(chunks, columns=["DEPTH_FROM", "DEPTH_TO"])
+            return chunks
         else:
-           # TODO: _core_chunks from depth_index
-           pass
+            return pd.DataFrame(columns=["DEPTH_FROM", "DEPTH_TO"])
 
     def random_crop(self, height, n_crops=1):
         positions = np.random.uniform(self.depth_from, self.depth_to-height, size=n_crops)
