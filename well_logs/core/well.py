@@ -59,31 +59,61 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     def copy(self):
         return copy(self)
 
-    def split_segments(self, connected=False):
-        segments = self.iter_level(-1)
-        self.segments = [Well(segments=segment.split_segments(connected)) for segment in segments]
-        self.tree_depth += 1
+    def create_segments(self, src, connected=True):
+        wells = self.iter_level(-2)
+        for well in wells:
+            well.segments = [
+                Well(segments=segment.create_segments(src, connected)) for segment in well.segments
+            ]
+        self._inc_depth()
+    
+    def _inc_depth(self):
+        for level in range(self.tree_depth-1):
+            for well in self.iter_level(level):
+                well.tree_depth += 1
 
     @property
     def length(self):
         return sum([segment.length for segment in self.segments])
     
-    # def drop_segments(self, indices):
-    #     self.segments = [segment for i, segment in self.segments if not i in indices]
+    @property
+    def depth_from(self):
+        return self.segments[0].depth_from
+    
+    @property
+    def depth_to(self):
+        return self.segments[-1].depth_to
+    
+    @property
+    def n_segments(self):
+        well_children = [well for well in self.segments if isinstance(well, Well)]
+        segment_children = [segment for segment in self.segments if isinstance(segment, WellSegment)]
+        return sum([well.n_segments for well in well_children]) + len(segment_children)
 
     def random_crop(self, height, n_crops=1):
         wells = self.iter_level(-2)
         p = np.array([item.length for item in wells])
-        random_wells = Counter(np.random.choice(wells, n_crops, p=p/sum(p)))
-        for well, n_well_crops in random_wells.items():
-            p = np.array([item.length for item in well.segments])
-            random_segments = Counter(np.random.choice(well.segments, n_well_crops, p=p/sum(p)))
-            well.segments = [
-                Well(segments=segment.random_crop(height, n_segment_crops))
-                for segment, n_segment_crops in random_segments.items()
-            ]
-
-        self.tree_depth += 1
+        if len(wells) > 0:
+            random_wells = Counter(np.random.choice(wells, n_crops, p=p/sum(p)))
+            for well in wells:
+                if well in random_wells:
+                    n_well_crops = random_wells[well]
+                    p = np.array([item.length for item in well.segments])
+                    random_segments = Counter(np.random.choice(well.segments, n_well_crops, p=p/sum(p)))
+                    well.segments = [
+                        Well(segments=segment.random_crop(height, n_segment_crops))
+                        for segment, n_segment_crops in random_segments.items()
+                    ]
+                else:    
+                    well.segments = []
+            self._inc_depth()
+        self.prunning()
+    
+    def prunning(self):
+        self.segments = [well for well in self.segments if isinstance(well, WellSegment) or well.n_segments > 0]
+        for well in self.segments:
+            if isinstance(well, Well):
+                well.prunning()
 
     def crop(self, height, step, drop_last=True):
         wells = self.iter_level(-2)
@@ -92,7 +122,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 Well(segments=segment.crop(height, step, drop_last))
                 for segment in well.segments
             ]
-        self.tree_depth += 1
+        self._inc_depth()
 
 
     # def assemble_crops(self, crops, name):

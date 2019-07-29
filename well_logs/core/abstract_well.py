@@ -38,7 +38,7 @@ class AbstractWell(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def split_segments(self):
+    def create_segments(self):
         pass
     
     @abstractmethod
