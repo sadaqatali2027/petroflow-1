@@ -56,15 +56,19 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
     core_logs = []
 
     segment = segment[["DEPTH_FROM", "DEPTH_TO", "CORE_RECOVERY"]]
-    for _, (segment_depth_from, segment_depth_to, recovery) in segment.iterrows():
-        mask = ((lithology_intervals["DEPTH_FROM"] >= segment_depth_from) &
-                (lithology_intervals["DEPTH_TO"] <= segment_depth_to))
+    segment_depth_from = segment["DEPTH_FROM"].min()
+    segment_depth_to = segment["DEPTH_TO"].max()
+    core_len = len(core_log[segment_depth_from:segment_depth_to])
+
+    for _, (bi_depth_from, bi_depth_to, recovery) in segment.iterrows():
+        mask = ((lithology_intervals["DEPTH_FROM"] >= bi_depth_from) &
+                (lithology_intervals["DEPTH_TO"] <= bi_depth_to))
         segment_lithology_intervals = lithology_intervals[mask]
         bi_n_lith_ints.append(len(segment_lithology_intervals))
-        bi_gap_lengths.append(max(0, segment_depth_to - segment_depth_from - recovery))
+        bi_gap_lengths.append(max(0, bi_depth_to - bi_depth_from - recovery))
 
-        for _, (depth_from, depth_to) in segment_lithology_intervals.iterrows():
-            log_slice = core_log[depth_from:depth_to]
+        for _, (li_depth_from, li_depth_to) in segment_lithology_intervals.iterrows():
+            log_slice = core_log[li_depth_from:li_depth_to]
             core_depths.append(log_slice.index.values)
             core_logs.append(log_slice.values)
 
@@ -84,19 +88,27 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
             return x[i + 1]
         constraints.append({"type": "ineq", "fun": con_non_negative_gap})
 
-    max_shift_up = min(max_shift, max(0, segment["DEPTH_FROM"].min() - well_depth_from))
+    max_shift_up = min(max_shift, max(0, segment_depth_from - well_depth_from))
     def con_max_shift_up(x):
         return x[0] + max_shift_up
     constraints.append({"type": "ineq", "fun": con_max_shift_up})
 
-    max_shift_down = min(max_shift, max(0, well_depth_to - segment["DEPTH_TO"].max()))
+    max_shift_down = min(max_shift, max(0, well_depth_to - segment_depth_to))
     def con_max_shift_down(x):
         return max_shift_down - x[0]
     constraints.append({"type": "ineq", "fun": con_max_shift_down})
 
     # Optimization
-    Shift = namedtuple("Shift", ["depth_from", "depth_to", "segment_delta", "interval_deltas", "r2"])
-    shifts = []
+    Shift = namedtuple("Shift", ["depth_from", "depth_to", "segment_delta", "interval_deltas", "loss"])
+
+    zero_deltas = np.zeros(np.sum(bi_n_lith_ints) + 1)
+    zero_shift_loss = loss(zero_deltas, bi_n_lith_ints, core_depths, log_interpolator, core_logs)
+    zero_shift = Shift(segment_depth_from, segment_depth_to, 0, zero_deltas[1:], zero_shift_loss)
+    shifts = [zero_shift]
+
+    if core_len <= 1 or core_len < segment["CORE_RECOVERY"].sum():
+        return shifts
+
     futures = []
     init_deltas = generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, delta_from, delta_to, delta_step)
     with mp.Pool() as pool:
@@ -121,10 +133,10 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
 
             segment_delta = trunc(future_deltas[0], 2)
             interval_deltas = np.clip(trunc(future_deltas[1:], 2), 0, None)
-            interval_deltas = np.concatenate([np.cumsum(d) for d in np.split(interval_deltas, np.cumsum(bi_n_lith_ints)[:-1])])
-            interval_deltas += segment_delta
+            interval_deltas = [np.cumsum(d) for d in np.split(interval_deltas, np.cumsum(bi_n_lith_ints)[:-1])]
+            interval_deltas = np.concatenate(interval_deltas) + segment_delta
 
-            shift = Shift(segment["DEPTH_FROM"].min() + segment_delta, segment["DEPTH_TO"].max() + segment_delta,
-                          segment_delta, interval_deltas, future_loss**2)
+            shift = Shift(segment_depth_from + segment_delta, segment_depth_to + segment_delta,
+                          segment_delta, interval_deltas, future_loss)
             shifts.append(shift)
     return shifts

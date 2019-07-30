@@ -11,8 +11,6 @@ import pandas as pd
 import lasio
 import PIL
 from scipy.interpolate import interp1d
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score
 from plotly import tools
 from plotly import graph_objs as go
 from plotly.offline import init_notebook_mode, plot
@@ -74,7 +72,7 @@ class WellSegment(AbstractWell):
         self.depth_from = meta["depth_from"]
         self.depth_to = meta["depth_to"]
 
-        self.has_samples = (len(glob(os.path.join(self.path, "samples.*"))) == 1)
+        self.has_samples = self._has_file("samples")
 
         self._logs = None
         self._inclination = None
@@ -91,21 +89,21 @@ class WellSegment(AbstractWell):
     @property
     def matching_intervals(self):
         if self._matching_intervals is None:
-            if len(glob(os.path.join(self.path, "matching_intervals.*"))) == 1:
+            if self._has_file("matching_intervals"):
                 self.load_matching_intervals()
             else:
                 self._calc_matching_intervals()
         return self._matching_intervals
 
-    def _calc_matching_intervals(self, mnemonic=None):
+    def _calc_matching_intervals(self, log_mnemonic=None, core_mnemonic=None, core_attr=None):
         data = []
         for segment in select_contigious_intervals(self.boring_intervals.reset_index()):
             data.append([segment["DEPTH_FROM"].min(), segment["DEPTH_TO"].max()])
         self._matching_intervals = pd.DataFrame(data, columns=["DEPTH_FROM", "DEPTH_TO"])
 
-        if mnemonic is not None:
-            well_log = self.logs[mnemonic]
-            core_log = self.core_logs[mnemonic]
+        if log_mnemonic is not None:
+            well_log = self.logs[log_mnemonic].dropna()
+            core_log = getattr(self, core_attr)[core_mnemonic].dropna()
             r2_list = []
             for _, (depth_from, depth_to) in self._matching_intervals.iterrows():
                 r2_list.append(self._calc_matching_r2(well_log, core_log[depth_from:depth_to]))
@@ -151,6 +149,12 @@ class WellSegment(AbstractWell):
         df = self._load_df(path, *args, **kwargs).set_index(["DEPTH_FROM", "DEPTH_TO"])
         df = self._filter_fdtd_df(df)
         return df
+
+    def _has_file(self, name):
+        files = glob(os.path.join(self.path, name + ".*"))
+        if len(files) == 1:
+            return True
+        return False
 
     @classmethod
     def _get_full_name(cls, path, name):
@@ -370,10 +374,10 @@ class WellSegment(AbstractWell):
     def _calc_matching_r2(well_log, core_log):
         well_log = well_log.dropna()
         interpolator = interp1d(well_log.index, well_log, kind="linear", fill_value="extrapolate")
-        well_log = interpolator(core_log.index).reshape(-1, 1)
+        well_log = interpolator(core_log.index)
         return np.corrcoef(core_log, well_log)[0, 1]**2
 
-    def _apply_matching(self, mnemonic):
+    def _apply_matching(self, log_mnemonic, core_mnemonic, core_attr):
         core_lithology_deltas = self._core_lithology_deltas.reset_index()
 
         # Update DataFrames with depth index
@@ -395,46 +399,57 @@ class WellSegment(AbstractWell):
                                   on=["DEPTH_FROM", "DEPTH_TO"])
         core_lithology["DEPTH_FROM"] += core_lithology["DELTA"]
         core_lithology["DEPTH_TO"] += core_lithology["DELTA"]
-        self._core_lithology = core_lithology.drop("DELTA", axis=1).set_index(["DEPTH_FROM", "DEPTH_TO"]).sort_index()
+        core_lithology = core_lithology.drop("DELTA", axis=1)
+        self._core_lithology = core_lithology.set_index(["DEPTH_FROM", "DEPTH_TO"]).sort_index()
 
         boring_intervals = pd.merge(self._boring_intervals.reset_index(),
                                     self._boring_intervals_deltas[["DEPTH_FROM", "DEPTH_TO", "DELTA"]],
                                     on=["DEPTH_FROM", "DEPTH_TO"])
         boring_intervals["DEPTH_FROM"] += boring_intervals["DELTA"]
         boring_intervals["DEPTH_TO"] += boring_intervals["DELTA"]
-        self._boring_intervals = boring_intervals.drop("DELTA", axis=1).set_index(["DEPTH_FROM", "DEPTH_TO"]).sort_index()
+        boring_intervals = boring_intervals.drop("DELTA", axis=1)
+        self._boring_intervals = boring_intervals.set_index(["DEPTH_FROM", "DEPTH_TO"]).sort_index()
 
-        self._calc_matching_intervals(mnemonic=mnemonic)
+        self._calc_matching_intervals(log_mnemonic=log_mnemonic, core_mnemonic=core_mnemonic, core_attr=core_attr)
 
-    def _save_matching_report(self, mnemonic):
+    def _save_matching_report(self, core_mnemonic, core_attr):
         boring_intervals = self._boring_intervals_deltas.reset_index()
         boring_intervals["DEPTH_FROM_DELTA"] = boring_intervals["DEPTH_FROM"] + boring_intervals["DELTA"]
         boring_intervals["DEPTH_TO_DELTA"] = boring_intervals["DEPTH_TO"] + boring_intervals["DELTA"]
         boring_intervals = boring_intervals[["DEPTH_FROM", "DEPTH_TO", "DEPTH_FROM_DELTA", "DEPTH_TO_DELTA"]]
-        boring_intervals.columns = ["Кровля интервала долбления", "Подошва интервала долбления",
-                                    "Увязанная кровля интервала долбления", "Увязанная подошва интервала долбления"]
+        boring_intervals.columns = [
+            "Кровля интервала долбления",
+            "Подошва интервала долбления",
+            "Увязанная кровля интервала долбления",
+            "Увязанная подошва интервала долбления"
+        ]
 
         lithology_intervals = self._core_lithology_deltas.reset_index()
         lithology_intervals["DEPTH_FROM_DELTA"] = lithology_intervals["DEPTH_FROM"] + lithology_intervals["DELTA"]
         lithology_intervals["DEPTH_TO_DELTA"] = lithology_intervals["DEPTH_TO"] + lithology_intervals["DELTA"]
         lithology_intervals = lithology_intervals[["DEPTH_FROM", "DEPTH_TO", "DEPTH_FROM_DELTA", "DEPTH_TO_DELTA"]]
-        lithology_intervals.columns = ["Кровля интервала литописания", "Подошва интервала литописания",
-                                       "Увязанная кровля интервала литописания", "Увязанная подошва интервала литописания"]
+        lithology_intervals.columns = [
+            "Кровля интервала литописания",
+            "Подошва интервала литописания",
+            "Увязанная кровля интервала литописания",
+            "Увязанная подошва интервала литописания"
+        ]
 
         cross = cross_join(boring_intervals, lithology_intervals)
         mask = ((cross["Кровля интервала литописания"] >= cross["Кровля интервала долбления"]) &
                 (cross["Подошва интервала литописания"] <= cross["Подошва интервала долбления"]))
         cross = cross[mask]
 
-        core_log = self.core_logs[mnemonic].reset_index()
-        core_log.columns = ["Глубина " + mnemonic, "Значение " + mnemonic]
+        core_log = getattr(self, core_attr)[core_mnemonic].reset_index()
+        core_log.columns = ["Глубина " + core_mnemonic, "Значение " + core_mnemonic]
 
-        report = between_join(core_log, cross, left_on="Глубина "+mnemonic,
+        report = between_join(core_log, cross, left_on="Глубина "+core_mnemonic,
                               right_on=("Увязанная кровля интервала литописания",
                                         "Увязанная подошва интервала литописания"))
         report.to_csv(os.path.join(self.path, self.name + "_matching_report.csv"), index=False)
 
-    def match_core_logs(self, mnemonic="GK", max_shift=5, delta_from=-4, delta_to=4, delta_step=0.1,
+    def match_core_logs(self, log_mnemonic="GK", core_mnemonic="GK", core_attr="core_logs",
+                        max_shift=5, delta_from=-4, delta_to=4, delta_step=0.1,
                         max_iter=50, max_iter_time=0.25, save_report=False):
         if max_shift <= 0:
             raise ValueError("max_shift must be positive")
@@ -443,9 +458,12 @@ class WellSegment(AbstractWell):
         if max(np.abs(delta_from), np.abs(delta_to)) > max_shift:
             raise ValueError("delta_from and delta_to must not exceed max_shift in absolute value")
 
-        well_log = self.logs[mnemonic]
-        core_log = self.core_logs[mnemonic]
+        well_log = self.logs[log_mnemonic].dropna()
+        core_log = getattr(self, core_attr)[core_mnemonic].dropna()
 
+        if not self._has_file("core_lithology"):
+            core_lithology = self.boring_intervals.reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
+            self._core_lithology = core_lithology.set_index(["DEPTH_FROM", "DEPTH_TO"])
         lithology_intervals = self.core_lithology.reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
 
         # matching_segments is a list of DataFrames, containing a number of core segments, extracted close to each
@@ -466,7 +484,7 @@ class WellSegment(AbstractWell):
                 cs_shifts.append(shifts)
 
             best_shifts = None
-            best_r2 = None
+            best_loss = None
             for shifts in product(*cs_shifts):
                 sorted_shifts = sorted(shifts, key=lambda x: x.depth_from)
                 do_overlap = False
@@ -474,10 +492,10 @@ class WellSegment(AbstractWell):
                     if int1.depth_to > int2.depth_from:
                         do_overlap = True
                         break
-                r2 = sum(interval.r2 for interval in sorted_shifts) / len(sorted_shifts)
-                if (not do_overlap) and (best_shifts is None or r2 > best_r2):
+                loss = sum(interval.loss for interval in sorted_shifts) / len(sorted_shifts)
+                if (not do_overlap) and (best_shifts is None or loss < best_loss):
                     best_shifts = shifts
-                    best_r2 = r2
+                    best_loss = loss
 
             for contigious_segment, shift in zip(contigious_segments, best_shifts):
                 mask = ((lithology_intervals["DEPTH_FROM"] >= contigious_segment["DEPTH_FROM"].min()) &
@@ -491,19 +509,49 @@ class WellSegment(AbstractWell):
 
         self._boring_intervals_deltas = pd.concat(segments)
         self._core_lithology_deltas = pd.concat(lithology_segments)
-        self._apply_matching(mnemonic=mnemonic)
+        self._apply_matching(log_mnemonic=log_mnemonic, core_mnemonic=core_mnemonic, core_attr=core_attr)
 
         if save_report:
-            self._save_matching_report(mnemonic=mnemonic)
+            self._save_matching_report(core_mnemonic=core_mnemonic, core_attr=core_attr)
         return self
 
-    def plot_matching(self, mnemonic="GK", subplot_height=750, subplot_width=200):
+    def auto_match_core_logs(self, max_shift=5, delta_from=-4, delta_to=4, delta_step=0.1,
+                             max_iter=50, max_iter_time=0.25, save_report=False):
+        if self._has_file("core_logs") and "GK" in self.logs and "GK" in self.core_logs:
+            log_mnemonic = "GK"
+            core_mnemonic = "GK"
+            core_attr = "core_logs"
+        elif self._has_file("core_logs") and "DENSITY" in self.logs and "DENSITY" in self.core_logs:
+            log_mnemonic = "DENSITY"
+            core_mnemonic = "DENSITY"
+            core_attr = "core_logs"
+        elif self._has_file("core_properties") and "DENSITY" in self.logs and "DENSITY" in self.core_properties:
+            log_mnemonic = "DENSITY"
+            core_mnemonic = "DENSITY"
+            core_attr = "core_properties"
+        # elif self._has_file("core_properties") and "DT" in self.logs and "POROSITY" in self.core_properties:
+        #     log_mnemonic = "DT"
+        #     core_mnemonic = "POROSITY"
+        #     core_attr = "core_properties"
+        # elif self._has_file("core_properties") and "NKTD" in self.logs and "POROSITY" in self.core_properties:
+        #     log_mnemonic = "NKTD"
+        #     core_mnemonic = "POROSITY"
+        #     core_attr = "core_properties"
+        else:
+            raise ValueError("No core measurements to perform core-to-log matching")
+        print(log_mnemonic, core_mnemonic, core_attr)
+        return self.match_core_logs(log_mnemonic, core_mnemonic, core_attr, max_shift=max_shift,
+                                    delta_from=delta_from, delta_to=delta_to, delta_step=delta_step,
+                                    max_iter=max_iter, max_iter_time=max_iter_time, save_report=save_report)
+
+    def plot_matching(self, log_mnemonic="GK", core_mnemonic="GK", core_attr="core_logs",
+                      subplot_height=750, subplot_width=200):
         init_notebook_mode(connected=True)
 
-        well_log = self.logs[mnemonic]
-        core_log = self.core_logs[mnemonic]
+        well_log = self.logs[log_mnemonic].dropna()
+        core_log = getattr(self, core_attr)[core_mnemonic].dropna()
 
-        self._calc_matching_intervals(mnemonic=mnemonic)
+        self._calc_matching_intervals(log_mnemonic=log_mnemonic, core_mnemonic=core_mnemonic, core_attr=core_attr)
         n_cols = len(self._matching_intervals)
         subplot_titles = ["R^2 = {:.3f}".format(r2) for _, r2 in self._matching_intervals["R2"].iteritems()]
         fig = tools.make_subplots(rows=1, cols=n_cols, print_grid=False, subplot_titles=subplot_titles)
@@ -512,9 +560,9 @@ class WellSegment(AbstractWell):
         for i, (_, (depth_from, depth_to)) in enumerate(intervals.iterrows(), 1):
             well_log_segment = well_log[depth_from - 3 : depth_to + 3]
             core_log_segment = core_log[depth_from:depth_to]
-            well_log_trace = go.Scatter(x=well_log_segment, y=well_log_segment.index, name="Well " + mnemonic,
+            well_log_trace = go.Scatter(x=well_log_segment, y=well_log_segment.index, name="Well " + log_mnemonic,
                                         line=dict(color="rgb(255, 127, 14)"), showlegend=(i==1))
-            core_log_trace = go.Scatter(x=core_log_segment, y=core_log_segment.index, name="Core " + mnemonic,
+            core_log_trace = go.Scatter(x=core_log_segment, y=core_log_segment.index, name="Core " + core_mnemonic,
                                         line=dict(color="rgb(31, 119, 180)"), showlegend=(i==1))
             fig.append_trace(well_log_trace, 1, i)
             fig.append_trace(core_log_trace, 1, i)
