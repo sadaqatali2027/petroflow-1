@@ -369,8 +369,6 @@ class WellSegment(AbstractWell):
         res = self.copy()
         res.depth_from, res.depth_to = key.start, key.stop
 
-        print('getitem', key.start, key.stop, 'from', self.depth_from, self.depth_to)
-
         attr_iter = chain(
             zip(res.attrs_depth_index, repeat(res._filter_depth_df)),
             zip(res.attrs_fdtd_index, repeat(res._filter_fdtd_df))
@@ -579,7 +577,6 @@ class WellSegment(AbstractWell):
 
     def random_crop(self, height, n_crops=1):
         positions = np.random.uniform(self.depth_from, max(self.depth_from, self.depth_to-height), size=n_crops)
-        print(positions)
         return [self[pos:pos+height] for pos in positions]
     
     def crop(self, height, step, drop_last=True):
