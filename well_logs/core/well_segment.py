@@ -302,9 +302,8 @@ class WellSegment(AbstractWell):
 
     def plot(self, plot_core=True, subplot_height=500, subplot_width=150):
         init_notebook_mode(connected=True)
-
-        n_cols = len(self._logs.columns)
-        subplot_titles = list(self._logs.columns)
+        n_cols = len(self.logs.columns)
+        subplot_titles = list(self.logs.columns)
         if plot_core and self.has_samples:
             n_cols += 2
             subplot_titles += ["CORE DL", "CORE UV"]
@@ -623,7 +622,7 @@ class WellSegment(AbstractWell):
             not_nan_mask = ~np.isnan(self[components_to_drop_nans].logs)
             not_nan_indices = np.where(np.all(not_nan_mask, axis=1))[0]
 
-        # Drop rows with more than components_to_drop_nans NaN in row
+        # Drop rows with greater than or equal to components_to_drop_nans NaN in row
         elif isinstance(components_to_drop_nans, int):
             not_nan_mask = (~np.isnan(self.logs)).sum(axis=1)
             not_nan_indices = np.where(not_nan_mask >= components_to_drop_nans)[0]

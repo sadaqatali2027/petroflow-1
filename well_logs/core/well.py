@@ -39,7 +39,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             self.segments = [WellSegment(*args, **kwargs)]
         else:
             self.segments = segments
-        
+
         self.tree_depth = 2 if self._has_segments() else self.segments[0].tree_depth + 1
 
     def _has_segments(self):
@@ -66,7 +66,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 Well(segments=segment.create_segments(src, connected)) for segment in well.segments
             ]
         self._inc_depth()
-    
+
     def _inc_depth(self):
         for level in range(self.tree_depth-1):
             for well in self.iter_level(level):
@@ -75,15 +75,15 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     @property
     def length(self):
         return sum([segment.length for segment in self.segments])
-    
+
     @property
     def depth_from(self):
         return self.segments[0].depth_from
-    
+
     @property
     def depth_to(self):
         return self.segments[-1].depth_to
-    
+
     @property
     def n_segments(self):
         well_children = [well for well in self.segments if isinstance(well, Well)]
@@ -104,11 +104,12 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                         Well(segments=segment.random_crop(height, n_segment_crops))
                         for segment, n_segment_crops in random_segments.items()
                     ]
-                else:    
+                else:
                     well.segments = []
             self._inc_depth()
         self.prunning()
-    
+        return self
+
     def prunning(self):
         self.segments = [well for well in self.segments if isinstance(well, WellSegment) or well.n_segments > 0]
         for well in self.segments:
@@ -123,6 +124,16 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 for segment in well.segments
             ]
         self._inc_depth()
+
+    def drop_nans(self, components_to_drop_nans):
+        wells = self.iter_level(-2)
+        for well in wells:
+            well.segments = [
+                Well(segments=segment.drop_nans(components_to_drop_nans))
+                for segment in well.segments
+            ]
+        self._inc_depth()
+        return self
 
 
     # def assemble_crops(self, crops, name):

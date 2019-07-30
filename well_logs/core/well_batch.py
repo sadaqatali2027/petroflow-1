@@ -36,7 +36,7 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
     def __init__(self, index, preloaded=None, **kwargs):
         super().__init__(index, preloaded, **kwargs)
         self.wells = [None] * len(self.index)
-    
+
     @action
     @inbatch_parallel(init="indices", target="threads")
     def load(self, index, src=None, *args, **kwargs):
@@ -46,9 +46,9 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
             path = self.index.get_fullpath(index)
         else:
             raise ValueError("Source path is not specified")
-        
+
         well = Well(path, *args, **kwargs)
-        i = self.get_pos(None, "wells", index)     
+        i = self.get_pos(None, "wells", index)
         self.wells[i] = well
 
     @action
@@ -61,5 +61,5 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
             crops = [getattr(segment, attr_from) for well in self.wells for segment in well.iter_level()]
             setattr(self, attr_to, crops)
         return self
-        
-        
+
+
