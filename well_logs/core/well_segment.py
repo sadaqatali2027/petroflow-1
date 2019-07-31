@@ -351,7 +351,10 @@ class WellSegment(AbstractWell):
         if not isinstance(key, slice):
             return self.keep_logs(key)
         res = self.copy()
-        res.depth_from, res.depth_to = key.start, key.stop
+        if key.start is not None:
+            res.depth_from = max(res.depth_from, key.start)
+        if key.stop is not None:
+            res.depth_to = min(res.depth_to, key.stop)
 
         attr_iter = chain(
             zip(res.attrs_depth_index, repeat(res._filter_depth_df)),
