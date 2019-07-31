@@ -4,6 +4,7 @@ import os
 
 import numpy as np
 import PIL
+import cv2
 
 from well_logs.batchflow import FilesIndex, ImagesBatch, action, inbatch_parallel
 
@@ -206,48 +207,21 @@ class CoreBatch(ImagesBatch):
 
     @action
     @inbatch_parallel(init='indices', post='_assemble', target="threads", dst=('dl', 'uv'))
-    def normalize(self, index, bounds=None, cut=False, percentile=None, **kwargs):
-        """ Normalize images.
+    def normalize(self, index, **kwargs):
+        """ Normalize images histograms.
 
         Parameters
         ----------
-        bounds : dict of dicts
-            keys are well names, values are dicts of the form {'dl': dl_bound, 'uv': uv_bound}.
-            Arrays with DL and UV images will divided by corresponding bounds.
-        cut : bool
-            if True, all values which are greater than 1 will be defined as 1.
         dst : tuple of str
             attributes to save DL, UV images.
         """
         _ = kwargs
         res = []
         src = ('dl', 'uv')
-        well = _get_well_name(self._get_file_name(index, src=None))
-        if not isinstance(percentile, list):
-            percentile = [percentile, percentile]
-        percentile = {
-            'dl': percentile[0],
-            'uv': percentile[1]
-        }
         for component in src:
             pos = self.get_pos(None, component, index)
             image = np.array(getattr(self, component)[pos])
-            if bounds is None:
-                perc = percentile[component]
-                _bounds = 0
-                while (_bounds == 0 ) and (perc <= 100):
-                    _bounds = np.percentile(image.flatten(), perc)
-                    if perc <= 90:
-                        perc = 95
-                    else:
-                        perc += 1
-            else:
-                _bounds = bounds[well][component]
-            if cut:
-                image[image > _bounds] = _bounds
-            if _bounds != 0:
-                image = image / _bounds
-            res.append(PIL.Image.fromarray(image))
+            res.append(cv2.equalizeHist(image))
         return tuple(res)
 
     @action

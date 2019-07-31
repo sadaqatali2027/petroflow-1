@@ -132,8 +132,6 @@ def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None):
     for i in _indices[:n_images]:
         img1 = np.squeeze(dl_images[i])
         img2 = np.squeeze(uv_images[i])
-        img1[img1 > 1] = 1
-        img2[img2 > 1] = 1
         shape = np.min((img1.shape[0], img2.shape[0])), np.min((img1.shape[1], img2.shape[1]))
         plt.figure(figsize=(15, 10))
         image = np.concatenate((img1[:shape[0], :shape[1]], img2[:shape[0], :shape[1]]), axis=1)
