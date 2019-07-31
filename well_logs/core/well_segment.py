@@ -11,6 +11,7 @@ import pandas as pd
 import lasio
 import PIL
 from scipy.interpolate import interp1d
+from sklearn.linear_model import LinearRegression
 from plotly import tools
 from plotly import graph_objs as go
 from plotly.offline import init_notebook_mode, plot
@@ -71,6 +72,7 @@ class WellSegment(AbstractWell):
         self.field = meta["field"]
         self.depth_from = meta["depth_from"]
         self.depth_to = meta["depth_to"]
+        self.matching_mode = meta.get("matching_mode")
 
         self.has_samples = self._has_file("samples")
 
@@ -247,6 +249,7 @@ class WellSegment(AbstractWell):
             "field": self.field,
             "depth_from": self.depth_from,
             "depth_to": self.depth_to,
+            "matching_mode": self.matching_mode,
         }
         with open(os.path.join(path, "meta.json"), "w") as meta_file:
             json.dump(meta, meta_file)
@@ -448,8 +451,44 @@ class WellSegment(AbstractWell):
                                         "Увязанная подошва интервала литописания"))
         report.to_csv(os.path.join(self.path, self.name + "_matching_report.csv"), index=False)
 
-    def match_core_logs(self, log_mnemonic="GK", core_mnemonic="GK", core_attr="core_logs",
-                        max_shift=5, delta_from=-4, delta_to=4, delta_step=0.1,
+    @staticmethod
+    def _parse_matching_mode(mode):
+        mode = mode.replace(" ", "")
+        split_mode = mode.split("~")
+        if len(split_mode) != 2:
+            raise ValueError("Incorrect mode format")
+        log_mnemonic = split_mode[0]
+        split_core_mode = split_mode[1].split(".")
+        if len(split_core_mode) != 2:
+            raise ValueError("Incorrect mode format")
+        core_attr, core_mnemonic = split_core_mode
+        return log_mnemonic, core_mnemonic, core_attr
+
+    def _select_matching_mode(self, mode_list):
+        contigious_segments = select_contigious_intervals(self.boring_intervals.reset_index())
+        for mode in mode_list:
+            mode = mode.replace(" ", "")
+            log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(mode)
+            if log_mnemonic in self.logs and self._has_file(core_attr) and core_mnemonic in getattr(self, core_attr):
+                well_log = self.logs[log_mnemonic].dropna()
+                core_log = getattr(self, core_attr)[core_mnemonic].dropna()
+
+                for segment in contigious_segments:
+                    segment_depth_from = segment["DEPTH_FROM"].min()
+                    segment_depth_to = segment["DEPTH_TO"].max()
+                    core_len = segment["CORE_RECOVERY"].sum()
+                    well_log_len = len(well_log[segment_depth_from:segment_depth_to])
+                    core_log_len = len(core_log[segment_depth_from:segment_depth_to])
+                    if not (min(well_log_len, core_log_len) > max(core_len, 1)):
+                        break
+                else:  # Enough data available for each matching segment
+                    break
+        else:
+            raise ValueError("No core measurements to perform core-to-log matching")
+        self.matching_mode = mode
+        return log_mnemonic, core_mnemonic, core_attr
+
+    def match_core_logs(self, mode="GK ~ core_logs.GK", max_shift=5, delta_from=-4, delta_to=4, delta_step=0.1,
                         max_iter=50, max_iter_time=0.25, save_report=False):
         if max_shift <= 0:
             raise ValueError("max_shift must be positive")
@@ -458,6 +497,8 @@ class WellSegment(AbstractWell):
         if max(np.abs(delta_from), np.abs(delta_to)) > max_shift:
             raise ValueError("delta_from and delta_to must not exceed max_shift in absolute value")
 
+        mode_list = [mode] if isinstance(mode, str) else mode
+        log_mnemonic, core_mnemonic, core_attr = self._select_matching_mode(mode_list)
         well_log = self.logs[log_mnemonic].dropna()
         core_log = getattr(self, core_attr)[core_mnemonic].dropna()
 
@@ -515,38 +556,13 @@ class WellSegment(AbstractWell):
             self._save_matching_report(core_mnemonic=core_mnemonic, core_attr=core_attr)
         return self
 
-    def auto_match_core_logs(self, max_shift=5, delta_from=-4, delta_to=4, delta_step=0.1,
-                             max_iter=50, max_iter_time=0.25, save_report=False):
-        if self._has_file("core_logs") and "GK" in self.logs and "GK" in self.core_logs:
-            log_mnemonic = "GK"
-            core_mnemonic = "GK"
-            core_attr = "core_logs"
-        elif self._has_file("core_logs") and "DENSITY" in self.logs and "DENSITY" in self.core_logs:
-            log_mnemonic = "DENSITY"
-            core_mnemonic = "DENSITY"
-            core_attr = "core_logs"
-        elif self._has_file("core_properties") and "DENSITY" in self.logs and "DENSITY" in self.core_properties:
-            log_mnemonic = "DENSITY"
-            core_mnemonic = "DENSITY"
-            core_attr = "core_properties"
-        # elif self._has_file("core_properties") and "DT" in self.logs and "POROSITY" in self.core_properties:
-        #     log_mnemonic = "DT"
-        #     core_mnemonic = "POROSITY"
-        #     core_attr = "core_properties"
-        # elif self._has_file("core_properties") and "NKTD" in self.logs and "POROSITY" in self.core_properties:
-        #     log_mnemonic = "NKTD"
-        #     core_mnemonic = "POROSITY"
-        #     core_attr = "core_properties"
-        else:
-            raise ValueError("No core measurements to perform core-to-log matching")
-        print(log_mnemonic, core_mnemonic, core_attr)
-        return self.match_core_logs(log_mnemonic, core_mnemonic, core_attr, max_shift=max_shift,
-                                    delta_from=delta_from, delta_to=delta_to, delta_step=delta_step,
-                                    max_iter=max_iter, max_iter_time=max_iter_time, save_report=save_report)
-
-    def plot_matching(self, log_mnemonic="GK", core_mnemonic="GK", core_attr="core_logs",
-                      subplot_height=750, subplot_width=200):
+    def plot_matching(self, mode=None, scale=False, subplot_height=750, subplot_width=200):
         init_notebook_mode(connected=True)
+
+        mode = self.matching_mode if mode is None else mode
+        if mode is None:
+            raise ValueError("Core-to-log matching has to be performed beforehand if mode is not specified")
+        log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(mode)
 
         well_log = self.logs[log_mnemonic].dropna()
         core_log = getattr(self, core_attr)[core_mnemonic].dropna()
@@ -560,6 +576,14 @@ class WellSegment(AbstractWell):
         for i, (_, (depth_from, depth_to)) in enumerate(intervals.iterrows(), 1):
             well_log_segment = well_log[depth_from - 3 : depth_to + 3]
             core_log_segment = core_log[depth_from:depth_to]
+            if scale:
+                log_interpolator = interp1d(well_log_segment.index, well_log_segment, kind="linear",
+                                            fill_value="extrapolate")
+                X = np.array(core_log_segment).reshape(-1, 1)
+                y = log_interpolator(core_log_segment.index)
+                reg = LinearRegression().fit(X, y)
+                core_log_segment = pd.Series(reg.predict(X), index=core_log_segment.index)
+
             well_log_trace = go.Scatter(x=well_log_segment, y=well_log_segment.index, name="Well " + log_mnemonic,
                                         line=dict(color="rgb(255, 127, 14)"), showlegend=(i==1))
             core_log_trace = go.Scatter(x=core_log_segment, y=core_log_segment.index, name="Core " + core_mnemonic,

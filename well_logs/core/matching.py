@@ -5,8 +5,6 @@ import multiprocess as mp
 import numpy as np
 from scipy.optimize import minimize
 from scipy.interpolate import interp1d
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score
 
 
 def trunc(values, decimals=0):
