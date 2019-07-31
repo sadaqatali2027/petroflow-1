@@ -12,8 +12,8 @@ import lasio
 import PIL
 from scipy.interpolate import interp1d
 from sklearn.linear_model import LinearRegression
-from plotly import tools
 from plotly import graph_objs as go
+from plotly.subplots import make_subplots
 from plotly.offline import init_notebook_mode, plot
 
 from .abstract_well import AbstractWell
@@ -296,8 +296,7 @@ class WellSegment(AbstractWell):
             dl_col = n_cols - 1
             uv_col = n_cols
 
-        fig = tools.make_subplots(rows=1, cols=n_cols, subplot_titles=subplot_titles, shared_yaxes=True,
-                                  print_grid=False)
+        fig = make_subplots(rows=1, cols=n_cols, subplot_titles=subplot_titles, shared_yaxes=True, print_grid=False)
         for i, mnemonic in enumerate(self.logs.columns, 1):
             trace = go.Scatter(x=self.logs[mnemonic], y=self.logs.index, mode="lines", name=mnemonic)
             fig.append_trace(trace, 1, i)
@@ -570,7 +569,7 @@ class WellSegment(AbstractWell):
         self._calc_matching_intervals(log_mnemonic=log_mnemonic, core_mnemonic=core_mnemonic, core_attr=core_attr)
         n_cols = len(self._matching_intervals)
         subplot_titles = ["R^2 = {:.3f}".format(r2) for _, r2 in self._matching_intervals["R2"].iteritems()]
-        fig = tools.make_subplots(rows=1, cols=n_cols, print_grid=False, subplot_titles=subplot_titles)
+        fig = make_subplots(rows=1, cols=n_cols, print_grid=False, subplot_titles=subplot_titles)
 
         intervals = self._matching_intervals.reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
         for i, (_, (depth_from, depth_to)) in enumerate(intervals.iterrows(), 1):
