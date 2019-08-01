@@ -277,7 +277,7 @@ class CoreBatch(ImagesBatch):
         img1, img2, label = self._get_components(index)
         _x = min(img1.shape[1], img2.shape[1])
         _y = min(img1.shape[2], img2.shape[2])
-        positions = np.arange(0, _x-shape[0], step)
+        positions = np.arange(0, _x-shape[0] +1 , step)
         _slice = [slice(None)] * img1.ndim
 
         crops1 = []
