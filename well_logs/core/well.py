@@ -139,10 +139,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     def drop_short_segments(self, size_to_drop):
         wells = self.iter_level(-2)
         for well in wells:
-            print(well.segments)
             well.segments = [segment for segment in well.segments if segment.length > size_to_drop]
         self.prunning()
-        self._inc_depth()
         return self
 
     # def assemble_crops(self, crops, name):
