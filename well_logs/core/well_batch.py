@@ -61,5 +61,3 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
             crops = [getattr(segment, attr_from) for well in self.wells for segment in well.iter_level()]
             setattr(self, attr_to, crops)
         return self
-
-
