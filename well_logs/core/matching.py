@@ -7,6 +7,9 @@ from scipy.optimize import minimize
 from scipy.interpolate import interp1d
 
 
+Shift = namedtuple("Shift", ["depth_from", "depth_to", "segment_delta", "interval_deltas", "loss"])
+
+
 def trunc(values, decimals=0):
     return np.trunc(values * 10**decimals) / (10**decimals)
 
@@ -97,8 +100,6 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
     constraints.append({"type": "ineq", "fun": con_max_shift_down})
 
     # Optimization
-    Shift = namedtuple("Shift", ["depth_from", "depth_to", "segment_delta", "interval_deltas", "loss"])
-
     zero_deltas = np.zeros(np.sum(bi_n_lith_ints) + 1)
     zero_shift_loss = loss(zero_deltas, bi_n_lith_ints, core_depths, log_interpolator, core_logs)
     zero_shift = Shift(segment_depth_from, segment_depth_to, 0, zero_deltas[1:], zero_shift_loss)
