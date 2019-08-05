@@ -7,7 +7,7 @@ from scipy.optimize import minimize
 from scipy.interpolate import interp1d
 
 
-Shift = namedtuple("Shift", ["depth_from", "depth_to", "segment_delta", "interval_deltas", "loss"])
+Shift = namedtuple("Shift", ["depth_from", "depth_to", "sequence_delta", "interval_deltas", "loss"])
 
 
 def trunc(values, decimals=0):
@@ -19,14 +19,14 @@ def select_contigious_intervals(df, max_gap=0):
     return np.split(df, split_indices)
 
 
-def generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, segment_delta_from, segment_delta_to, segment_delta_step):
+def generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, sequence_delta_from, sequence_delta_to, sequence_delta_step):
     interval_deltas = []
     for n, gap_length in zip(bi_n_lith_ints, bi_gap_lengths):
         interval_deltas.append([np.zeros(n),  # Unrecovered core in the end
-                                np.full(n, gap_length / (n + 1)),  # Unrecovered core split equally
+                                np.full(n, gap_length / (n + 1)),  # Unrecovered core distributed equally
                                 np.array([gap_length] + [0] * (n - 1))])  # Unrecovered core in the beginning
     interval_deltas = [np.concatenate(delta) for delta in zip(*interval_deltas)]
-    segment_delta = np.arange(segment_delta_from, segment_delta_to, segment_delta_step)
+    segment_delta = np.arange(sequence_delta_from, sequence_delta_to, sequence_delta_step)
     return [np.concatenate([[d1], d2]) for d1, d2 in product(segment_delta, interval_deltas)]
 
 
@@ -43,8 +43,8 @@ def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log):
     return -np.corrcoef(well_log, core_log)[0, 1]
 
 
-def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, delta_from, delta_to, delta_step,
-                  max_iter, timeout):
+def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_log, max_shift,
+                          delta_from, delta_to, delta_step, max_iter, timeout):
     well_depth_from = well_log.index.min()
     well_depth_to = well_log.index.max()
     well_log = well_log.dropna()
@@ -56,19 +56,19 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
     core_depths = []
     core_logs = []
 
-    segment = segment[["DEPTH_FROM", "DEPTH_TO", "CORE_RECOVERY"]]
-    segment_depth_from = segment["DEPTH_FROM"].min()
-    segment_depth_to = segment["DEPTH_TO"].max()
-    core_len = len(core_log[segment_depth_from:segment_depth_to])
+    boring_sequence = boring_sequence[["DEPTH_FROM", "DEPTH_TO", "CORE_RECOVERY"]]
+    sequence_depth_from = boring_sequence["DEPTH_FROM"].min()
+    sequence_depth_to = boring_sequence["DEPTH_TO"].max()
+    core_len = len(core_log[sequence_depth_from:sequence_depth_to])
 
-    for _, (bi_depth_from, bi_depth_to, recovery) in segment.iterrows():
+    for _, (bi_depth_from, bi_depth_to, recovery) in boring_sequence.iterrows():
         mask = ((lithology_intervals["DEPTH_FROM"] >= bi_depth_from) &
                 (lithology_intervals["DEPTH_TO"] <= bi_depth_to))
-        segment_lithology_intervals = lithology_intervals[mask]
-        bi_n_lith_ints.append(len(segment_lithology_intervals))
+        sequence_lithology_intervals = lithology_intervals[mask]
+        bi_n_lith_ints.append(len(sequence_lithology_intervals))
         bi_gap_lengths.append(max(0, bi_depth_to - bi_depth_from - recovery))
 
-        for _, (li_depth_from, li_depth_to) in segment_lithology_intervals.iterrows():
+        for _, (li_depth_from, li_depth_to) in sequence_lithology_intervals.iterrows():
             log_slice = core_log[li_depth_from:li_depth_to]
             core_depths.append(log_slice.index.values)
             core_logs.append(log_slice.values)
@@ -89,12 +89,12 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
             return x[i + 1]
         constraints.append({"type": "ineq", "fun": con_non_negative_gap})
 
-    max_shift_up = min(max_shift, max(0, segment_depth_from - well_depth_from))
+    max_shift_up = min(max_shift, max(0, sequence_depth_from - well_depth_from))
     def con_max_shift_up(x):
         return x[0] + max_shift_up
     constraints.append({"type": "ineq", "fun": con_max_shift_up})
 
-    max_shift_down = min(max_shift, max(0, well_depth_to - segment_depth_to))
+    max_shift_down = min(max_shift, max(0, well_depth_to - sequence_depth_to))
     def con_max_shift_down(x):
         return max_shift_down - x[0]
     constraints.append({"type": "ineq", "fun": con_max_shift_down})
@@ -102,11 +102,8 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
     # Optimization
     zero_deltas = np.zeros(np.sum(bi_n_lith_ints) + 1)
     zero_shift_loss = loss(zero_deltas, bi_n_lith_ints, core_depths, log_interpolator, core_logs)
-    zero_shift = Shift(segment_depth_from, segment_depth_to, 0, zero_deltas[1:], zero_shift_loss)
+    zero_shift = Shift(sequence_depth_from, sequence_depth_to, 0, zero_deltas[1:], zero_shift_loss)
     shifts = [zero_shift]
-
-    if core_len <= 1 or core_len < segment["CORE_RECOVERY"].sum():
-        return shifts
 
     futures = []
     init_deltas = generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, delta_from, delta_to, delta_step)
@@ -130,12 +127,12 @@ def match_segment(segment, lithology_intervals, well_log, core_log, max_shift, d
                 future_deltas = init_delta
                 future_loss = loss(future_deltas, bi_n_lith_ints, core_depths, log_interpolator, core_logs)
 
-            segment_delta = trunc(future_deltas[0], 2)
+            sequence_delta = trunc(future_deltas[0], 2)
             interval_deltas = np.clip(trunc(future_deltas[1:], 2), 0, None)
             interval_deltas = [np.cumsum(d) for d in np.split(interval_deltas, np.cumsum(bi_n_lith_ints)[:-1])]
-            interval_deltas = np.concatenate(interval_deltas) + segment_delta
+            interval_deltas = np.concatenate(interval_deltas) + sequence_delta
 
-            shift = Shift(segment_depth_from + segment_delta, segment_depth_to + segment_delta,
-                          segment_delta, interval_deltas, future_loss)
+            shift = Shift(sequence_depth_from + sequence_delta, sequence_depth_to + sequence_delta,
+                          sequence_delta, interval_deltas, future_loss)
             shifts.append(shift)
     return shifts

@@ -17,7 +17,7 @@ from plotly.subplots import make_subplots
 from plotly.offline import init_notebook_mode, plot
 
 from .abstract_well import AbstractWell
-from .matching import select_contigious_intervals, match_segment, Shift
+from .matching import select_contigious_intervals, match_boring_sequence, Shift
 from .joins import cross_join, between_join
 
 
@@ -57,7 +57,7 @@ def add_attr_loaders(cls):
 @add_attr_loaders
 class WellSegment(AbstractWell):
     attrs_depth_index = ("logs", "core_properties", "core_logs")
-    attrs_fdtd_index = ("layers", "matching_intervals", "boring_intervals", "core_lithology", "samples")
+    attrs_fdtd_index = ("layers", "boring_sequences", "boring_intervals", "core_lithology", "samples")
     attrs_no_index = ("inclination",)
 
     def __init__(self, path, core_width=10, pixels_per_cm=5):
@@ -78,7 +78,7 @@ class WellSegment(AbstractWell):
         self._logs = None
         self._inclination = None
         self._layers = None
-        self._matching_intervals = None
+        self._boring_sequences = None
         self._boring_intervals = None
         self._core_properties = None
         self._core_lithology = None
@@ -88,20 +88,20 @@ class WellSegment(AbstractWell):
         self._core_uv = None
 
     @property
-    def matching_intervals(self):
-        if self._matching_intervals is None:
-            if self._has_file("matching_intervals"):
-                self.load_matching_intervals()
+    def boring_sequences(self):
+        if self._boring_sequences is None:
+            if self._has_file("boring_sequences"):
+                self.load_boring_sequences()
             else:
-                self._calc_matching_intervals()
-        return self._matching_intervals
+                self._calc_boring_sequences()
+        return self._boring_sequences
 
-    def _calc_matching_intervals(self):
+    def _calc_boring_sequences(self):
         data = []
         for segment in select_contigious_intervals(self.boring_intervals.reset_index()):
             data.append([segment["DEPTH_FROM"].min(), segment["DEPTH_TO"].max()])
-        self._matching_intervals = pd.DataFrame(data, columns=["DEPTH_FROM", "DEPTH_TO"])
-        self._matching_intervals.set_index(["DEPTH_FROM", "DEPTH_TO"], inplace=True)
+        self._boring_sequences = pd.DataFrame(data, columns=["DEPTH_FROM", "DEPTH_TO"])
+        self._boring_sequences.set_index(["DEPTH_FROM", "DEPTH_TO"], inplace=True)
 
     @staticmethod
     def _get_extension(path):
@@ -371,10 +371,9 @@ class WellSegment(AbstractWell):
         # Update DataFrames with depth index
         attrs_depth_index = [attr for attr in self.attrs_depth_index if attr.startswith("core_")]
         for attr in attrs_depth_index:
-            try:
-                attr_df = getattr(self, attr).reset_index()
-            except FileNotFoundError:
+            if not self._has_file(attr):
                 continue
+            attr_df = getattr(self, attr).reset_index()
             columns = attr_df.columns
             merged_df = between_join(attr_df, core_lithology_deltas)
             merged_df["DEPTH"] += merged_df["DELTA"]
@@ -399,14 +398,14 @@ class WellSegment(AbstractWell):
         self._boring_intervals = boring_intervals.set_index(["DEPTH_FROM", "DEPTH_TO"]).sort_index()
 
     def _save_matching_report(self):
-        matching_intervals = self.matching_intervals.reset_index()[["DEPTH_FROM", "DEPTH_TO", "MODE"]]
-        not_none_mask = matching_intervals["MODE"].map(lambda x: x is not None)
-        matching_intervals = matching_intervals[not_none_mask]
-        if len(matching_intervals) == 0:
+        boring_sequences = self.boring_sequences.reset_index()[["DEPTH_FROM", "DEPTH_TO", "MODE"]]
+        not_none_mask = boring_sequences["MODE"].map(lambda x: x is not None)
+        boring_sequences = boring_sequences[not_none_mask]
+        if len(boring_sequences) == 0:
             return
 
         core_logs_list = []
-        for _, (depth_from, depth_to, mode) in matching_intervals.iterrows():
+        for _, (depth_from, depth_to, mode) in boring_sequences.iterrows():
             _, core_mnemonic, core_attr = self._parse_matching_mode(mode)
             core_log_segment = getattr(self, core_attr)[core_mnemonic].dropna()[depth_from:depth_to]
             core_logs_list.append(core_log_segment.to_frame(name=mode))
@@ -492,43 +491,47 @@ class WellSegment(AbstractWell):
             self._core_lithology = core_lithology.set_index(["DEPTH_FROM", "DEPTH_TO"])
         lithology_intervals = self.core_lithology.reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
 
-        # matching_segments is a list of DataFrames, containing a number of core segments, extracted close to each
-        # other. They are considered together because they can possibly overlap during optimization.
-        matching_segments = select_contigious_intervals(self.boring_intervals.reset_index(), max_gap=2*max_shift)
+        # `boring_sequences` is a list of DataFrames, containing contigious boring intervals, extracted one after
+        # another. They are considered together since they must be shifted by the same delta.
 
-        segments = []
-        lithology_segments = []
+        # `boring_groups` is a list of DataFrames, containing a number of boring sequences, extracted close to each
+        # other. They are considered together since they can possibly overlap during optimization.
+        boring_groups = select_contigious_intervals(self.boring_intervals.reset_index(), max_gap=2*max_shift)
 
-        cs_modes = []
-        cs_r2 = []
+        matched_boring_sequences = []
+        matched_lithology_intervals = []
+        sequences_modes = []
+        sequences_r2 = []
 
-        for matching_segment in matching_segments:
-            # contigious_segments is a list of DataFrames, containing contigious core segments
-            contigious_segments = select_contigious_intervals(matching_segment)
-            cs_shifts = []
+        for group in boring_groups:
+            boring_sequences = select_contigious_intervals(group)
+            sequences_shifts = []
 
-            for contigious_segment in contigious_segments:
-                mode = self._select_matching_mode(contigious_segment, mode_list)
-                cs_modes.append(mode)
+            # Independently optimize R^2 for each boring sequence
+            for sequence in boring_sequences:
+                mode = self._select_matching_mode(sequence, mode_list)
+                sequences_modes.append(mode)
                 if mode is None:
-                    segment_depth_from = contigious_segment["DEPTH_FROM"].min()
-                    segment_depth_to = contigious_segment["DEPTH_TO"].max()
+                    # Don't shift a sequence if there's no data to perform matching
+                    segment_depth_from = sequence["DEPTH_FROM"].min()
+                    segment_depth_to = sequence["DEPTH_TO"].max()
                     zero_shift = Shift(segment_depth_from, segment_depth_to, 0, 0, np.nan)
-                    cs_shifts.append([zero_shift])
+                    sequences_shifts.append([zero_shift])
                     continue
 
                 log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(mode)
                 well_log = self.logs[log_mnemonic].dropna()
                 core_log = getattr(self, core_attr)[core_mnemonic].dropna()
 
-                shifts = match_segment(contigious_segment, lithology_intervals, well_log, core_log,
-                                       max_shift, delta_from, delta_to, delta_step,
-                                       max_iter, timeout=max_iter*max_iter_time)
-                cs_shifts.append(shifts)
+                shifts = match_boring_sequence(sequence, lithology_intervals, well_log, core_log,
+                                               max_shift, delta_from, delta_to, delta_step,
+                                               max_iter, timeout=max_iter*max_iter_time)
+                sequences_shifts.append(shifts)
 
+            # Choose best shift for each boring sequence so that they don't overlap and maximize matching R^2
             best_shifts = None
             best_loss = None
-            for shifts in product(*cs_shifts):
+            for shifts in product(*sequences_shifts):
                 sorted_shifts = sorted(shifts, key=lambda x: x.depth_from)
                 do_overlap = False
                 for int1, int2 in zip(sorted_shifts[:-1], sorted_shifts[1:]):
@@ -540,24 +543,25 @@ class WellSegment(AbstractWell):
                     best_shifts = shifts
                     best_loss = loss
 
-            for contigious_segment, shift in zip(contigious_segments, best_shifts):
-                mask = ((lithology_intervals["DEPTH_FROM"] >= contigious_segment["DEPTH_FROM"].min()) &
-                        (lithology_intervals["DEPTH_TO"] <= contigious_segment["DEPTH_TO"].max()))
-                segment_lithology_intervals = lithology_intervals[mask]
-                segment_lithology_intervals["DELTA"] = shift.interval_deltas
-                contigious_segment["DELTA"] = shift.segment_delta
-                cs_r2.append(shift.loss**2)
+            # Store shift deltas, mode and R^2
+            for sequence, shift in zip(boring_sequences, best_shifts):
+                mask = ((lithology_intervals["DEPTH_FROM"] >= sequence["DEPTH_FROM"].min()) &
+                        (lithology_intervals["DEPTH_TO"] <= sequence["DEPTH_TO"].max()))
+                sequence_lithology_intervals = lithology_intervals[mask]
+                sequence_lithology_intervals["DELTA"] = shift.interval_deltas
+                sequence["DELTA"] = shift.sequence_delta
 
-                segments.append(contigious_segment)
-                lithology_segments.append(segment_lithology_intervals)
+                sequences_r2.append(shift.loss**2)
+                matched_boring_sequences.append(sequence)
+                matched_lithology_intervals.append(sequence_lithology_intervals)
 
-        self._boring_intervals_deltas = pd.concat(segments)
-        self._core_lithology_deltas = pd.concat(lithology_segments)
+        self._boring_intervals_deltas = pd.concat(matched_boring_sequences)
+        self._core_lithology_deltas = pd.concat(matched_lithology_intervals)
         self._apply_matching()
 
-        self._calc_matching_intervals()
-        self._matching_intervals["MODE"] = cs_modes
-        self._matching_intervals["R2"] = cs_r2
+        self._calc_boring_sequences()
+        self._boring_sequences["MODE"] = sequences_modes
+        self._boring_sequences["R2"] = sequences_r2
 
         if save_report:
             self._save_matching_report()
@@ -573,33 +577,33 @@ class WellSegment(AbstractWell):
     def plot_matching(self, mode=None, scale=False, subplot_height=750, subplot_width=200):
         init_notebook_mode(connected=True)
 
-        matching_intervals = self.matching_intervals.reset_index()
-        if mode is None and "MODE" not in matching_intervals.columns:
+        boring_sequences = self.boring_sequences.reset_index()
+        if mode is None and "MODE" not in boring_sequences.columns:
             raise ValueError("Core-to-log matching has to be performed beforehand if mode is not specified")
         if mode is not None:
             mode_list = self._unify_matching_mode(mode)
             if len(mode_list) == 1:
-                mode_list = mode_list * len(matching_intervals)
-            if len(mode_list) != len(matching_intervals):
+                mode_list = mode_list * len(boring_sequences)
+            if len(mode_list) != len(boring_sequences):
                 raise ValueError("Mode length must match the number of matching intervals")
-            matching_intervals["MODE"] = mode_list
+            boring_sequences["MODE"] = mode_list
             r2_list = []
-            for _, (depth_from, depth_to, mode) in matching_intervals[["DEPTH_FROM", "DEPTH_TO", "MODE"]].iterrows():
+            for _, (depth_from, depth_to, mode) in boring_sequences[["DEPTH_FROM", "DEPTH_TO", "MODE"]].iterrows():
                 log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(mode)
                 well_log = self.logs[log_mnemonic].dropna()
                 core_log_segment = getattr(self, core_attr)[core_mnemonic].dropna()[depth_from:depth_to]
                 r2_list.append(self._calc_matching_r2(well_log, core_log_segment))
-            matching_intervals["R2"] = r2_list
-        matching_intervals = matching_intervals[["DEPTH_FROM", "DEPTH_TO", "MODE", "R2"]]
-        not_none_mask = matching_intervals["MODE"].map(lambda x: x is not None)
-        matching_intervals = matching_intervals[not_none_mask]
+            boring_sequences["R2"] = r2_list
+        boring_sequences = boring_sequences[["DEPTH_FROM", "DEPTH_TO", "MODE", "R2"]]
+        not_none_mask = boring_sequences["MODE"].map(lambda x: x is not None)
+        boring_sequences = boring_sequences[not_none_mask]
 
-        depth_from_list = matching_intervals["DEPTH_FROM"]
-        depth_to_list = matching_intervals["DEPTH_TO"]
-        mode_list = matching_intervals["MODE"]
-        r2_list = matching_intervals["R2"]
+        depth_from_list = boring_sequences["DEPTH_FROM"]
+        depth_to_list = boring_sequences["DEPTH_TO"]
+        mode_list = boring_sequences["MODE"]
+        r2_list = boring_sequences["R2"]
 
-        n_cols = len(matching_intervals)
+        n_cols = len(boring_sequences)
         subplot_titles = ["{}<br>R^2 = {:.3f}".format(mode, r2) for mode, r2 in zip(mode_list, r2_list)]
         fig = make_subplots(rows=1, cols=n_cols, subplot_titles=subplot_titles)
 
@@ -618,8 +622,9 @@ class WellSegment(AbstractWell):
 
             well_log_trace = go.Scatter(x=well_log_segment, y=well_log_segment.index, name="Well " + log_mnemonic,
                                         line=dict(color="rgb(255, 127, 14)"), showlegend=False)
+            drawing_mode = "markers" if core_attr == "core_properties" else None
             core_log_trace = go.Scatter(x=core_log_segment, y=core_log_segment.index, name="Core " + core_mnemonic,
-                                        line=dict(color="rgb(31, 119, 180)"), showlegend=False)
+                                        line=dict(color="rgb(31, 119, 180)"), mode=drawing_mode, showlegend=False)
             fig.append_trace(well_log_trace, 1, i)
             fig.append_trace(core_log_trace, 1, i)
 
@@ -659,11 +664,11 @@ class WellSegment(AbstractWell):
         return self
 
     def keep_matched_intervals(self, mode=None, threshold=0.6):
-        mask = self.matching_intervals["R2"] > threshold
+        mask = self.boring_sequences["R2"] > threshold
         if mode is not None:
             mode_list = self._unify_matching_mode(mode)
-            mask &= self.matching_intervals["MODE"].isin(mode_list)
-        intervals = self.matching_intervals[mask].reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
+            mask &= self.boring_sequences["MODE"].isin(mode_list)
+        intervals = self.boring_sequences[mask].reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
         res_segments = []
         for _, (depth_from, depth_to) in intervals.iterrows():
             res_segments.append(self[depth_from:depth_to])
