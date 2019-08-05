@@ -34,6 +34,7 @@ def plot_pair(path, name, threshold=0.5, length=1000):
 
 def read_annotation(path, df_name='samples.feather'):
     """ Read annotation for all wells in path/glob. """
+    path = os.path.join(path, '*')
     annotation = []
     for filename in glob.glob(os.path.join(path, df_name)):
         _df = pd.read_feather(filename)
