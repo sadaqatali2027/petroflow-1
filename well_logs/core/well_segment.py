@@ -285,8 +285,8 @@ class WellSegment(AbstractWell):
     def plot(self, plot_core=True, subplot_height=500, subplot_width=150):
         init_notebook_mode(connected=True)
 
-        n_cols = len(self._logs.columns)
-        subplot_titles = list(self._logs.columns)
+        n_cols = len(self.logs.columns)
+        subplot_titles = list(self.logs.columns)
         if plot_core and self.has_samples:
             n_cols += 2
             subplot_titles += ["CORE DL", "CORE UV"]
