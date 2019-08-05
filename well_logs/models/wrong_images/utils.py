@@ -66,30 +66,6 @@ def assemble(batch):
         i = i + item.shape[0]
     return np.array(res)
 
-def get_bounds(path, percentile=90):
-    """ Get percentiles for values for each well. """
-    well_stat = dict()
-    if not isinstance(percentile, list):
-        percentile = [percentile, percentile]
-    for well_path in glob.glob(path):
-        well_stat[well_path] = {'dl': [], 'uv': []}
-        for image in glob.glob(os.path.join(well_path, 'samples_uv', '*')):
-            img = np.array(PIL.Image.open(image))
-            well_stat[well_path]['uv'].append(img.flatten())
-        for image in glob.glob(os.path.join(well_path, 'samples_dl', '*')):
-            img = np.array(PIL.Image.open(image))
-            well_stat[well_path]['dl'].append(img.flatten())
-        well_stat[well_path]['dl'] = np.concatenate(well_stat[well_path]['dl'])
-        well_stat[well_path]['uv'] = np.concatenate(well_stat[well_path]['uv'])
-
-    bounds = dict()
-    for well in well_stat:
-        bounds[well.split('/')[-1]] = {
-            'dl': np.percentile(well_stat[well]['dl'], percentile[0]),
-            'uv': np.percentile(well_stat[well]['uv'], percentile[1])
-        }
-    return bounds
-
 def plot_crops_predictions(batch):
     """ Plot crops and corresponding predictions. """
     for i in np.random.choice(batch.dl.shape[0], 5):
