@@ -136,7 +136,7 @@ class CoreBatch(ImagesBatch):
             components to save resulting images. Default: 'labels'.
         """
         label = 0 if labels is None else labels[index]
-        return label
+        return self
 
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
@@ -244,7 +244,7 @@ class CoreBatch(ImagesBatch):
         for component in src:
             pos = self.get_pos(None, component, index)
             image = np.array(getattr(self, component)[pos])
-            res.append(cv2.equalizeHist(image))
+            res.append(cv2.equalizeHist(image)) # pylint: disable=no-member
         return res
 
     @action
