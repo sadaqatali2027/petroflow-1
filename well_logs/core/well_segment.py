@@ -22,24 +22,6 @@ from .abstract_well import AbstractWell
 from .matching import select_contigious_intervals, match_segment
 from .joins import cross_join, between_join, fdtd_join
 
-from functools import wraps
-
-def _min(x, y):
-    if x is None:
-        return y
-    elif y is None:
-        return x
-    else:
-        return min(x, y)
-
-def _max(x, y):
-    if x is None:
-        return y
-    elif y is None:
-        return x
-    else:
-        return max(x, y)
-
 def add_attr_properties(cls):
     for attr in cls.attrs_depth_index + cls.attrs_fdtd_index + cls.attrs_no_index:
         if hasattr(cls, attr):
@@ -565,7 +547,7 @@ class WellSegment(AbstractWell):
         if connected:
             df = self._core_chunks(df)
         segments = [self[top:bottom] for _, (top, bottom) in df[['DEPTH_FROM', 'DEPTH_TO']].iterrows()]
-        return segments        
+        return segments
 
     def _core_chunks(self, df):
         if len(df) > 0:
