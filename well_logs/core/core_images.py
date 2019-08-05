@@ -135,8 +135,9 @@ class CoreBatch(ImagesBatch):
         dst : str
             components to save resulting images. Default: 'labels'.
         """
+        _ = self, kwargs
         label = 0 if labels is None else labels[index]
-        return self
+        return label
 
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
