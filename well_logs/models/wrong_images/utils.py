@@ -61,7 +61,7 @@ def assemble(batch):
     predictions = batch.proba
     res = []
     i = 0
-    for item in batch.labels_crops:
+    for item in batch.dl_crops:
         res.append(np.median(predictions[i:i+item.shape[0]], axis=0))
         i = i + item.shape[0]
     return np.array(res)
@@ -71,7 +71,6 @@ def plot_crops_predictions(batch):
     for i in np.random.choice(batch.dl.shape[0], 5):
         img1 = np.squeeze(batch.dl[i])
         img2 = np.squeeze(batch.uv[i])
-        print(batch.indices[i])
         print('Label: ', str(batch.labels[i]) + '   Prediction:' + str(batch.proba[i][1]))
         shape = np.min((img1.shape[0], img2.shape[0])), np.min((img1.shape[1], img2.shape[1]))
         plt.imshow(np.concatenate((img1[:shape[0], :shape[1]], img2[:shape[0], :shape[1]]), axis=1), cmap='gray')
