@@ -399,7 +399,21 @@ class WellSegment(AbstractWell):
         self._boring_intervals = boring_intervals.set_index(["DEPTH_FROM", "DEPTH_TO"]).sort_index()
 
     def _save_matching_report(self):
-        # TODO: dump matching mode
+        matching_intervals = self.matching_intervals.reset_index()[["DEPTH_FROM", "DEPTH_TO", "MODE"]]
+        not_none_mask = matching_intervals["MODE"].map(lambda x: x is not None)
+        matching_intervals = matching_intervals[not_none_mask]
+        if len(matching_intervals) == 0:
+            return
+
+        core_logs_list = []
+        for _, (depth_from, depth_to, mode) in matching_intervals.iterrows():
+            _, core_mnemonic, core_attr = self._parse_matching_mode(mode)
+            core_log_segment = getattr(self, core_attr)[core_mnemonic].dropna()[depth_from:depth_to]
+            core_logs_list.append(core_log_segment.to_frame(name=mode))
+        core_logs = pd.concat(core_logs_list)
+        core_logs.index.rename("Увязанная глубина образца", inplace=True)
+        core_logs.reset_index(inplace=True)
+
         boring_intervals = self._boring_intervals_deltas.reset_index()
         boring_intervals["DEPTH_FROM_DELTA"] = boring_intervals["DEPTH_FROM"] + boring_intervals["DELTA"]
         boring_intervals["DEPTH_TO_DELTA"] = boring_intervals["DEPTH_TO"] + boring_intervals["DELTA"]
@@ -410,6 +424,11 @@ class WellSegment(AbstractWell):
             "Увязанная кровля интервала долбления",
             "Увязанная подошва интервала долбления"
         ]
+        boring_intervals = between_join(core_logs, boring_intervals, left_on="Увязанная глубина образца",
+                                        right_on=("Увязанная кровля интервала долбления",
+                                                  "Увязанная подошва интервала долбления"))
+        boring_intervals.to_csv(os.path.join(self.path, self.name + "_boring_intervals_matching.csv"),
+                                index=False)
 
         lithology_intervals = self._core_lithology_deltas.reset_index()
         lithology_intervals["DEPTH_FROM_DELTA"] = lithology_intervals["DEPTH_FROM"] + lithology_intervals["DELTA"]
@@ -421,19 +440,8 @@ class WellSegment(AbstractWell):
             "Увязанная кровля интервала литописания",
             "Увязанная подошва интервала литописания"
         ]
-
-        cross = cross_join(boring_intervals, lithology_intervals)
-        mask = ((cross["Кровля интервала литописания"] >= cross["Кровля интервала долбления"]) &
-                (cross["Подошва интервала литописания"] <= cross["Подошва интервала долбления"]))
-        cross = cross[mask]
-
-        core_log = getattr(self, core_attr)[core_mnemonic].reset_index()
-        core_log.columns = ["Глубина " + core_mnemonic, "Значение " + core_mnemonic]
-
-        report = between_join(core_log, cross, left_on="Глубина "+core_mnemonic,
-                              right_on=("Увязанная кровля интервала литописания",
-                                        "Увязанная подошва интервала литописания"))
-        report.to_csv(os.path.join(self.path, self.name + "_matching_report.csv"), index=False)
+        lithology_intervals.to_csv(os.path.join(self.path, self.name + "_lithology_intervals_matching.csv"),
+                                   index=False)
 
     @staticmethod
     def _parse_matching_mode(mode):
