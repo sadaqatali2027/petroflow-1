@@ -40,7 +40,12 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         else:
             self.segments = segments
 
-        self.tree_depth = 2 if self._has_segments() else self.segments[0].tree_depth + 1
+    @property
+    def tree_depth(self):
+        if self._has_segments():
+            return 2
+        else:
+            return self.segments[0].tree_depth + 1
 
     def _has_segments(self):
         return all([isinstance(item, WellSegment) for item in self.segments])
@@ -65,12 +70,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [
                 Well(segments=segment.create_segments(src, connected)) for segment in well.segments
             ]
-        self._inc_depth()
-
-    def _inc_depth(self):
-        for level in range(self.tree_depth-1):
-            for well in self.iter_level(level):
-                well.tree_depth += 1
 
     @property
     def length(self):
@@ -106,7 +105,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     ]
                 else:
                     well.segments = []
-            self._inc_depth()
         self.prunning()
         return self
 
@@ -123,7 +121,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 Well(segments=segment.crop(height, step, drop_last))
                 for segment in well.segments
             ]
-        self._inc_depth()
+        return self
 
     def drop_nans(self, components_to_drop_nans):
         wells = self.iter_level(-2)
@@ -133,7 +131,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 for segment in well.segments
             ]
         self.prunning()
-        self._inc_depth()
         return self
 
     def drop_short_segments(self, size_to_drop):
