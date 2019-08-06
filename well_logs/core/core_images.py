@@ -1,6 +1,7 @@
 """ Batch class for core images procrssing """
 
 import os
+import itertools
 
 import numpy as np
 import PIL
@@ -249,42 +250,40 @@ class CoreBatch(ImagesBatch):
         return res
 
     @action
-    @inbatch_parallel(init='indices', post='_assemble_images', target="threads")
-    def random_crop(self, index, length, n_crops=1, src=None, **kwargs):
+    def make_random_crops(self, shape, n_crops=1, src=None, channels='first', **kwargs):
         """ Get random crops from images.
 
         Parameters
         ----------
-        length : int
-            length of the crop.
+        shape : tuple
+            shape of crop.
         n_crops : int
-            number of crops from one image
+            number of crops from one image.
         src : tuple of str
             components to process. Default: ('dl', uv').
         dst : tuple of str
             components to save resulting images and labels. Default: ('dl', 'uv').
         """
-        _ = kwargs
-        src = self.components[:2] if src is None else src
-        images = self._get_components(index, src)
-        slices = [[slice(None)] * images[0].ndim] * n_crops
-        image_length = min([img.shape[-2] for img in images])
-        pos = np.random.randint(0, image_length - length + 1, size=n_crops)
-        for j, position in enumerate(pos):
-            slices[j][-2] = slice(position, position + length)
-        return [np.array([img[_slice] for _slice in slices]) for img in images]
+        def _positions(image_shape, shape):
+            return np.array(
+                [np.random.randint(0, image_shape[i] - shape[i] + 1, size=n_crops) for i in range(2)]
+            ).transpose()
+        return self.make_crops(shape, _positions, None, src, channels, **kwargs)
 
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
-    def crop(self, index, length, step, src=None, **kwargs):
+    def make_crops(self, index, shape, positions=None, step=None, src=None, channels='first', **kwargs):
         """ Get crops from images.
 
         Parameters
         ----------
-        length : tuple
-            length of crop
-        step : float
-            step between crops
+        shape : tuple
+            shape of crop.
+        positions : None or callable
+            positions of crops. If None, image will be croped with `step`.
+            If callable, get image shape and shape of the crop and return array of positions.
+        step : None, int or tuple of int
+            step for cropping. If None, will be equal to `shape`. If int, step for both axes.
         src : tuple of str
             components to process. Default: ('dl', uv').
         dst : tuple of str
@@ -293,9 +292,26 @@ class CoreBatch(ImagesBatch):
         _ = kwargs
         src = self.components[:2] if src is None else src
         images = self._get_components(index, src)
-        image_length = min([img.shape[-2] for img in images])
-        pos = np.arange(0, image_length-length + 1, step)
-        slices = [[slice(None)] * images[0].ndim] * len(pos)
-        for j, position in enumerate(pos):
-            slices[j][-2] = slice(position, position + length)
-        return [np.array([img[_slice] for _slice in slices]) for img in images]
+        if channels == 'first':
+            spatial_axis = (-2, -1)
+        else:
+            spatial_axis = (-3, -2)
+        image_shape = (
+            min([img.shape[spatial_axis[0]] for img in images]),
+            min([img.shape[spatial_axis[1]] for img in images])
+        )
+        if callable(positions):
+            pos = positions(image_shape, shape)
+        else:
+            pos = np.array(
+                list(itertools.product(*[np.arange(0, image_shape[i] - shape[i] + 1, step[i]) for i in range(2)]))
+            )
+
+        crops = [[] for _ in range(len(images))]
+        for _pos in pos:
+            _slice = [slice(None)] * images[0].ndim
+            for i, axis in enumerate(spatial_axis):
+                _slice[axis] = slice(_pos[i], _pos[i] + shape[i])
+            for i, img in enumerate(images):
+                crops[i].append(img[_slice])
+        return np.array(crops)
