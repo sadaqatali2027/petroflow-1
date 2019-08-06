@@ -56,10 +56,10 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             raise ValueError("Level ({}) can't exceed depth ({})".format(level, self.tree_depth))
         if level == 0:
             return [self]
-        elif level == 1:
+        if level == 1:
             return self.segments
-        else:
-            return [item for well in self.segments for item in well.iter_level(level-1)]
+
+        return [item for well in self.segments for item in well.iter_level(level-1)]
 
     def copy(self):
         return copy(self)
