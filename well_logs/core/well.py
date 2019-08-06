@@ -44,8 +44,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     def tree_depth(self):
         if self._has_segments():
             return 2
-        else:
-            return self.segments[0].tree_depth + 1
+
+        return self.segments[0].tree_depth + 1
 
     def _has_segments(self):
         return all([isinstance(item, WellSegment) for item in self.segments])
