@@ -40,14 +40,14 @@ class AbstractWell(metaclass=ABCMeta):
     @abstractmethod
     def create_segments(self):
         pass
-    
+
     @abstractmethod
     def random_crop(self):
-        pass  
+        pass
 
     @abstractmethod
     def crop(self):
-        pass  
+        pass
 
     @abstractmethod
     def create_mask(self):
@@ -75,4 +75,8 @@ class AbstractWell(metaclass=ABCMeta):
 
     @abstractmethod
     def norm_min_max(self):
+        pass
+
+    @abstractmethod
+    def drop_short_segments(self):
         pass

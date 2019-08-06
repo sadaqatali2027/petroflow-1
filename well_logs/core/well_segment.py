@@ -678,7 +678,7 @@ class WellSegment(AbstractWell):
         for _, (depth_from, depth_to) in intervals.iterrows():
             res_segments.append(self[depth_from:depth_to])
         return res_segments
-    
+
     def create_segments(self, src, connected=True):
         if not isinstance(src, list):
             src = [src]
@@ -708,7 +708,7 @@ class WellSegment(AbstractWell):
     def random_crop(self, height, n_crops=1):
         positions = np.random.uniform(self.depth_from, max(self.depth_from, self.depth_to-height), size=n_crops)
         return [self[pos:pos+height] for pos in positions]
-    
+
     def crop(self, height, step, drop_last=True):
         positions = np.arange(self.depth_from, self.depth_to, step)
         if drop_last and positions[-1]+height > self.depth_to:
@@ -747,8 +747,23 @@ class WellSegment(AbstractWell):
     def keep_layers(self):
         pass
 
-    def drop_nans(self):
-        pass
+    def drop_nans(self, components_to_drop_nans):
+        # Drop rows with at least one NaN in places components_to_drop_nans
+        if isinstance(components_to_drop_nans, (list, tuple)):
+            not_nan_mask = ~np.isnan(self[components_to_drop_nans].logs)
+            not_nan_indices = np.where(np.all(not_nan_mask, axis=1))[0]
+
+        # Drop rows with greater than or equal to components_to_drop_nans NaN in row
+        elif isinstance(components_to_drop_nans, int):
+            not_nan_mask = (~np.isnan(self.logs)).sum(axis=1)
+            not_nan_indices = np.where(not_nan_mask >= components_to_drop_nans)[0]
+        else:
+            raise ValueError('components_to_drop_nans must be list or tuple or int')
+
+        not_nan_depth = not_nan_mask.index[not_nan_indices]
+        borders = np.where((not_nan_indices[1:] - not_nan_indices[:-1]) != 1)[0] + 1
+        splits = np.split(not_nan_depth, borders)
+        return [self[split[0]:split[-1]] for split in splits]
 
     def fill_nans(self):
         pass
