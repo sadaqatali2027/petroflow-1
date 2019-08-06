@@ -775,4 +775,4 @@ class WellSegment(AbstractWell):
         pass
 
     def drop_short_segments(self):
-     pass
+        pass
