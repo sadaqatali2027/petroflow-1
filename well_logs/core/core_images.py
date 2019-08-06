@@ -91,8 +91,8 @@ class CoreBatch(ImagesBatch):
         res = [getattr(self, component)[pos] for component in components]
         if len(res) == 1:
             res = res[0]
-        return res
-
+        return res    
+    
     def _assemble_images(self, all_results, *args, dst=None, **kwargs):
         dst = self.components[:2] if dst is None else dst
         return self._assemble(all_results, *args, dst=dst, **kwargs)
@@ -200,6 +200,34 @@ class CoreBatch(ImagesBatch):
         return img, label
 
     @action
+    @inbatch_parallel(init='indices', post='_assemble_uv_labels')
+    def shift_uv(self, index, proba=0.5, bounds=(20, 100), src=None, **kwargs):
+        """ Randomly shift UV images. Flipped images always will have label 1.
+
+        Parameters
+        ----------
+        proba : float
+            probability of shift.
+        bounds : int
+            maximal absolute value of shift.
+        src : tuple of str
+            components to process. Default: ('dl', uv', 'labels').
+        dst : tuple of str
+            components to save resulting images and labels. Default: ('dl', uv', 'labels').
+        """
+        _ = kwargs
+        src = self.components[1:] if src is None else src
+        img, label = self._get_components(index, src)
+        if np.random.rand() < proba:
+            lower = bounds[0]
+            upper = min(bounds[1], img.size[1])
+            if lower < upper:
+                shift = np.random.randint(lower, upper)
+                img = img.crop((0, shift, img.size[0], img.size[1]))
+                label = 1.
+        return img, label
+
+    @action
     def shuffle_images(self, proba=0.5, src=None, dst=None):
         """ Shuffle DL and UV images. Shuffled images will have label 1.
 
@@ -263,6 +291,8 @@ class CoreBatch(ImagesBatch):
             components to process. Default: ('dl', uv').
         dst : tuple of str
             components to save resulting images and labels. Default: ('dl', 'uv').
+        channels : str, 'first' or 'last'
+            channels axis.
         """
         def _positions(image_shape, shape):
             return np.array(
@@ -288,14 +318,16 @@ class CoreBatch(ImagesBatch):
             components to process. Default: ('dl', uv').
         dst : tuple of str
             components to save resulting images and labels. Default: ('dl', 'uv').
+        channels : str, 'first' or 'last'
+            channels axis.
         """
         _ = kwargs
         src = self.components[:2] if src is None else src
         images = self._get_components(index, src)
         if channels == 'first':
-            spatial_axis = (-2, -1)
+            spatial_axis = (1, 2)
         else:
-            spatial_axis = (-3, -2)
+            spatial_axis = (0, 1)
         image_shape = (
             min([img.shape[spatial_axis[0]] for img in images]),
             min([img.shape[spatial_axis[1]] for img in images])
@@ -303,6 +335,10 @@ class CoreBatch(ImagesBatch):
         if callable(positions):
             pos = positions(image_shape, shape)
         else:
+            if step is None:
+                step = shape
+            elif isinstance(step, int):
+                step = (step, step)
             pos = np.array(
                 list(itertools.product(*[np.arange(0, image_shape[i] - shape[i] + 1, step[i]) for i in range(2)]))
             )

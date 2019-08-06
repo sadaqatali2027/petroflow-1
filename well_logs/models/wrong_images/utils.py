@@ -3,12 +3,13 @@
 import os
 import glob
 
+import cv2
 import PIL
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def plot_pair(path, name, threshold=0.5, length=1000):
+def plot_pair(path, name, length=1000):
     """ Plot DL and UV images. """
     dl_image = PIL.Image.open(os.path.join(path, 'samples_dl', name))
     dl_image = np.array(dl_image)[:length]
@@ -24,10 +25,7 @@ def plot_pair(path, name, threshold=0.5, length=1000):
     plt.yticks([])
     plt.subplot(1, 2, 2)
     plt.title('uv')
-    uv_image = uv_image / np.max(uv_image)
-    uv_image[uv_image > threshold] = threshold
-    uv_image = uv_image / threshold
-    plt.imshow(uv_image, cmap='gray')
+    plt.imshow(cv2.equalizeHist(uv_image), cmap='gray')
     plt.xticks([])
     plt.yticks([])
     plt.show()
@@ -82,6 +80,13 @@ def _split(arr):
         arr = np.array(arr)[:-1]
     return arr
 
+
+def _split(arr):
+    if len(arr.shape) != 1:
+        arr = np.split(arr, len(arr)) + [None]
+        arr = np.array(arr)[:-1]
+    return arr
+
 def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None):
     """ Plot examples of predictions. """
     stat = ppl.get_variable('stat')
@@ -109,9 +114,16 @@ def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None):
         img1 = np.squeeze(dl_images[i])
         img2 = np.squeeze(uv_images[i])
         shape = np.min((img1.shape[0], img2.shape[0])), np.min((img1.shape[1], img2.shape[1]))
-        plt.figure(figsize=(15, 10))
-        image = np.concatenate((img1[:shape[0], :shape[1]], img2[:shape[0], :shape[1]]), axis=1)
+        image = np.concatenate(
+            (
+                img1[:shape[0], :shape[1]],
+                img2[:shape[0], :shape[1]]
+            ), axis=1)
+        figsize = np.array([10, 5]) * image.shape / np.array([1500, 300])
+        plt.figure(figsize=figsize)
         plt.imshow(image.transpose(), cmap='gray')
+        plt.xticks([])
+        plt.yticks([])
         plt.title(index[i] + '      ' + str(labels[i]) + '     ' + str(proba[i][1]))
         plt.show()
 
