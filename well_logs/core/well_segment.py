@@ -4,6 +4,7 @@ import base64
 import shutil
 from copy import copy
 from glob import glob
+from functools import reduce
 from itertools import chain, repeat, product
 
 import numpy as np
@@ -18,7 +19,7 @@ from plotly.offline import init_notebook_mode, plot
 
 from .abstract_well import AbstractWell
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
-from .joins import cross_join, between_join
+from .joins import cross_join, between_join, fdtd_join
 
 
 def add_attr_properties(cls):
@@ -86,6 +87,10 @@ class WellSegment(AbstractWell):
         self._samples = None
         self._core_dl = None
         self._core_uv = None
+
+    @property
+    def length(self):
+        return self.depth_to - self.depth_from
 
     @property
     def boring_sequences(self):
@@ -673,33 +678,68 @@ class WellSegment(AbstractWell):
         for _, (depth_from, depth_to) in intervals.iterrows():
             res_segments.append(self[depth_from:depth_to])
         return res_segments
+    
+    def create_segments(self, src, connected=True):
+        if not isinstance(src, list):
+            src = [src]
+        if all([item in self.attrs_fdtd_index for item in src]):
+            res = self._create_segments_by_fdtd(src, connected)
+        else:
+            # TODO: create_segments from depth_index
+            pass
+        return res
 
-    def _core_chunks(self):
-        samples = self.samples.copy()
-        gaps = samples['DEPTH_FROM'][1:].values - samples['DEPTH_TO'][:-1].values
-
-        if any(gaps < 0):
-            raise ValueError('Core intersects the previous one: ', list(samples.index[1:][gaps < 0]))
-
-        samples['TOP'] = True
-        samples['TOP'][1:] = (gaps != 0)
-
-        samples['BOTTOM'] = True
-        samples['BOTTOM'][:-1] = (gaps != 0)
-
-        chunks = pd.DataFrame({
-            'TOP': samples[samples.TOP].DEPTH_FROM.values,
-            'BOTTOM': samples[samples.BOTTOM].DEPTH_TO.values
-        })
-
-        return chunks
-
-    def split_by_core(self):
-        chunks = self._core_chunks()
-        segments = []
-        for _, (top, bottom) in self._core_chunks().iterrows():
-            segments.append(self[top:bottom])
+    def _create_segments_by_fdtd(self, src, connected):
+        tables = [getattr(self, item).reset_index() for item in src]
+        df = tables[0] if len(tables) == 1 else reduce(fdtd_join, tables)
+        if connected:
+            df = self._core_chunks(df)
+        segments = [self[top:bottom] for _, (top, bottom) in df[['DEPTH_FROM', 'DEPTH_TO']].iterrows()]
         return segments
+
+    def _core_chunks(self, df):
+        if len(df) > 0:
+            chunks = [(item.DEPTH_FROM.min(), item.DEPTH_TO.max()) for item in select_contigious_intervals(df)]
+            chunks = pd.DataFrame(chunks, columns=["DEPTH_FROM", "DEPTH_TO"])
+            return chunks
+        else:
+            return pd.DataFrame(columns=["DEPTH_FROM", "DEPTH_TO"])
+
+    def random_crop(self, height, n_crops=1):
+        positions = np.random.uniform(self.depth_from, max(self.depth_from, self.depth_to-height), size=n_crops)
+        return [self[pos:pos+height] for pos in positions]
+    
+    def crop(self, height, step, drop_last=True):
+        positions = np.arange(self.depth_from, self.depth_to, step)
+        if drop_last and positions[-1]+height > self.depth_to:
+            positions = positions[:-1]
+        else:
+            height = min(height, self.depth_to-positions[-1])
+        return [self[pos:pos+height] for pos in positions]
+
+    def create_mask(self, src, column, labels, mode, default=-1, dst='mask'):
+        if src in self.attrs_fdtd_index:
+            self._create_mask_fdtf(src, column, labels, mode, default, dst)
+        else:
+            # TODO: create_mask from depth_index
+            pass
+
+    def _create_mask_fdtf(self, src, column, labels, mode, default=-1, dst='mask'):
+        if mode == 'core':
+            mask = np.ones(len(self.core_dl)) * default
+        elif mode == 'logs':
+            mask = np.ones(len(self.logs)) * default
+        else:
+            raise ValueError('Unknown mode: ', mode)
+
+        table = getattr(self, src)
+        for row in table.iterrows():
+            factor = len(mask) / self.length if mode == 'core' else len(mask)
+            depth_from, depth_to = row[1].name
+            start = np.floor((max(depth_from, self.depth_from) - self.depth_from) * factor)
+            end = np.ceil((min(depth_to, self.depth_to) - self.depth_from) * factor)
+            mask[int(start):int(end)] = labels[row[1][column]]
+        setattr(self, dst, mask)
 
     def drop_layers(self):
         pass

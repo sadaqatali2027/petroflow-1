@@ -38,7 +38,19 @@ class AbstractWell(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def split_by_core(self):
+    def create_segments(self):
+        pass
+    
+    @abstractmethod
+    def random_crop(self):
+        pass  
+
+    @abstractmethod
+    def crop(self):
+        pass  
+
+    @abstractmethod
+    def create_mask(self):
         pass
 
     @abstractmethod
