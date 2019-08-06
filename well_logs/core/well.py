@@ -10,7 +10,8 @@ from .well_segment import WellSegment
 
 class SegmentDelegatingMeta(ABCMeta):
     def __new__(mcls, name, bases, namespace):
-        abstract_methods = frozenset().union(*(base.__abstractmethods__ for base in bases))
+        abstract_methods = [base.__abstractmethods__ for base in bases if hasattr(base, "__abstractmethods__")]
+        abstract_methods = frozenset().union(*abstract_methods)
         for name in abstract_methods:
             if name not in namespace:
                 namespace[name] = mcls._make_delegator(name)

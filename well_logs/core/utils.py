@@ -24,3 +24,7 @@ def for_each_component(method):
                 method(self, *args, components=comp, **kwargs)
         return self
     return wrapped_method
+
+
+def to_list(obj):
+    return np.array(obj).ravel().tolist()

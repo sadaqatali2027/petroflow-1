@@ -2,10 +2,6 @@ from abc import ABCMeta, abstractmethod
 
 class AbstractWell(metaclass=ABCMeta):
     @abstractmethod
-    def __getitem__(self, key):
-        pass
-
-    @abstractmethod
     def dump(self, key):
         pass
 

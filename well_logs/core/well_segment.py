@@ -61,8 +61,9 @@ class WellSegment(AbstractWell):
     attrs_fdtd_index = ("layers", "boring_sequences", "boring_intervals", "core_lithology", "samples")
     attrs_no_index = ("inclination",)
 
-    def __init__(self, path, core_width=10, pixels_per_cm=5):
+    def __init__(self, path, *args, core_width=10, pixels_per_cm=5, **kwargs):
         super().__init__()
+        _ = args, kwargs
         self.path = path
         self.core_width = core_width
         self.pixels_per_cm = pixels_per_cm
