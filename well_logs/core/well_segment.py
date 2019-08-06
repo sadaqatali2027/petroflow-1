@@ -773,3 +773,6 @@ class WellSegment(AbstractWell):
 
     def norm_min_max(self, axis=-1, min=None, max=None, *, components):
         pass
+
+    def drop_short_segments(self):
+     pass
