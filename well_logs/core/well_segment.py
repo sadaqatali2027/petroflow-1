@@ -20,6 +20,7 @@ from plotly.offline import init_notebook_mode, plot
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
 from .joins import between_join, fdtd_join
+from .utils import to_list
 
 
 def add_attr_properties(cls):
@@ -47,7 +48,6 @@ def add_attr_loaders(cls):
             def load(self, *args, **kwargs):
                 data = loader(self, self._get_full_name(self.path, attr), *args, **kwargs)
                 setattr(self, "_" + attr, data)
-                # TODO: transform depths if core-to-log matching has already been performed
                 return self
             return load
         setattr(cls, "load_" + attr, load_factory(attr, loader))
@@ -262,8 +262,6 @@ class WellSegment(AbstractWellSegment):
                     attr_val = attr_val.reset_index()
                 attr_val.to_feather(os.path.join(path, attr + ".feather"))
 
-        # TODO: probably it makes sense to dump _boring_intervals_deltas and _core_lithology_deltas
-
         samples_dl_path = os.path.join(self.path, "samples_dl")
         if os.path.exists(samples_dl_path):
             shutil.copytree(samples_dl_path, os.path.join(path, "samples_dl"), copy_function=os.link)
@@ -281,7 +279,7 @@ class WellSegment(AbstractWellSegment):
         encoded_img = "data:image/png;base64," + encoded_img
         return encoded_img
 
-    def plot(self, plot_core=True, subplot_height=500, subplot_width=150):
+    def plot(self, plot_core=True, subplot_height=750, subplot_width=200):
         init_notebook_mode(connected=True)
 
         n_cols = len(self.logs.columns)
@@ -477,9 +475,7 @@ class WellSegment(AbstractWellSegment):
 
     @staticmethod
     def _unify_matching_mode(mode):
-        mode_list = [mode] if isinstance(mode, str) else mode
-        mode_list = [mode.replace(" ", "") for mode in mode_list]
-        return mode_list
+        return [mode.replace(" ", "") for mode in to_list(mode)]
 
     def match_core_logs(self, mode="GK ~ core_logs.GK", max_shift=5, delta_from=-4, delta_to=4, delta_step=0.1,
                         max_iter=50, max_iter_time=0.25, save_report=False):
@@ -654,19 +650,18 @@ class WellSegment(AbstractWellSegment):
         plot(fig)
         return self
 
-    def drop_logs(self, mnemonics=None):
+    def drop_logs(self, mnemonics):
         res = self.copy()
-        res._logs.drop(mnemonics, axis=1, inplace=True)
+        res._logs.drop(to_list(mnemonics), axis=1, inplace=True)
         return res
 
-    def keep_logs(self, mnemonics=None):
+    def keep_logs(self, mnemonics):
         res = self.copy()
-        mnemonics = np.asarray(mnemonics).tolist()
-        res._logs = res.logs[mnemonics]
+        res._logs = res.logs[to_list(mnemonics)]
         return res
 
     def rename_logs(self, rename_dict):
-        self.logs.columns = [rename_dict.get(name, name) for name in self.logs.columns]
+        self.logs.rename(columns=rename_dict, inplace=True)
         return self
 
     def keep_matched_sequences(self, mode=None, threshold=0.6):
@@ -720,13 +715,13 @@ class WellSegment(AbstractWellSegment):
 
     def create_mask(self, src, column, labels, mode, default=-1, dst='mask'):
         if src in self.attrs_fdtd_index:
-            self._create_mask_fdtf(src, column, labels, mode, default, dst)
+            self._create_mask_fdtd(src, column, labels, mode, default, dst)
         else:
             # TODO: create_mask from depth_index
             pass
         return self
 
-    def _create_mask_fdtf(self, src, column, labels, mode, default=-1, dst='mask'):
+    def _create_mask_fdtd(self, src, column, labels, mode, default=-1, dst='mask'):
         if mode == 'core':
             mask = np.ones(len(self.core_dl)) * default
         elif mode == 'logs':
