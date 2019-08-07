@@ -25,7 +25,7 @@ def plot_pair(path, name, length=1000):
     plt.yticks([])
     plt.subplot(1, 2, 2)
     plt.title('uv')
-    plt.imshow(cv2.equalizeHist(uv_image), cmap='gray')
+    plt.imshow(cv2.equalizeHist(uv_image), cmap='gray')  # pylint: disable=no-member
     plt.xticks([])
     plt.yticks([])
     plt.show()
@@ -60,7 +60,7 @@ def assemble(batch):
     res = []
     i = 0
     for item in batch.dl_crops:
-        res.append(np.median(predictions[i:i+item.shape[0]], axis=0))
+        res.append(np.mean(predictions[i:i+item.shape[0]], axis=0))
         i = i + item.shape[0]
     return np.array(res)
 

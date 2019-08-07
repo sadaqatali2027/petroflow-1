@@ -91,8 +91,8 @@ class CoreBatch(ImagesBatch):
         res = [getattr(self, component)[pos] for component in components]
         if len(res) == 1:
             res = res[0]
-        return res    
-    
+        return res
+
     def _assemble_images(self, all_results, *args, dst=None, **kwargs):
         dst = self.components[:2] if dst is None else dst
         return self._assemble(all_results, *args, dst=dst, **kwargs)
