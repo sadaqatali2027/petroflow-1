@@ -5,7 +5,7 @@ from functools import wraps
 
 from ..batchflow import FilesIndex, Batch, action, inbatch_parallel
 from .well import Well
-from .abstract_well import AbstractWell
+from .abstract_classes import AbstractWell
 from .utils import to_list
 
 
@@ -26,7 +26,7 @@ class WellDelegatingMeta(ABCMeta):
             func = getattr(Well, name)
             self.wells[pos] = func(self.wells[pos], *args, **kwargs)
         # TODO: choose inbatch_parallel target depending on action name
-        return action()(inbatch_parallel(init="indices", target="threads")(batch_delegator))
+        return action()(inbatch_parallel(init="indices", target="threads")(delegator))
 
 
 class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):

@@ -17,7 +17,7 @@ from plotly import graph_objs as go
 from plotly.subplots import make_subplots
 from plotly.offline import init_notebook_mode, plot
 
-from .abstract_well import AbstractWellSegment
+from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
 from .joins import between_join, fdtd_join
 

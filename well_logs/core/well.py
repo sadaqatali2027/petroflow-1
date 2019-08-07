@@ -7,7 +7,7 @@ from collections import Counter
 
 import numpy as np
 
-from .abstract_well import AbstractWell
+from .abstract_classes import AbstractWell
 from .well_segment import WellSegment
 
 
@@ -29,9 +29,9 @@ class SegmentDelegatingMeta(ABCMeta):
                 res = getattr(segment, name)(*args, **kwargs)
                 if not isinstance(res, list):
                     res = [res]
-                results.append(res)
+                results.extend(res)
             res_well = self.copy()
-            res_well.segments = sum(results, [])
+            res_well.segments = results
             return res_well
         return delegator
 
