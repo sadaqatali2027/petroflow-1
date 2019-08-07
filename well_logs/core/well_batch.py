@@ -21,11 +21,10 @@ class WellDelegatingMeta(ABCMeta):
     @staticmethod
     def _make_parallel_action(name):
         @wraps(getattr(Well, name))
-        def batch_delegator(self, index, *args, **kwargs):
+        def delegator(self, index, *args, **kwargs):
             pos = self.get_pos(None, "wells", index)
             func = getattr(Well, name)
-            res = func(self.wells[pos], *args, **kwargs)
-            return res
+            self.wells[pos] = func(self.wells[pos], *args, **kwargs)
         # TODO: choose inbatch_parallel target depending on action name
         return action()(inbatch_parallel(init="indices", target="threads")(batch_delegator))
 
