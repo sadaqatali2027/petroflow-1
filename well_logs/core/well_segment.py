@@ -75,13 +75,13 @@ class WellSegment(AbstractWellSegment):
     ----------
     path : str
         A path to a directory with well data, containing:
-        - meta.json - a json dict with the following keys:
+        - `meta.json` - a json dict with the following keys:
             - `name` - well name
             - `field` - field name
             - `depth_from` - minimum depth entry in the well logs
             - `depth_to` - maximum depth entry in the well logs
           These values will be stored as instance attributes.
-        - samples_dl and samples_uv (optional) - directories, containing
+        - `samples_dl` and `samples_uv` (optional) - directories, containing
           daylight and ultraviolet images of core samples respectively. Images
           of the same sample must have the same name in both dirs.
         - Optional `.csv`, `.las` or `.feather` file for certain class
@@ -96,13 +96,13 @@ class WellSegment(AbstractWellSegment):
     Attributes
     ----------
     name : str
-        Well name, loaded from meta.json.
+        Well name, loaded from `meta.json`.
     field : str
-        Field name, loaded from meta.json.
+        Field name, loaded from `meta.json`.
     depth_from : float
-        Minimum depth entry in the well logs, loaded from meta.json.
+        Minimum depth entry in the well logs, loaded from `meta.json`.
     depth_to : float
-        Maximum depth entry in the well logs, loaded from meta.json.
+        Maximum depth entry in the well logs, loaded from `meta.json`.
     logs : pandas.DataFrame
         Well logs, indexed by depth. Depth log in source file must have
         `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
@@ -190,10 +190,14 @@ class WellSegment(AbstractWellSegment):
 
     @property
     def length(self):
+        """float: Length of the segment in meters."""
         return self.depth_to - self.depth_from
 
     @property
     def boring_sequences(self):
+        """pandas.DataFrame: Depth ranges of contiguous boring intervals,
+        extracted one after another.
+        """
         if self._boring_sequences is None:
             if self._has_file("boring_sequences"):
                 self.load_boring_sequences()
@@ -272,12 +276,18 @@ class WellSegment(AbstractWellSegment):
 
     @property
     def core_dl(self):
+        """numpy.ndarray: Concatenated daylight image of all core samples in
+        the segment.
+        """
         if self._core_dl is None:
             self.load_core()
         return self._core_dl
 
     @property
     def core_uv(self):
+        """numpy.ndarray: Concatenated ultraviolet image of all core samples
+        in the segment.
+        """
         if self._core_uv is None:
             self.load_core()
         return self._core_uv
@@ -304,6 +314,25 @@ class WellSegment(AbstractWellSegment):
         return int(round(meters * 100)) * self.pixels_per_cm
 
     def load_core(self, core_width=None, pixels_per_cm=None):
+        """Load core images in daylight and ultraviolet.
+
+        If any of method arguments are not specified, those, passed to
+        `__init__` will be used, otherwise, they will be overridden in `self`.
+
+        Parameters
+        ----------
+        core_width : positive float, optional
+            The width of core samples in cm.
+        pixels_per_cm : positive int, optional
+            The number of pixels in cm used to determine the loaded width of
+            core sample images. Image height is calculated so as to keep the
+            aspect ratio.
+
+        Returns
+        -------
+        self : AbstractWellSegment
+            Self with core images loaded for each segment.
+        """
         self.core_width = core_width if core_width is not None else self.core_width
         self.pixels_per_cm = pixels_per_cm if pixels_per_cm is not None else self.pixels_per_cm
 
@@ -336,6 +365,25 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def dump(self, path):
+        """Dump well segment data.
+
+        Segment attributes are saved in the following manner:
+        - `name`, `field`, `depth_from` and `depth_to` attributes are saved in
+          `meta.json` file.
+        - `core_dl` and `core_uv` are not saved. Instead, `samples_dl` and
+          `samples_uv` directories are copied.
+        - All other attributes are dumped in feather format.
+
+        Parameters
+        ----------
+        path : str
+            A path to a directory, where well dir with dump will be created.
+        
+        Returns
+        -------
+        self : AbstractWellSegment
+            Self unchanged.
+        """
         path = os.path.join(path, self.name)
         if not os.path.exists(path):
             os.makedirs(path)

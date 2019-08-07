@@ -7,6 +7,10 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def load_core(self):
+        pass
+
+    @abstractmethod
     def dump(self):
         pass
 
