@@ -1,7 +1,7 @@
 """ Batch class for core images procrssing """
 
 import os
-import itertools
+from itertools import product
 
 import numpy as np
 import PIL
@@ -172,9 +172,9 @@ class CoreBatch(ImagesBatch):
         """
         _ = kwargs
         src = self.components[:2] if src is None else src
-        images = [np.array(img) for img in self._get_components(index, src)]
-        shape = (min(*[img.shape[0] for img in images]), min(*[img.shape[1] for img in images]))
-        images = [PIL.Image.fromarray(img[:shape[0], :shape[1]]) for img in images]
+        images = self._get_components(index, src)
+        shape = (min(*[img.size[0] for img in images]), min(*[img.size[1] for img in images]))
+        images = [img.crop((0, 0, shape[0], shape[1])) for img in images]
         return images
 
     @action
@@ -274,7 +274,7 @@ class CoreBatch(ImagesBatch):
         for component in src:
             pos = self.get_pos(None, component, index)
             image = np.array(getattr(self, component)[pos])
-            res.append(cv2.equalizeHist(image)) # pylint: disable=no-member
+            res.append(PIL.Image.fromarray(cv2.equalizeHist(image))) # pylint: disable=no-member
         return res
 
     @action
@@ -340,7 +340,7 @@ class CoreBatch(ImagesBatch):
             elif isinstance(step, int):
                 step = (step, step)
             pos = np.array(
-                list(itertools.product(*[np.arange(0, image_shape[i] - shape[i] + 1, step[i]) for i in range(2)]))
+                list(product(*[np.arange(0, image_shape[i] - shape[i] + 1, step[i]) for i in range(2)]))
             )
 
         crops = [[] for _ in range(len(images))]
