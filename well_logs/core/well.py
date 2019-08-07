@@ -48,25 +48,53 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     def tree_depth(self):
         if self._has_segments():
             return 2
-
         return self.segments[0].tree_depth + 1
 
+    @property
+    def length(self):
+        # TODO: decide what lenght is supposed to mean. Now it is calculated wrong in case of overlapping segments.
+        return sum([segment.length for segment in self.segments])
+
+    @property
+    def depth_from(self):
+        return min([well.depth_from for well in self.segments])
+
+    @property
+    def depth_to(self):
+        return max([well.depth_to for well in self.segments])
+
+    @property
+    def n_segments(self):
+        return len(self.iter_level())
+
     def _has_segments(self):
-        return all([isinstance(item, WellSegment) for item in self.segments])
+        return all(isinstance(item, WellSegment) for item in self.segments)
 
     def iter_level(self, level=-1):
         level = level if level >= 0 else self.tree_depth + level
-        if level > self.tree_depth:
-            raise ValueError("Level ({}) can't exceed depth ({})".format(level, self.tree_depth))
+        if (level < 0) or (level > self.tree_depth):
+            raise ValueError("Level ({}) can't be negative or exceed tree depth ({})".format(level, self.tree_depth))
         if level == 0:
             return [self]
         if level == 1:
             return self.segments
+        return [item for well in self.segments for item in well.iter_level(level - 1)]
 
-        return [item for well in self.segments for item in well.iter_level(level-1)]
+    def prune(self):
+        # TODO: raise EmptyWellException if no segments left
+        self.segments = [well for well in self.segments if isinstance(well, WellSegment) or well.n_segments > 0]
+        for well in self.segments:
+            if isinstance(well, Well):
+                _ = well.prune()
+        return self
 
     def copy(self):
         return copy(self)
+
+    def dump(self, path):
+        # TODO: aggregate before dumping
+        self.segments[0].dump(path)
+        return self
 
     def create_segments(self, src, connected=True):
         wells = self.iter_level(-2)
@@ -75,25 +103,18 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 Well(segments=segment.create_segments(src, connected)) for segment in well.segments
             ]
 
-    @property
-    def length(self):
-        return sum([segment.length for segment in self.segments])
-
-    @property
-    def depth_from(self):
-        return self.segments[0].depth_from
-
-    @property
-    def depth_to(self):
-        return self.segments[-1].depth_to
-
-    @property
-    def n_segments(self):
-        well_children = [well for well in self.segments if isinstance(well, Well)]
-        segment_children = [segment for segment in self.segments if isinstance(segment, WellSegment)]
-        return sum([well.n_segments for well in well_children]) + len(segment_children)
+    def crop(self, height, step, drop_last=True):
+        wells = self.iter_level(-2)
+        for well in wells:
+            well.segments = [
+                Well(segments=segment.crop(height, step, drop_last))
+                for segment in well.segments
+            ]
+        return self
 
     def random_crop(self, height, n_crops=1):
+        # TODO: current implementation uses well.length to choose cropping probability, but lenght is estimated
+        # incorrectly in case of overlapping segments
         wells = self.iter_level(-2)
         p = np.array([item.length for item in wells])
         if len(wells) > 0:
@@ -109,23 +130,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     ]
                 else:
                     well.segments = []
-        self.prunning()
-        return self
-
-    def prunning(self):
-        self.segments = [well for well in self.segments if isinstance(well, WellSegment) or well.n_segments > 0]
-        for well in self.segments:
-            if isinstance(well, Well):
-                well.prunning()
-
-    def crop(self, height, step, drop_last=True):
-        wells = self.iter_level(-2)
-        for well in wells:
-            well.segments = [
-                Well(segments=segment.crop(height, step, drop_last))
-                for segment in well.segments
-            ]
-        return self
+        return self.prune()
 
     def drop_nans(self, components_to_drop_nans):
         wells = self.iter_level(-2)
@@ -134,20 +139,13 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 Well(segments=segment.drop_nans(components_to_drop_nans))
                 for segment in well.segments
             ]
-        self.prunning()
-        return self
+        return self.prune()
 
-    def drop_short_segments(self, size_to_drop):
+    def drop_short_segments(self, min_length):
         wells = self.iter_level(-2)
         for well in wells:
-            well.segments = [segment for segment in well.segments if segment.length > size_to_drop]
-        self.prunning()
-        return self
-
-    def dump(self, path):
-        # TODO: aggregate before dumping
-        self.segments[0].dump(path)
-        return self
+            well.segments = [segment for segment in well.segments if segment.length > min_length]
+        return self.prune()
 
     # def assemble_crops(self, crops, name):
     #     i = 0
