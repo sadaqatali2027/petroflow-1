@@ -201,7 +201,7 @@ class CoreBatch(ImagesBatch):
 
     @action
     @inbatch_parallel(init='indices', post='_assemble_uv_labels')
-    def shift_uv(self, index, proba=0.5, bounds=(20, 100), src=None, **kwargs):
+    def shift_uv(self, index, proba=0.5, bounds=(10, 100), src=None, **kwargs):
         """ Randomly shift UV images. Flipped images always will have label 1.
 
         Parameters
