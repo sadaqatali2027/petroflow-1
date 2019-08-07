@@ -1,3 +1,5 @@
+"""Implements WellBatch class."""
+
 from abc import ABCMeta
 from functools import wraps
 

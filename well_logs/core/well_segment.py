@@ -17,9 +17,9 @@ from plotly import graph_objs as go
 from plotly.subplots import make_subplots
 from plotly.offline import init_notebook_mode, plot
 
-from .abstract_well import AbstractWell
+from .abstract_well import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
-from .joins import cross_join, between_join, fdtd_join
+from .joins import between_join, fdtd_join
 
 
 def add_attr_properties(cls):
@@ -56,7 +56,7 @@ def add_attr_loaders(cls):
 
 @add_attr_properties
 @add_attr_loaders
-class WellSegment(AbstractWell):
+class WellSegment(AbstractWellSegment):
     attrs_depth_index = ("logs", "core_properties", "core_logs")
     attrs_fdtd_index = ("layers", "boring_sequences", "boring_intervals", "core_lithology", "samples")
     attrs_no_index = ("inclination",)
@@ -669,14 +669,14 @@ class WellSegment(AbstractWell):
         self.logs.columns = [rename_dict.get(name, name) for name in self.logs.columns]
         return self
 
-    def keep_matched_intervals(self, mode=None, threshold=0.6):
+    def keep_matched_sequences(self, mode=None, threshold=0.6):
         mask = self.boring_sequences["R2"] > threshold
         if mode is not None:
             mode_list = self._unify_matching_mode(mode)
             mask &= self.boring_sequences["MODE"].isin(mode_list)
-        intervals = self.boring_sequences[mask].reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
+        sequences = self.boring_sequences[mask].reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
         res_segments = []
-        for _, (depth_from, depth_to) in intervals.iterrows():
+        for _, (depth_from, depth_to) in sequences.iterrows():
             res_segments.append(self[depth_from:depth_to])
         return res_segments
 
@@ -724,6 +724,7 @@ class WellSegment(AbstractWell):
         else:
             # TODO: create_mask from depth_index
             pass
+        return self
 
     def _create_mask_fdtf(self, src, column, labels, mode, default=-1, dst='mask'):
         if mode == 'core':
@@ -773,7 +774,4 @@ class WellSegment(AbstractWell):
         pass
 
     def norm_min_max(self, axis=-1, min=None, max=None, *, components):
-        pass
-
-    def drop_short_segments(self):
         pass

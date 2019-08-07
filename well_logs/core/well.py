@@ -1,12 +1,15 @@
+"""Implements Well class."""
+
 from abc import ABCMeta
-from functools import wraps
 from copy import copy
+from functools import wraps
 from collections import Counter
 
 import numpy as np
 
 from .abstract_well import AbstractWell
 from .well_segment import WellSegment
+
 
 class SegmentDelegatingMeta(ABCMeta):
     def __new__(mcls, name, bases, namespace):
@@ -141,6 +144,11 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self.prunning()
         return self
 
+    def dump(self, path):
+        # TODO: aggregate before dumping
+        self.segments[0].dump(path)
+        return self
+
     # def assemble_crops(self, crops, name):
     #     i = 0
     #     for segment in self.segments:
@@ -151,7 +159,3 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     # def aggregate(self, name, func):
     #     for i in range(len(self.segments)):
     #         self.segments[i] = [self.segments[i], func([getattr(subsegment, name) for subsegment in self.segments[i]])]
-
-    # def dump(self, path):
-    #     self.aggregate().segments[0].dump(path)
-    #     return self

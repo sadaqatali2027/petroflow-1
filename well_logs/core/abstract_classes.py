@@ -1,8 +1,13 @@
 from abc import ABCMeta, abstractmethod
 
-class AbstractWell(metaclass=ABCMeta):
+
+class AbstractWellSegment(metaclass=ABCMeta):
     @abstractmethod
-    def dump(self, key):
+    def __getitem__(self, key):
+        pass
+
+    @abstractmethod
+    def dump(self):
         pass
 
     @abstractmethod
@@ -18,6 +23,10 @@ class AbstractWell(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def plot_matching(self):
+        pass
+
+    @abstractmethod
     def drop_logs(self):
         pass
 
@@ -30,7 +39,21 @@ class AbstractWell(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def keep_matched_intervals(self):
+    def fill_nans(self):
+        pass
+
+    @abstractmethod
+    def norm_mean_std(self):
+        pass
+
+    @abstractmethod
+    def norm_min_max(self):
+        pass
+
+
+class AbstractWell(AbstractWellSegment):
+    @abstractmethod
+    def keep_matched_sequences(self):
         pass
 
     @abstractmethod
@@ -38,7 +61,7 @@ class AbstractWell(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def random_crop(self):
+    def drop_short_segments(self):
         pass
 
     @abstractmethod
@@ -46,7 +69,7 @@ class AbstractWell(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def create_mask(self):
+    def random_crop(self):
         pass
 
     @abstractmethod
@@ -62,17 +85,5 @@ class AbstractWell(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def fill_nans(self):
-        pass
-
-    @abstractmethod
-    def norm_mean_std(self):
-        pass
-
-    @abstractmethod
-    def norm_min_max(self):
-        pass
-
-    @abstractmethod
-    def drop_short_segments(self):
+    def create_mask(self):
         pass
