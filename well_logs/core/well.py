@@ -12,8 +12,12 @@ from .well_segment import WellSegment
 
 
 class SegmentDelegatingMeta(ABCMeta):
+    """ Metaclass to delegate abstract methods from `Well` to its children
+    (instances of `Well` or `WellSegment`). """
     def __new__(mcls, name, bases, namespace):
-        abstract_methods = [base.__abstractmethods__ for base in bases if hasattr(base, "__abstractmethods__")]
+        abstract_methods = [
+            base.__abstractmethods__ for base in bases if hasattr(base, "__abstractmethods__")
+        ]
         abstract_methods = frozenset().union(*abstract_methods)
         for name in abstract_methods:
             if name not in namespace:
@@ -25,7 +29,7 @@ class SegmentDelegatingMeta(ABCMeta):
         @wraps(getattr(WellSegment, name))
         def delegator(self, *args, **kwargs):
             results = []
-            for segment in self.segments:
+            for segment in self:
                 res = getattr(segment, name)(*args, **kwargs)
                 if not isinstance(res, list):
                     res = [res]
@@ -52,23 +56,26 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     @property
     def length(self):
-        # TODO: decide what lenght is supposed to mean. Now it is calculated wrong in case of overlapping segments.
-        return sum([segment.length for segment in self.segments])
+        return self.depth_to - self.depth_from
 
     @property
     def depth_from(self):
-        return min([well.depth_from for well in self.segments])
+        return min([well.depth_from for well in self])
 
     @property
     def depth_to(self):
-        return max([well.depth_to for well in self.segments])
+        return max([well.depth_to for well in self])
 
     @property
     def n_segments(self):
         return len(self.iter_level())
 
     def _has_segments(self):
-        return all(isinstance(item, WellSegment) for item in self.segments)
+        return all(isinstance(item, WellSegment) for item in self)
+
+    def __iter__(self):
+        for segment in self.segments:
+            yield segment
 
     def iter_level(self, level=-1):
         level = level if level >= 0 else self.tree_depth + level
@@ -78,12 +85,12 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             return [self]
         if level == 1:
             return self.segments
-        return [item for well in self.segments for item in well.iter_level(level - 1)]
+        return [item for well in self for item in well.iter_level(level - 1)]
 
     def prune(self):
         # TODO: raise EmptyWellException if no segments left
-        self.segments = [well for well in self.segments if isinstance(well, WellSegment) or well.n_segments > 0]
-        for well in self.segments:
+        self.segments = [well for well in self if isinstance(well, WellSegment) or well.n_segments > 0]
+        for well in self:
             if isinstance(well, Well):
                 _ = well.prune()
         return self
@@ -100,15 +107,16 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [
-                Well(segments=segment.create_segments(src, connected)) for segment in well.segments
+                Well(segments=segment.create_segments(src, connected)) for segment in well
             ]
+        return self
 
     def crop(self, height, step, drop_last=True):
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [
                 Well(segments=segment.crop(height, step, drop_last))
-                for segment in well.segments
+                for segment in well
             ]
         return self
 
@@ -116,35 +124,33 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         # TODO: current implementation uses well.length to choose cropping probability, but lenght is estimated
         # incorrectly in case of overlapping segments
         wells = self.iter_level(-2)
-        p = np.array([item.length for item in wells])
-        if len(wells) > 0:
-            random_wells = Counter(np.random.choice(wells, n_crops, p=p/sum(p)))
-            for well in wells:
-                if well in random_wells:
-                    n_well_crops = random_wells[well]
-                    p = np.array([item.length for item in well.segments])
-                    random_segments = Counter(np.random.choice(well.segments, n_well_crops, p=p/sum(p)))
-                    well.segments = [
-                        Well(segments=segment.random_crop(height, n_segment_crops))
-                        for segment, n_segment_crops in random_segments.items()
-                    ]
-                else:
-                    well.segments = []
+        p = np.array([sum([segment.length for segment in item]) for item in wells])
+        random_wells = Counter(np.random.choice(wells, n_crops, p=p/sum(p)))
+        for well in wells:
+            if well in random_wells:
+                n_well_crops = random_wells[well]
+                p = np.array([item.length for item in well])
+                random_segments = Counter(np.random.choice(well.segments, n_well_crops, p=p/sum(p)))
+                well.segments = [
+                    Well(segments=segment.random_crop(height, n_segment_crops))
+                    for segment, n_segment_crops in random_segments.items()
+                ]
+            else:
+                well.segments = []
         return self.prune()
 
     def drop_nans(self, components_to_drop_nans):
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [
-                Well(segments=segment.drop_nans(components_to_drop_nans))
-                for segment in well.segments
+                Well(segments=segment.drop_nans(components_to_drop_nans)) for segment in well
             ]
         return self.prune()
 
     def drop_short_segments(self, min_length):
         wells = self.iter_level(-2)
         for well in wells:
-            well.segments = [segment for segment in well.segments if segment.length > min_length]
+            well.segments = [segment for segment in well if segment.length > min_length]
         return self.prune()
 
     # def assemble_crops(self, crops, name):
