@@ -1,3 +1,6 @@
+"""Implements WellSegment - a class, representing a contiguous part of a well.
+"""
+
 import os
 import json
 import base64
@@ -57,6 +60,102 @@ def add_attr_loaders(cls):
 @add_attr_properties
 @add_attr_loaders
 class WellSegment(AbstractWellSegment):
+    """A class, representing a contiguous part of a well.
+
+    Initially an instance of `Well` class consists of a single segment,
+    representing the whole well. Subsequently, several `Well` methods, such as
+    `crop`, `random_crop` or `drop_nans`, increase the number of segments,
+    storing them in a tree-based structure.
+
+    Unlike `Well`, which nearly always redirects method calls to its segments,
+    `WellSegment` actually stores well data and implements its processing
+    logic.
+
+    Parameters
+    ----------
+    path : str
+        A path to a directory with well data, containing:
+        - meta.json - a json dict with the following keys:
+            - `name` - well name
+            - `field` - field name
+            - `depth_from` - minimum depth entry in the well logs
+            - `depth_to` - maximum depth entry in the well logs
+          These values will be stored as instance attributes.
+        - samples_dl and samples_uv (optional) - directories, containing
+          daylight and ultraviolet images of core samples respectively. Images
+          of the same sample must have the same name in both dirs.
+        - Optional `.csv`, `.las` or `.feather` file for certain class
+          attributes (see more details in the `Attributes` section).
+    core_width : positive float
+        The width of core samples in cm. Defaults to 10 cm.
+    pixels_per_cm : positive int
+        The number of pixels in cm used to determine the loaded width of core
+        sample images. Image height is calculated so as to keep the aspect
+        ratio. Defaults to 5 pixels.
+
+    Attributes
+    ----------
+    name : str
+        Well name, loaded from meta.json.
+    field : str
+        Field name, loaded from meta.json.
+    depth_from : float
+        Minimum depth entry in the well logs, loaded from meta.json.
+    depth_to : float
+        Maximum depth entry in the well logs, loaded from meta.json.
+    logs : pandas.DataFrame
+        Well logs, indexed by depth. Depth log in source file must have
+        `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
+        `core_logs` should match. Loaded from the file with the same name from
+        the well directory.
+    inclination : pandas.DataFrame
+        Well inclination. Loaded from the file with the same name from the
+        well directory.
+    layers : pandas.DataFrame
+        Stratum layers names, indexed by depth range. Loaded from the file
+        with the same name, having the following structure: DEPTH_FROM -
+        DEPTH_TO - LAYER.
+    boring_intervals : pandas.DataFrame
+        Depths of boring intervals with core recovery in meters, indexed by
+        depth range. Loaded from the file with the same name, having the
+        following structure: DEPTH_FROM - DEPTH_TO - CORE_RECOVERY.
+    boring_sequences : pandas.DataFrame
+        Depth ranges of contiguous boring intervals, extracted one after
+        another. If the file with the same name exists in the well directory,
+        then `boring_sequences` is loaded from the file. Otherwise, it is
+        calculated from `boring_intervals`. If core-to-log matching is
+        performed, then extra MODE and R2 columns with matching parameters and
+        results are created.
+    core_properties : pandas.DataFrame
+        Properties of core samples, indexed by depth. Depth column in source
+        file must be called `DEPTH`. Loaded from the file with the same name
+        from the well directory.
+    core_lithology : pandas.DataFrame
+        Lithological description of core samples, indexed by depth range.
+        Loaded from the file with the same name, having the following
+        structure: DEPTH_FROM - DEPTH_TO - FORMATION - COLOR - GRAINSIZE -
+        GRAINCONTENT.
+    core_logs : pandas.DataFrame
+        Core logs, indexed by depth. Depth log in source file must have
+        `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
+        `core_logs` should match. Loaded from the file with the same name from
+        the well directory.
+    samples : pandas.DataFrame
+        Names of core sample images with their depth ranges. Loaded from the
+        file with the same name, having the following structure: DEPTH_FROM -
+        DEPTH_TO - SAMPLE.
+    core_dl : numpy.ndarray
+        Concatenated daylight image of all core samples in the segment. If
+        core samples are absent for several depth ranges, corresponding
+        `core_dl` values are equal to `numpy.nan`. Loaded from images in
+        `samples_dl` directory, requires `samples` file in the well directory.
+    core_uv : numpy.ndarray
+        Concatenated ultraviolet image of all core samples in the segment. If
+        core samples are absent for several depth ranges, corresponding
+        `core_uv` values are equal to `numpy.nan`. Loaded from images in
+        `samples_uv` directory, requires `samples` file in the well directory.
+    """
+
     attrs_depth_index = ("logs", "core_properties", "core_logs")
     attrs_fdtd_index = ("layers", "boring_sequences", "boring_intervals", "core_lithology", "samples")
     attrs_no_index = ("inclination",)
@@ -80,8 +179,8 @@ class WellSegment(AbstractWellSegment):
         self._logs = None
         self._inclination = None
         self._layers = None
-        self._boring_sequences = None
         self._boring_intervals = None
+        self._boring_sequences = None
         self._core_properties = None
         self._core_lithology = None
         self._core_logs = None
@@ -493,7 +592,7 @@ class WellSegment(AbstractWellSegment):
             self._core_lithology = core_lithology.set_index(["DEPTH_FROM", "DEPTH_TO"])
         lithology_intervals = self.core_lithology.reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
 
-        # `boring_sequences` is a list of DataFrames, containing contigious boring intervals, extracted one after
+        # `boring_sequences` is a list of DataFrames, containing contiguous boring intervals, extracted one after
         # another. They are considered together since they must be shifted by the same delta.
 
         # `boring_groups` is a list of DataFrames, containing a number of boring sequences, extracted close to each
