@@ -206,6 +206,7 @@ class WellSegment(AbstractWellSegment):
         return self._boring_sequences
 
     def _calc_boring_sequences(self):
+        """Calculate boring sequences given boring intervals."""
         data = []
         for segment in select_contigious_intervals(self.boring_intervals.reset_index()):
             data.append([segment["DEPTH_FROM"].min(), segment["DEPTH_TO"].max()])
@@ -214,45 +215,61 @@ class WellSegment(AbstractWellSegment):
 
     @staticmethod
     def _get_extension(path):
+        """Get file extension from its name."""
         return os.path.splitext(path)[1][1:]
 
     @staticmethod
     def _load_las(path, *args, **kwargs):
+        """Load a `.las` file into a `DataFrame`."""
         return lasio.read(path, *args, **kwargs).df().reset_index()
 
     @staticmethod
     def _load_csv(path, *args, **kwargs):
+        """Load a `.csv` file into a `DataFrame`."""
         return pd.read_csv(path, *args, **kwargs)
 
     @staticmethod
     def _load_feather(path, *args, **kwargs):
+        """Load a `.feather` file into a `DataFrame`."""
         return pd.read_feather(path, *args, **kwargs)
 
     def _load_df(self, path, *args, **kwargs):
+        """Load a `DataFrame` from a table format (`.las`, `.csv` or
+        `.feather`) depending on its extension."""
         ext = self._get_extension(path)
         if not hasattr(self, "_load_" + ext):
             raise ValueError("A loader for data in {} format is not implemented".format(ext))
         return getattr(self, "_load_" + ext)(path, *args, **kwargs)
 
     def _filter_depth_df(self, df):
+        """Keep only depths between `self.depth_from` and `self.depth_to` in a
+        `DataFrame`, indexed by depth."""
         return df[self.depth_from:self.depth_to]
 
     def _load_depth_df(self, path, *args, **kwargs):
+        """Load a `DataFrame`, indexed by depth, from a table format and keep
+        only depths between `self.depth_from` and `self.depth_to`."""
         df = self._load_df(path, *args, **kwargs).set_index("DEPTH")
         df = self._filter_depth_df(df)
         return df
 
     def _filter_fdtd_df(self, df):
+        """Keep only depths between `self.depth_from` and `self.depth_to` in a
+        `DataFrame`, indexed by depth range."""
         depth_from, depth_to = zip(*df.index.values)
         mask = (np.array(depth_from) < self.depth_to) & (self.depth_from < np.array(depth_to))
         return df[mask]
 
     def _load_fdtd_df(self, path, *args, **kwargs):
+        """Load a `DataFrame`, indexed by depth range, from a table format and
+        keep only depths between `self.depth_from` and `self.depth_to`."""
         df = self._load_df(path, *args, **kwargs).set_index(["DEPTH_FROM", "DEPTH_TO"])
         df = self._filter_fdtd_df(df)
         return df
 
     def _has_file(self, name):
+        """Check that exactly one file with a given name and any extension
+        exists in a well directory."""
         files = glob(os.path.join(self.path, name + ".*"))
         if len(files) == 1:
             return True
@@ -260,6 +277,29 @@ class WellSegment(AbstractWellSegment):
 
     @classmethod
     def _get_full_name(cls, path, name):
+        """Get full name of a file with a given `name` in a dir, specified in
+        `path`.
+
+        Parameters
+        ----------
+        path : str
+            A path to a directiry to search for a file.
+        name : str
+            File name with or without extension.
+
+        Returns
+        -------
+        full_name : str
+            Full name of a file.
+
+        Raises
+        ------
+        FileNotFoundError
+            If a file does not exist in a dir.
+        OSError
+            If extension is not specified and several files with given name
+            exist.
+        """
         ext = cls._get_extension(name)
         if ext != "":
             full_name = os.path.join(path, name)
@@ -294,10 +334,13 @@ class WellSegment(AbstractWellSegment):
 
     @staticmethod
     def _load_image(path):
+        """Open an image in `PIL` format."""
         return PIL.Image.open(path) if os.path.isfile(path) else None
 
     @staticmethod
     def _match_samples(dl_img, uv_img, height, width):
+        """Match core samples in daylight and ultraviolet by resizing them to
+        the given shape."""
         if (dl_img is not None) and (dl_img is not None):
             # TODO: contour matching instead of resizing
             dl_img = np.array(dl_img.resize((width, height), resample=PIL.Image.LANCZOS))
@@ -311,22 +354,25 @@ class WellSegment(AbstractWellSegment):
         return dl_img, uv_img
 
     def _meters_to_pixels(self, meters):
+        """Convert meters to pixels given conversion ratio in
+        `self.pixels_per_cm`."""
         return int(round(meters * 100)) * self.pixels_per_cm
 
     def load_core(self, core_width=None, pixels_per_cm=None):
         """Load core images in daylight and ultraviolet.
 
         If any of method arguments are not specified, those, passed to
-        `__init__` will be used, otherwise, they will be overridden in `self`.
+        `__init__`, will be used. Otherwise, they will be overridden in
+        `self`.
 
         Parameters
         ----------
         core_width : positive float, optional
-            The width of core samples in cm.
+            The width of core samples in centimeters.
         pixels_per_cm : positive int, optional
-            The number of pixels in cm used to determine the loaded width of
-            core sample images. Image height is calculated so as to keep the
-            aspect ratio.
+            The number of pixels in centimeters used to determine the loaded
+            width of core sample images. Image height is calculated so as to
+            keep the aspect ratio.
 
         Returns
         -------
@@ -371,14 +417,14 @@ class WellSegment(AbstractWellSegment):
         - `name`, `field`, `depth_from` and `depth_to` attributes are saved in
           `meta.json` file.
         - `core_dl` and `core_uv` are not saved. Instead, `samples_dl` and
-          `samples_uv` directories are copied.
+          `samples_uv` directories are copied if exist.
         - All other attributes are dumped in feather format.
 
         Parameters
         ----------
         path : str
             A path to a directory, where well dir with dump will be created.
-        
+
         Returns
         -------
         self : AbstractWellSegment
@@ -421,12 +467,34 @@ class WellSegment(AbstractWellSegment):
 
     @staticmethod
     def _encode(img_path):
+        """Encode an image into a `plotly` representation."""
         with open(img_path, "rb") as img:
             encoded_img = base64.b64encode(img.read()).decode()
         encoded_img = "data:image/png;base64," + encoded_img
         return encoded_img
 
     def plot(self, plot_core=True, subplot_height=750, subplot_width=200):
+        """Plot well logs and core images.
+
+        All well logs and core images in daylight and ultraviolet are plotted
+        on separate subplots.
+
+        Parameters
+        ----------
+        plot_core : bool
+            Specifies whether to plot core images or not.
+        subplot_height : positive int
+            Height of each subplot with well log or core samples images in
+            pixels.
+        subplot_width : positive int
+            Width of each subplot with well log or core samples images in
+            pixels.
+
+        Returns
+        -------
+        self : AbstractWellSegment
+            Self unchanged.
+        """
         init_notebook_mode(connected=True)
 
         n_cols = len(self.logs.columns)
@@ -489,6 +557,22 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def __getitem__(self, key):
+        """Select well logs by mnemonics or slice the well along the wellbore.
+
+        Parameters
+        ----------
+        key : str, list of str or slice
+            - If `key` is `str` or `list` of `str`, preserve only those logs
+              in `self.logs`, that are in `key`.
+            - If `key` is `slice` - perform well slicing along the wellbore.
+              Note that contrary to usual python slices, both `start` and
+              `stop` are included if present in `self.logs.index`.
+
+        Returns
+        -------
+        well : WellSegment
+            A segment with filtered logs.
+        """
         if not isinstance(key, slice):
             return self.keep_logs(key)
         res = self.copy()
@@ -514,9 +598,19 @@ class WellSegment(AbstractWellSegment):
         return res
 
     def copy(self):
+        """Perform shallow copy of an object.
+
+        Returns
+        -------
+        self : AbstractWellSegment
+            Shallow copy.
+        """
         return copy(self)
 
     def _apply_matching(self):
+        """Update depths in all core-related attributes given calculated
+        deltas.
+        """
         core_lithology_deltas = self._core_lithology_deltas.reset_index()
 
         # Update DataFrames with depth index
@@ -549,6 +643,11 @@ class WellSegment(AbstractWellSegment):
         self._boring_intervals = boring_intervals.set_index(["DEPTH_FROM", "DEPTH_TO"]).sort_index()
 
     def _save_matching_report(self):
+        """Save matching report in a well directory, specified in `self.path`.
+
+        The report consists of two `.csv` files, containing depths of boring
+        and lithology intervals respectively before and after matching.
+        """
         boring_sequences = self.boring_sequences.reset_index()[["DEPTH_FROM", "DEPTH_TO", "MODE"]]
         not_none_mask = boring_sequences["MODE"].map(lambda x: x is not None)
         boring_sequences = boring_sequences[not_none_mask]
@@ -595,6 +694,8 @@ class WellSegment(AbstractWellSegment):
 
     @staticmethod
     def _parse_matching_mode(mode):
+        """Split matching mode string into well log mnemonic, core log or
+        property mnemonic and class attribute to get core data from."""
         split_mode = mode.split("~")
         if len(split_mode) != 2:
             raise ValueError("Incorrect mode format")
@@ -606,6 +707,8 @@ class WellSegment(AbstractWellSegment):
         return log_mnemonic, core_mnemonic, core_attr
 
     def _select_matching_mode(self, segment, mode_list):
+        """Select appropriate matching mode based on data, availible for given
+        segment."""
         segment_depth_from = segment["DEPTH_FROM"].min()
         segment_depth_to = segment["DEPTH_TO"].max()
         core_len = segment["CORE_RECOVERY"].sum()
@@ -622,10 +725,47 @@ class WellSegment(AbstractWellSegment):
 
     @staticmethod
     def _unify_matching_mode(mode):
+        """Delete all spaces from a matching mode string."""
         return [mode.replace(" ", "") for mode in to_list(mode)]
 
     def match_core_logs(self, mode="GK ~ core_logs.GK", max_shift=5, delta_from=-4, delta_to=4, delta_step=0.1,
                         max_iter=50, max_iter_time=0.25, save_report=False):
+        """Perform core-to-log matching by shifting core samples in order to
+        maximize correlation between well and core logs.
+
+        Parameters
+        ----------
+        mode : str or list of str
+            Matching mode precedence from highest to lowest. The mode is
+            independently selected for each boring sequence. Each mode has the
+            following structure: <well_log> ~ <core_attr>.<core_log>, where:
+            - well_log - mnemonic of a well log to use
+            - core_attr - an attribute of `self` to get core data from
+            - core_log - mnemonic of a core log or property to use
+            Defaults to gamma ray matching.
+        max_shift : positive float
+            Maximum shift of a boring sequence in meters. Defaults to 5.
+        delta_from : float
+            Start of the grid of initial shifts in meters. Defaults to -4.
+        delta_to : float
+            End of the grid of initial shifts in meters. Defaults to 4.
+        delta_step : float
+            Step of the grid of initial shifts in meters. Defaults to 0.1.
+        max_iter : positive int
+            Maximum number of SLSQP iterations. Defaults to 50.
+        max_iter_time
+            Maximum time for an optimization iteration in seconds. Defaults to
+            0.25.
+        save_report : bool
+            Specifies whether to save matching report in a well directory.
+            Defaults to `False`.
+
+        Returns
+        -------
+        well : WellSegment
+            Matched well segment with updated core depths. Changes all
+            core-related depths inplace.
+        """
         if max_shift <= 0:
             raise ValueError("max_shift must be positive")
         if delta_from > delta_to:
@@ -718,12 +858,48 @@ class WellSegment(AbstractWellSegment):
 
     @staticmethod
     def _calc_matching_r2(well_log, core_log):
+        """Calculate squared correlation coefficient between well and core
+        logs.
+
+        If well and core logs are defined on different sets of depths, then at
+        first well log values are estimated at core log depths by linear
+        interpolation and then `R^2` is calculated for the resulting arrays.
+        """
         well_log = well_log.dropna()
         interpolator = interp1d(well_log.index, well_log, kind="linear", fill_value="extrapolate")
         well_log = interpolator(core_log.index)
         return np.corrcoef(core_log, well_log)[0, 1]**2
 
     def plot_matching(self, mode=None, scale=False, subplot_height=750, subplot_width=200):
+        """Plot well log and corresponding core log for each boring sequence.
+
+        This method can be used to illustrate results of core-to-log matching.
+
+        Parameters
+        ----------
+        mode : str or list of str
+            Specify type of well log and core log or property to plot. If
+            `str`, the same mode will be used for all boring sequences. If
+            `list` of `str`, than each boring sequence will have its own mode.
+            In this case length of the `list` should match the number of
+            boring sequences.
+
+            Each mode has the same structure as `mode` in `match_core_logs`.
+            If `None` and core-to-log matching was performed beforehand,
+            chosen matching modes are used.
+        scale : bool
+            Specifies whether to lineary scale core log values to well log
+            values.
+        subplot_height : positive int
+            Height of each subplot with well and core logs.
+        subplot_width : positive int
+            Width of each subplot with well and core logs.
+
+        Returns
+        -------
+        self : AbstractWellSegment
+            Self unchanged.
+        """
         init_notebook_mode(connected=True)
 
         boring_sequences = self.boring_sequences.reset_index()
@@ -798,20 +974,72 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def drop_logs(self, mnemonics):
+        """Drop well logs whose mnemonics are in `mnemonics`.
+
+        Parameters
+        ----------
+        mnemonics : str or list of str
+            Mnemonics of well logs to be dropped.
+
+        Returns
+        -------
+        well : WellSegment
+            A segment with filtered logs.
+        """
         res = self.copy()
         res._logs.drop(to_list(mnemonics), axis=1, inplace=True)
         return res
 
     def keep_logs(self, mnemonics):
+        """Drop well logs whose mnemonics are not in `mnemonics`.
+
+        Parameters
+        ----------
+        mnemonics : str or list of str
+            Mnemonics of well logs to be kept.
+
+        Returns
+        -------
+        well : WellSegment
+            A segment with filtered logs.
+        """
         res = self.copy()
         res._logs = res.logs[to_list(mnemonics)]
         return res
 
     def rename_logs(self, rename_dict):
+        """Rename well logs with corresponding mnemonics in `rename_dict`.
+
+        Parameters
+        ----------
+        rename_dict : dict
+            Dictionary containing `(old mnemonic : new mnemonic)` pairs.
+
+        Returns
+        -------
+        well : WellSegment
+            A segment with renamed logs. Changes `self.logs` inplace.
+        """
         self.logs.rename(columns=rename_dict, inplace=True)
         return self
 
     def keep_matched_sequences(self, mode=None, threshold=0.6):
+        """Keep boring sequences, matched using given `mode` with `R^2`
+        greater than `threshold`.
+
+        Parameters
+        ----------
+        mode : str or list of str
+            Chosen matching mode to keep a sequence. It has the same structure
+            as `mode` in `match_core_logs`.
+        threshold : float
+            Minimum value of `R^2` to keep a sequence.
+
+        Returns
+        -------
+        segments : list of WellSegment
+            Kept boring sequences.
+        """
         mask = self.boring_sequences["R2"] > threshold
         if mode is not None:
             mode_list = self._unify_matching_mode(mode)
