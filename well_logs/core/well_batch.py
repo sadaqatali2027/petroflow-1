@@ -10,8 +10,6 @@ from .well import Well
 from .abstract_classes import AbstractWell
 from .utils import to_list
 
-TARGET = dict() # inbatch_parallel target depending on action name
-
 class WellDelegatingMeta(ABCMeta):
     """ Metaclass to delegate abstract methods from `WellBatch` to `Well` objects
     in `wells` component. """
@@ -20,23 +18,22 @@ class WellDelegatingMeta(ABCMeta):
         abstract_methods = frozenset().union(*abstract_methods)
         for name in abstract_methods:
             if name not in namespace:
-                namespace[name] = mcls._make_parallel_action(name)
+                namespace[name] = mcls._make_parallel_action(name, mcls.targets[name])
         return super().__new__(mcls, name, bases, namespace)
 
     @staticmethod
-    def _make_parallel_action(name):
+    def _make_parallel_action(name, target):
         @wraps(getattr(Well, name))
         def delegator(self, index, *args, **kwargs):
             pos = self.get_pos(None, "wells", index)
             func = getattr(Well, name)
             self.wells[pos] = func(self.wells[pos], *args, **kwargs)
-        target = TARGET.get(name, 'threads')
         return action()(inbatch_parallel(init="indices", target=target)(delegator))
 
 
 class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
     """A batch class for well data storing and processing.  Batch class inherits
-    all abstract methods from `Well` class and realize some extra functionality.
+    all abstract methods from `Well` class and implement some extra functionality.
     To execute method for each well in a batch you should add that method into pipeline.
 
     Parameters
@@ -61,6 +58,7 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
     """
 
     components = ("wells",)
+    targets = dict() # inbatch_parallel target depending on action name
 
     def __init__(self, index, preloaded=None, **kwargs):
         super().__init__(index, preloaded, **kwargs)

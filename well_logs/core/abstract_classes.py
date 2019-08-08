@@ -4,8 +4,8 @@ from abc import ABCMeta, abstractmethod
 
 
 class AbstractWellSegment(metaclass=ABCMeta):
-    """ Abstract class to check that all nesessary methods are
-    realized in WellSegment class. """
+    """Abstract class to check that all nesessary methods are
+    implemented in `WellSegment` class."""
     @abstractmethod
     def __getitem__(self, key):
         pass
@@ -56,8 +56,8 @@ class AbstractWellSegment(metaclass=ABCMeta):
 
 
 class AbstractWell(AbstractWellSegment):
-    """ Abstract class to check that all nesessary methods are
-    realized in Well class. """
+    """Abstract class to check that all nesessary methods are
+    implemented in `Well` and `WellBatch` classes. """
     @abstractmethod
     def keep_matched_sequences(self):
         pass
