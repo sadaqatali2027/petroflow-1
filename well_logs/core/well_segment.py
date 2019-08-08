@@ -676,6 +676,22 @@ class WellSegment(AbstractWellSegment):
         return res_segments
 
     def create_segments(self, src, connected=True):
+        """Split into few segments.
+
+        Parameters
+        ----------
+        src : str or iterable
+            Names of attributes to get depthes for splitting. If `src` consists of
+            attributes in fdtd format then each row will represent new segment.
+            If `src` consists of attributes indexed by depth then ???????????.
+        connected : bool
+            Join segments which are one after another.
+
+        Returns
+        -------
+        segments : list of `WellSegment` instances
+            Splitted segments.
+        """
         if not isinstance(src, list):
             src = [src]
         if all([item in self.attrs_fdtd_index for item in src]):
@@ -686,6 +702,7 @@ class WellSegment(AbstractWellSegment):
         return res
 
     def _create_segments_by_fdtd(self, src, connected):
+        """Get segments created by attributes in fdtd format."""
         tables = [getattr(self, item).reset_index() for item in src]
         df = tables[0] if len(tables) == 1 else reduce(fdtd_join, tables)
         if connected:
@@ -701,19 +718,81 @@ class WellSegment(AbstractWellSegment):
         else:
             return pd.DataFrame(columns=["DEPTH_FROM", "DEPTH_TO"])
 
-    def random_crop(self, height, n_crops=1):
-        positions = np.random.uniform(self.depth_from, max(self.depth_from, self.depth_to-height), size=n_crops)
-        return [self[pos:pos+height] for pos in positions]
+    def random_crop(self, length, n_crops=1):
+        """Create random crops from the segment. Positions of crops are sampled uniformly
+        from segment.
 
-    def crop(self, height, step, drop_last=True):
+        Parameters
+        ----------
+        length : int
+            Crop length in cm.
+        n_crops : int
+            Number of crops from the segment.
+
+        Returns
+        -------
+        segments : list of `WellSegment` instances
+            Cropped segments.
+        """
+        bounds = self.depth_from, max(self.depth_from, self.depth_to-length)
+        positions = np.sort(np.random.uniform(*bounds, size=n_crops))
+        return [self[pos:pos+length] for pos in positions]
+
+    def crop(self, length, step, drop_last=True):
+        """Create crops from the segment. All cropped segments have the same length and
+        are cropped with some fixed step.
+
+        Parameters
+        ----------
+        length : int
+            Length of each crop in cm.
+        step : int
+            Step of cropping.
+        drop_last : bool
+            If True, all segment which are out of image bounds will be dropped.
+            If False, the whole segment will be covered by crops. The first crop which
+            comes out of segment bounds will remain, the following will be dropped.
+
+        Returns
+        -------
+        segments : list of `WellSegment` instances
+            Cropped segments.
+        """
         positions = np.arange(self.depth_from, self.depth_to, step)
-        if drop_last and positions[-1]+height > self.depth_to:
-            positions = positions[:-1]
+        crops_in = positions[positions + length <= self.depth_to]
+        crops_out = positions[positions + length > self.depth_to]
+        if drop_last:
+            positions = crops_in
         else:
-            height = min(height, self.depth_to-positions[-1])
-        return [self[pos:pos+height] for pos in positions]
+            positions = np.concatenate((crops_in, crops_out[:1]))
+        return [self[pos:pos+length] for pos in positions]
 
-    def create_mask(self, src, column, labels, mode, default=-1, dst='mask'):
+    def create_mask(self, src, column, labels=None, mode='logs', default=None, dst='mask'):
+        """Transform column from some `WellSegment` attribute into mask correponding to log
+        or to core photo.
+
+        Parameters
+        ----------
+        src : str
+            Attribute to get column.
+        column : str
+            Name of the column to transform.
+        labels : dict or None
+            Mapping for column values. If None, values will be saved in mask.
+        mode : 'logs' or 'core'
+            If 'logs', mask will correspond to logs. If 'core', mask will be created
+            for core images.
+        default : int
+            Default value for mask if `src` doesn't contain information for corresponding
+            depth.
+        dst : str
+            Attribute to save the mask.
+
+        Returns
+        -------
+        self : AbstractWellSegment
+            Self with mask.
+        """
         if src in self.attrs_fdtd_index:
             self._create_mask_fdtd(src, column, labels, mode, default, dst)
         else:
@@ -721,7 +800,8 @@ class WellSegment(AbstractWellSegment):
             pass
         return self
 
-    def _create_mask_fdtd(self, src, column, labels, mode, default=-1, dst='mask'):
+    def _create_mask_fdtd(self, src, column, labels, mode, default=None, dst='mask'):
+        """Create mask from fdtd data."""
         if mode == 'core':
             mask = np.ones(len(self.core_dl)) * default
         elif mode == 'logs':

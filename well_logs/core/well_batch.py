@@ -11,14 +11,15 @@ from .abstract_classes import AbstractWell
 from .utils import to_list
 
 class WellDelegatingMeta(ABCMeta):
-    """ Metaclass to delegate abstract methods from `WellBatch` to `Well` objects
-    in `wells` component. """
+    """Metaclass to delegate abstract methods from `WellBatch` to `Well` objects
+    in `wells` component."""
+
     def __new__(mcls, name, bases, namespace):
         abstract_methods = [base.__abstractmethods__ for base in bases if hasattr(base, "__abstractmethods__")]
         abstract_methods = frozenset().union(*abstract_methods)
         for name in abstract_methods:
             if name not in namespace:
-                namespace[name] = mcls._make_parallel_action(name, mcls.targets[name])
+                namespace[name] = mcls._make_parallel_action(name, namespace['targets'].get(name, 'threads'))
         return super().__new__(mcls, name, bases, namespace)
 
     @staticmethod
@@ -80,14 +81,14 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
 
     @action
     def get_crops(self, src, dst):
-        """ Get some attributes from well and put them into batch variables.
+        """Get some attributes from well and put them into batch variables.
 
         Parameters
         ----------
         src : str or iterable
-            attributes of wells to load into batch
+            Attributes of wells to load into batch
         dst : str or iterable
-            batch variables to save well attributes. Must be of the same length as 'src'.
+            Batch variables to save well attributes. Must be of the same length as 'src'.
 
         Returns
         -------
