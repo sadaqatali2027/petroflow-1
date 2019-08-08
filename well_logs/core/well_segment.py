@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import lasio
 import PIL
+import cv2
 from scipy.interpolate import interp1d
 from sklearn.linear_model import LinearRegression
 from plotly import graph_objs as go
@@ -850,3 +851,33 @@ class WellSegment(AbstractWellSegment):
 
     def norm_min_max(self, axis=-1, min=None, max=None, *, components):
         pass
+    
+    def normalize(self, src, dst=None):
+        """Normalize images by histogram equalization.
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+
+        """
+        src = to_list(src)
+        for item in src:
+            _ = getattr(self, item)
+        src = ['_' + item for item in src]
+        if dst is None:
+            dst = src
+        else:
+            dst = to_list(dst)
+        for _src, _dst in zip(src, dst):
+            img = getattr(self, _src)
+            if img.ndims == 3:
+                img = cv2.cvtColor(, cv2.COLOR_RGB2YCrCb)
+                img[..., 0] = cv2.equalizeHist(img[..., 0])
+                img = cv2.cvtColor(img, cv2.COLOR_YCrCb2RGB)
+            else:
+                img = cv2.equalizeHist(img)
+            setattr(self, _dst, img)
+        return self
+        
