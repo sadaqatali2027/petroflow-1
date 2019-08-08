@@ -27,6 +27,8 @@ from .utils import to_list
 
 
 def add_attr_properties(cls):
+    """Add missing properties for lazy loading of `WellSegment` table-based
+    attributes."""
     for attr in cls.attrs_depth_index + cls.attrs_fdtd_index + cls.attrs_no_index:
         if hasattr(cls, attr):
             continue
@@ -39,6 +41,7 @@ def add_attr_properties(cls):
 
 
 def add_attr_loaders(cls):
+    """Add missing loaders of `WellSegment` table-based attributes."""
     attr_iter = chain(
         zip(cls.attrs_depth_index, repeat(cls._load_depth_df)),
         zip(cls.attrs_fdtd_index, repeat(cls._load_fdtd_df)),
@@ -70,6 +73,16 @@ class WellSegment(AbstractWellSegment):
     Unlike `Well`, which nearly always redirects method calls to its segments,
     `WellSegment` actually stores well data and implements its processing
     logic.
+
+    Each table-based attribute of `WellSegment`, described in `Attributes`
+    section, can be loaded in two different ways:
+    1. via corresponding load method, e.g. `load_logs` or `load_layers`. All
+       specified arguments will be passed to a loader, responsible for file's
+       extension.
+    2. via lazy loading mechanism, when an attribute is loaded at the time of
+       the first access. In this case, default loading parameters are used.
+    `core_dl` and `core_uv` attributes are loaded either by accessing them for
+    the first time, or by calling `load_core` method.
 
     Parameters
     ----------
@@ -196,8 +209,7 @@ class WellSegment(AbstractWellSegment):
     @property
     def boring_sequences(self):
         """pandas.DataFrame: Depth ranges of contiguous boring intervals,
-        extracted one after another.
-        """
+        extracted one after another."""
         if self._boring_sequences is None:
             if self._has_file("boring_sequences"):
                 self.load_boring_sequences()
@@ -317,8 +329,7 @@ class WellSegment(AbstractWellSegment):
     @property
     def core_dl(self):
         """numpy.ndarray: Concatenated daylight image of all core samples in
-        the segment.
-        """
+        the segment."""
         if self._core_dl is None:
             self.load_core()
         return self._core_dl
@@ -326,8 +337,7 @@ class WellSegment(AbstractWellSegment):
     @property
     def core_uv(self):
         """numpy.ndarray: Concatenated ultraviolet image of all core samples
-        in the segment.
-        """
+        in the segment."""
         if self._core_uv is None:
             self.load_core()
         return self._core_uv
@@ -609,8 +619,7 @@ class WellSegment(AbstractWellSegment):
 
     def _apply_matching(self):
         """Update depths in all core-related attributes given calculated
-        deltas.
-        """
+        deltas."""
         core_lithology_deltas = self._core_lithology_deltas.reset_index()
 
         # Update DataFrames with depth index
