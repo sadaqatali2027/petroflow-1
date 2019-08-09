@@ -32,3 +32,12 @@ def to_list(obj):
     transformed into a list of one element.
     """
     return np.array(obj).ravel().tolist()
+
+def leq_notclose(a, b):
+    return np.less_equal(a, b) & ~np.isclose(a, b)
+
+def leq_close(a, b):
+    return np.less_equal(a, b) | np.isclose(a, b)
+
+def geq_close(a, b):
+    return np.greater_equal(a, b) | np.isclose(a, b)

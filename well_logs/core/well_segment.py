@@ -23,9 +23,9 @@ import cv2
 
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
-from .joins import between_join, fdtd_join
-from .utils import to_list
-
+from .joins import cross_join, between_join, fdtd_join
+from .utils import to_list, leq_notclose, leq_close, geq_close
+from .exceptions import DataRegularityError
 
 def add_attr_properties(cls):
     """Add missing properties for lazy loading of `WellSegment` table-based
@@ -617,6 +617,129 @@ class WellSegment(AbstractWellSegment):
             Shallow copy.
         """
         return copy(self)
+    
+    def check_regularity(self):
+        """Intervals regularity checks.
+        
+        Throws
+        ------
+        DataRegularityError
+        """
+        boring_intervals = self.boring_intervals.copy()
+        boring_intervals['DEPTH_FROM'] = boring_intervals.index.get_level_values('DEPTH_FROM')
+        boring_intervals['DEPTH_TO'] = boring_intervals.index.get_level_values('DEPTH_TO')
+        boring_intervals['CORE_INTERVAL'] = boring_intervals['DEPTH_TO'] - boring_intervals['DEPTH_FROM']
+
+        # Check if any CORE_RECOVERY values are nan.
+        nans_mask = boring_intervals['CORE_RECOVERY'].isna()
+        nans = boring_intervals[nans_mask]
+        if not nans.empty:
+            raise DataRegularityError("boring_nans", nans[['CORE_RECOVERY']])
+        
+        # Check if any CORE_RECOVERY values are greater than CORE_INTERVAL ones.
+        unfits_mask = leq_notclose(boring_intervals['CORE_INTERVAL'], boring_intervals['CORE_RECOVERY'])
+        unfits = boring_intervals[unfits_mask]
+        if not unfits.empty:
+            raise DataRegularityError("boring_unfits", unfits[['CORE_RECOVERY', 'CORE_INTERVAL']])
+
+        # Check if any adjacent boring intervals are overlapping.
+        preceding = boring_intervals['DEPTH_FROM'].shift(-1) < boring_intervals['DEPTH_TO']
+        following = boring_intervals['DEPTH_TO'].shift(-1) > boring_intervals['DEPTH_FROM']
+        overlaps_mask = preceding & following
+        overlaps = boring_intervals[overlaps_mask | overlaps_mask.shift(1)]
+        if not overlaps.empty:
+            raise DataRegularityError("boring_overlaps", overlaps[['CORE_RECOVERY']])
+        
+        # Check if boring intervals DEPTH_FROM values are not increasing.
+        if not boring_intervals.index.is_monotonic_increasing:
+            nonincreasing_mask = boring_intervals['DEPTH_FROM'].shift(-1) < boring_intervals['DEPTH_FROM']
+            nonincreasing = boring_intervals[nonincreasing_mask | nonincreasing_mask.shift(1)]
+            raise DataRegularityError("boring_nonincreasing", nonincreasing[['CORE_RECOVERY']])
+
+        # Check if boring intervals DEPTH_FROM values are bigger than DEPTH_TO ones.
+        disordered_mask = boring_intervals['DEPTH_FROM'] > boring_intervals['DEPTH_TO']
+        disordered = boring_intervals[disordered_mask]
+        if not disordered.empty:
+            raise DataRegularityError('boring_disordered', disordered[['CORE_RECOVERY']])
+
+        lithology_intervals = self.core_lithology.copy()
+        lithology_intervals['DEPTH_FROM'] = lithology_intervals.index.get_level_values('DEPTH_FROM')
+        lithology_intervals['DEPTH_TO'] = lithology_intervals.index.get_level_values('DEPTH_TO')
+
+        # Check if any adjacent lithology intervals are overlapping.
+        preceding = lithology_intervals['DEPTH_FROM'].shift(-1) < lithology_intervals['DEPTH_TO']
+        following = lithology_intervals['DEPTH_TO'].shift(-1) > lithology_intervals['DEPTH_FROM']
+        overlaps_mask = preceding & following
+        overlaps = lithology_intervals[overlaps_mask | overlaps_mask.shift(1)]
+        if not overlaps.empty:
+            raise DataRegularityError("lithology_overlaps", overlaps[['FORMATION']])
+        
+        # Check if lithology intervals DEPTH_FROM values are not increasing.
+        if not lithology_intervals.index.is_monotonic_increasing:
+            nonincreasing_mask = lithology_intervals['DEPTH_FROM'].shift(-1) < lithology_intervals['DEPTH_FROM']
+            nonincreasing = lithology_intervals[nonincreasing_mask | nonincreasing_mask.shift(1)]
+            raise DataRegularityError("lithology_nonincreasing", nonincreasing[['FORMATION']])
+    
+        # Check if lithology intervals DEPTH_FROM values are bigger than DEPTH_TO ones.
+        disordered_mask = lithology_intervals['DEPTH_FROM'] > lithology_intervals['DEPTH_TO']
+        disordered = lithology_intervals[disordered_mask]
+        if not disordered.empty:
+            raise DataRegularityError('lithology_disordered', disordered[['FORMATION']])
+
+        # Check if any lithology intervals are not included in boring intervals.
+        inclusions_mask = lithology_intervals.apply(lambda interval:
+            leq_close(boring_intervals['DEPTH_FROM'], interval['DEPTH_FROM']).any() &
+            geq_close(boring_intervals['DEPTH_TO'], interval['DEPTH_TO']).any(),
+            axis=1)
+        exclusions = lithology_intervals[~inclusions_mask]
+        if not exclusions.empty:
+            raise DataRegularityError("lithology_exclusions", exclusions[['FORMATION']])
+
+        # Check any CORE_TOTAL values are greater than the corresponding CORE_RECOVERY ones.
+        lithology_intervals = lithology_intervals[['DEPTH_FROM', 'DEPTH_TO']].add_prefix('CORE_')
+        combined = cross_join(boring_intervals, lithology_intervals)
+        relevant_mask = (leq_close(combined['DEPTH_FROM'], combined['CORE_DEPTH_FROM']) &
+                         geq_close(combined['DEPTH_TO'], combined['CORE_DEPTH_TO']))
+        combined = combined[relevant_mask]
+        combined['CORE_TOTAL'] = combined['CORE_DEPTH_TO'] - combined['CORE_DEPTH_FROM']
+        combined = combined.groupby(['CORE_RECOVERY', 'DEPTH_FROM', 'DEPTH_TO'])['CORE_TOTAL'].sum()
+        combined = pd.DataFrame(combined).reset_index('CORE_RECOVERY')
+        unfits_mask = leq_notclose(combined.CORE_RECOVERY, combined.CORE_TOTAL)
+        unfits = combined[unfits_mask]
+        if not unfits.empty:
+            raise DataRegularityError("lithology_unfits", unfits)
+    
+    def check_samples(self):
+        """Samples integrity checks
+
+        Throws
+        ------
+        DataRegularityError
+        """
+        names = [str(name) for name in self.samples['SAMPLE'].values]
+        if len(names) > len(set(names)):
+            raise DataRegularityError("Duplicate file names in samples.feather")
+
+        folders = ["samples_dl", "samples_uv"]
+        for folder in folders:
+            path = f"{self.path}/{folder}"
+            samples = os.listdir(path)
+
+            ok = [sample.endswith((".png", ".jpg")) for sample in samples]
+            if not np.all(ok):
+                raise DataRegularityError("Unknown sample image extension:", samples[ok.index(False)])
+            samples = [sample[:-4] for sample in samples]
+
+            if len(samples) > len(set(samples)):
+                raise DataRegularityError(f"Duplicate file names in {folder}")
+
+            samples_only = set(samples).difference(set(names))
+            if len(samples_only) != 0:
+                raise DataRegularityError(f"Files from {folder} are not present in samples.feather:", samples_only)
+            
+            names_only = set(names).difference(set(samples))
+            if len(names_only) != 0:
+                raise DataRegularityError(f"Following files from samples.feather are not present in {folder}:", names_only)
 
     def _apply_matching(self):
         """Update depths in all core-related attributes given calculated
