@@ -233,8 +233,8 @@ class WellSegment(AbstractWellSegment):
             core_dl[insert_pos:insert_pos+dl_img.shape[0]] = dl_img
             core_uv[insert_pos:insert_pos+uv_img.shape[0]] = uv_img
 
-        self._core_dl = core_dl / 255
-        self._core_uv = core_uv / 255
+        self._core_dl = core_dl # / 255
+        self._core_uv = core_uv # / 255
         return self
 
     def dump(self, path):
@@ -852,7 +852,7 @@ class WellSegment(AbstractWellSegment):
     def norm_min_max(self, axis=-1, min=None, max=None, *, components):
         pass
     
-    def normalize(self, src, dst=None):
+    def equalize_histogram(self, src, channels='last', dst=None):
         """Normalize images by histogram equalization.
 
         Parameters
@@ -872,9 +872,12 @@ class WellSegment(AbstractWellSegment):
             dst = to_list(dst)
         for _src, _dst in zip(src, dst):
             img = getattr(self, _src)
-            if img.ndims == 3:
-                img = cv2.cvtColor(, cv2.COLOR_RGB2YCrCb)
-                img[..., 0] = cv2.equalizeHist(img[..., 0])
+            if img.ndim == 3:
+                img = cv2.cvtColor(img.astype('uint8'), cv2.COLOR_RGB2YCrCb)
+                _slice = [slice(None)] * 3
+                axis = -1 if channels == 'last' else 0
+                _slice[axis] = 0
+                img[_slice] = cv2.equalizeHist(img[_slice])
                 img = cv2.cvtColor(img, cv2.COLOR_YCrCb2RGB)
             else:
                 img = cv2.equalizeHist(img)

@@ -54,6 +54,10 @@ class AbstractWellSegment(metaclass=ABCMeta):
     def norm_min_max(self):
         pass
 
+    @abstractmethod
+    def equalize_histogram(self):
+        pass
+
 
 class AbstractWell(AbstractWellSegment):
     """Abstract class to check that all nesessary methods are
