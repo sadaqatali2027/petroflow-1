@@ -11,12 +11,12 @@ import numpy as np
 import pandas as pd
 import lasio
 import PIL
-import cv2
 from scipy.interpolate import interp1d
 from sklearn.linear_model import LinearRegression
 from plotly import graph_objs as go
 from plotly.subplots import make_subplots
 from plotly.offline import init_notebook_mode, plot
+import cv2
 
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
@@ -683,8 +683,8 @@ class WellSegment(AbstractWellSegment):
         ----------
         src : str or iterable
             Names of attributes to get depthes for splitting. If `src` consists of
-            attributes in fdtd format then each row will represent new segment.
-            If `src` consists of attributes indexed by depth then ???????????.
+            attributes in fdtd format then each row will represent new segment else
+            exception will be raised.
         connected : bool
             Join segments which are one after another.
 
@@ -699,7 +699,10 @@ class WellSegment(AbstractWellSegment):
             res = self._create_segments_by_fdtd(src, connected)
         else:
             # TODO: create_segments from depth_index
-            pass
+            raise ValueError(
+                'All `src` must be in fdtd format:',
+                [item for item in src if item not in self.attrs_fdtd_index]
+            )
         return res
 
     def _create_segments_by_fdtd(self, src, connected):
@@ -781,9 +784,9 @@ class WellSegment(AbstractWellSegment):
         labels : dict or None
             Mapping for column values. If None, values will be saved in mask.
         mode : 'logs' or 'core'
-            If 'logs', mask will correspond to logs. If 'core', mask will be created
+            If 'logs', mask will correspond to log counts. If 'core', mask will be created
             for core images.
-        default : int
+        default : float
             Default value for mask if `src` doesn't contain information for corresponding
             depth.
         dst : str
@@ -794,14 +797,16 @@ class WellSegment(AbstractWellSegment):
         self : AbstractWellSegment
             Self with mask.
         """
+        default = np.nan if default is None else default
         if src in self.attrs_fdtd_index:
             self._create_mask_fdtd(src, column, labels, mode, default, dst)
+        elif src in self.attrs_depth_index:
+            self._create_mask_depth_index(src, column, labels, mode, default, dst)
         else:
-            # TODO: create_mask from depth_index
-            pass
+            ValueError('Unknown src: ', src)
         return self
 
-    def _create_mask_fdtd(self, src, column, labels, mode, default=None, dst='mask'):
+    def _create_mask_fdtd(self, src, column, labels, mode, default, dst):
         """Create mask from fdtd data."""
         if mode == 'core':
             mask = np.ones(len(self.core_dl)) * default
@@ -811,12 +816,30 @@ class WellSegment(AbstractWellSegment):
             raise ValueError('Unknown mode: ', mode)
 
         table = getattr(self, src)
+        factor = len(mask) / self.length
         for row in table.iterrows():
-            factor = len(mask) / self.length if mode == 'core' else len(mask)
             depth_from, depth_to = row[1].name
             start = np.floor((max(depth_from, self.depth_from) - self.depth_from) * factor)
             end = np.ceil((min(depth_to, self.depth_to) - self.depth_from) * factor)
-            mask[int(start):int(end)] = labels[row[1][column]]
+            mask[int(start):int(end)] = row[1][column] if labels is None else labels[row[1][column]]
+        setattr(self, dst, mask)
+
+    def _create_mask_depth_index(self, src, column, labels, mode, default, dst):
+        """Create mask from depth_index data."""
+        # TODO: fix interpolation
+        if mode == 'core':
+            mask = np.ones(len(self.core_dl)) * default
+        elif mode == 'logs':
+            mask = np.ones(len(self.logs)) * default
+        else:
+            raise ValueError('Unknown mode: ', mode)
+
+        table = getattr(self, src)
+        factor = len(mask) / self.length
+        for row in table.iterrows():
+            depth = row[1].name
+            pos = np.floor((depth - self.depth_from) * factor)
+            mask[int(pos)] = row[1][column] if labels is None else labels[row[1][column]]
         setattr(self, dst, mask)
 
     def drop_layers(self):
@@ -851,21 +874,28 @@ class WellSegment(AbstractWellSegment):
 
     def norm_min_max(self, axis=-1, min=None, max=None, *, components):
         pass
-    
-    def equalize_histogram(self, src, channels='last', dst=None):
-        """Normalize images by histogram equalization.
+
+    def equalize_histogram(self, src=None, dst=None, channels='last'):
+        """Normalize core images by histogram equalization.
 
         Parameters
         ----------
+        src : None, str or iterable
+            Attributes to normalize. If None, `src` will be `('core_dl', 'core_uv')`.
+        dst : None, str or iterable
+            Attributes to save normalized images. If None, images will be saved into `src`.
+        channels : 'last' or 'first'
+            Channels axis in images.
 
         Returns
         -------
-
+        self : AbstractWellSegment
+            Self with normalized images.
         """
         src = to_list(src)
         for item in src:
             _ = getattr(self, item)
-        src = ['_' + item for item in src]
+        src = ['_' + item if item in ['core_dl', 'core_uv'] else item for item in src]
         if dst is None:
             dst = src
         else:
@@ -883,4 +913,3 @@ class WellSegment(AbstractWellSegment):
                 img = cv2.equalizeHist(img)
             setattr(self, _dst, img)
         return self
-        
