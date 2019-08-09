@@ -1,3 +1,5 @@
+"""Implements core-to-log matching algorithm."""
+
 from itertools import product
 from collections import namedtuple
 
@@ -10,16 +12,80 @@ from scipy.interpolate import interp1d
 Shift = namedtuple("Shift", ["depth_from", "depth_to", "sequence_delta", "interval_deltas", "loss"])
 
 
-def trunc(values, decimals=0):
-    return np.trunc(values * 10**decimals) / (10**decimals)
+def trunc(x, n_decimals=0):
+    """Return integer parts and `n_decimals` decimal places of values in `x`.
+
+    Parameters
+    ----------
+    values : numpy.ndarray
+        An array to truncate.
+    n_decimals : non-negative int
+        The number of decimal places to keep. Defauls to 0.
+
+    Returns
+    -------
+    values : numpy.ndarray
+        Truncated array.
+    """
+    return np.trunc(x * 10**n_decimals) / (10**n_decimals)
 
 
 def select_contigious_intervals(df, max_gap=0):
+    """Split a depth-ranged `DataFrame` into a list of `DataFrame`s with no
+    more than `max_gap` gap in depth ranges each.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        A `DataFrame` to split.
+    max_gap : non-negative float
+        Max gap in depth ranges in all resulting `DataFrame`s. Defauls to 0.
+
+    Returns
+    -------
+    df_list : list of pandas.DataFrame
+        Split `DataFrame`.
+    """
     split_indices = np.where((df["DEPTH_FROM"] - df["DEPTH_TO"].shift()) > max_gap)[0]
     return np.split(df, split_indices)
 
 
 def generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, sequence_delta_from, sequence_delta_to, sequence_delta_step):
+    """Generate initial deltas to start optimization from.
+
+    First element of each delta array is a shift of the sequence. It takes all
+    values from `sequence_delta_from` to `sequence_delta_to` with a step of
+    `sequence_delta_step`.
+
+    All other elements indicate gap sizes before each lithology interval of
+    the sequence. They are initialized in three different ways:
+    - All unrecovered core is located in the end of the boring interval
+    - All unrecovered core is equally distributed between all lithology
+      intervals
+    - All unrecovered core is located in the beginning of the boring interval
+
+    Finally, all combinations of sequence deltas and gaps are returned.
+
+    Parameters
+    ----------
+    bi_n_lith_ints : list of int
+        The number of lithology intervals in each boring interval of the
+        sequence.
+    bi_gap_lengths : list of float
+        The length of unrecovered core from each boring interval of the
+        sequence.
+    sequence_delta_from : float
+        Start of the grid of initial shifts in meters.
+    sequence_delta_to : float
+        End of the grid of initial shifts in meters.
+    sequence_delta_step : float
+        Step of the grid of initial shifts in meters.
+
+    Returns
+    -------
+    deltas : list of numpy.ndarray
+        A list of initial deltas.
+    """
     interval_deltas = []
     for n, gap_length in zip(bi_n_lith_ints, bi_gap_lengths):
         interval_deltas.append([np.zeros(n),  # Unrecovered core in the end
@@ -31,6 +97,29 @@ def generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, sequence_delta_from, se
 
 
 def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log):
+    """Calculate optimization loss as negative correlation between well log
+    and core log.
+
+    Parameters
+    ----------
+    deltas : numpy.ndarray
+        Boring sequence shift and gap sizes before each lithology interval of
+        the sequence.
+    bi_n_lith_ints : list of int
+        The number of lithology intervals in each boring interval of the
+        sequence.
+    core_depths : list of numpy.ndarray
+        Depths of core plugs for each lithology interval of the sequence.
+    log_interpolator : scipy.interpolate.interp1d
+        Well log interpolator.
+    core_log : numpy.ndarray
+        Core log values at corresponding `core_depths`.
+
+    Returns
+    -------
+    loss : float
+        Negative correlation between well log and core log.
+    """
     segment_delta = deltas[0]
     interval_deltas = np.concatenate([np.cumsum(d) for d in np.split(deltas[1:], np.cumsum(bi_n_lith_ints)[:-1])])
     interval_deltas += segment_delta
@@ -45,6 +134,41 @@ def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log):
 
 def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_log, max_shift,
                           delta_from, delta_to, delta_step, max_iter, timeout):
+    """Perform core-to-log matching of a boring sequence by shifting core
+    samples in order to maximize correlation between well and core logs.
+
+    The function generates a grid of initial guesses and runs optimization
+    procedure from each grid node.
+
+    Parameters
+    ----------
+    boring_sequence : pandas.DataFrame
+        Boring sequence to match. Contains depth ranges of all boring
+        intervals in the sequence and their core recoveries.
+    lithology_intervals : pandas.DataFrame
+        Ranges of lithology intervals.
+    well_log : pandas.Series
+        Well log to use for matching.
+    core_log : pandas.Series
+        Core log or property to use for matching.
+    max_shift : positive float
+        Maximum shift of a boring sequence in meters.
+    delta_from : float
+        Start of the grid of initial shifts in meters.
+    delta_to : float
+        End of the grid of initial shifts in meters.
+    delta_step : float
+        Step of the grid of initial shifts in meters.
+    max_iter : positive int
+        Maximum number of SLSQP iterations.
+    timeout : positive float
+        Maximum time for one optimization run in seconds.
+
+    Returns
+    -------
+    shifts : list of Shift
+        Shift object for each initial guess, containing final loss and deltas.
+    """
     well_depth_from = well_log.index.min()
     well_depth_to = well_log.index.max()
     well_log = well_log.dropna()
@@ -59,7 +183,6 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
     boring_sequence = boring_sequence[["DEPTH_FROM", "DEPTH_TO", "CORE_RECOVERY"]]
     sequence_depth_from = boring_sequence["DEPTH_FROM"].min()
     sequence_depth_to = boring_sequence["DEPTH_TO"].max()
-    core_len = len(core_log[sequence_depth_from:sequence_depth_to])
 
     for _, (bi_depth_from, bi_depth_to, recovery) in boring_sequence.iterrows():
         mask = ((lithology_intervals["DEPTH_FROM"] >= bi_depth_from) &
