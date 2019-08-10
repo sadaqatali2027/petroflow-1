@@ -32,7 +32,7 @@ def trunc(x, n_decimals=0):
 
 def select_contigious_intervals(df, max_gap=0):
     """Split a depth-ranged `DataFrame` into a list of `DataFrame`s with no
-    more than `max_gap` gap in depth ranges each.
+    more than `max_gap` gap in depth ranges in each.
 
     Parameters
     ----------
@@ -162,7 +162,8 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
     max_iter : positive int
         Maximum number of SLSQP iterations.
     timeout : positive float
-        Maximum time for one optimization run in seconds.
+        Maximum time for an optimization run from each initial guess in
+        seconds.
 
     Returns
     -------

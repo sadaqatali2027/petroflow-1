@@ -10,16 +10,18 @@ from .well import Well
 from .abstract_classes import AbstractWell
 from .utils import to_list
 
+
 class WellDelegatingMeta(ABCMeta):
-    """Metaclass to delegate abstract methods from `WellBatch` to `Well` objects
-    in `wells` component."""
+    """A metaclass to delegate abstract methods from `WellBatch` to `Well`
+    objects in `wells` component."""
 
     def __new__(mcls, name, bases, namespace):
         abstract_methods = [base.__abstractmethods__ for base in bases if hasattr(base, "__abstractmethods__")]
         abstract_methods = frozenset().union(*abstract_methods)
-        for name in abstract_methods:
-            if name not in namespace:
-                namespace[name] = mcls._make_parallel_action(name, namespace['targets'].get(name, 'threads'))
+        for method_name in abstract_methods:
+            if method_name not in namespace:
+                target = namespace['targets'].get(name, 'threads')
+                namespace[method_name] = mcls._make_parallel_action(method_name, target)
         return super().__new__(mcls, name, bases, namespace)
 
     @staticmethod
@@ -33,16 +35,20 @@ class WellDelegatingMeta(ABCMeta):
 
 
 class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
-    """A batch class for well data storing and processing.  Batch class inherits
-    all abstract methods from `Well` class and implement some extra functionality.
-    To execute method for each well in a batch you should add that method into pipeline.
+    """A batch class for well data storing and processing.
+
+    Batch class inherits all abstract methods from `Well` class and implements
+    some extra functionality. To execute a method for each well in a batch you
+    should add that method into a pipeline.
 
     Parameters
     ----------
     index : DatasetIndex
         Unique identifiers of wells in the batch.
     preloaded : tuple, optional
-        Data to put in the batch if given. Defaults to ``None``.
+        Data to put in the batch if given. Defaults to `None`.
+    kwargs : misc
+        Any additional named arguments to `Well.__init__`.
 
     Attributes
     ----------
@@ -53,9 +59,9 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
 
     Note
     ----
-    Some batch methods take ``index`` as their first argument after ``self``.
-    You should not specify it in your code since it will be implicitly passed
-    by ``inbatch_parallel`` decorator.
+    Some batch methods take `index` as their first argument after `self`. You
+    should not specify it in your code since it will be implicitly passed by
+    `inbatch_parallel` decorator.
     """
 
     components = ("wells",)
@@ -88,7 +94,8 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
         src : str or iterable
             Attributes of wells to load into batch
         dst : str or iterable
-            Batch variables to save well attributes. Must be of the same length as 'src'.
+            Batch variables to save well attributes. Must be of the same
+            length as 'src'.
 
         Returns
         -------

@@ -100,9 +100,9 @@ class WellSegment(AbstractWellSegment):
           of the same sample must have the same name in both dirs.
         - Optional `.csv`, `.las` or `.feather` file for certain class
           attributes (see more details in the `Attributes` section).
-    core_width : positive float
+    core_width : positive float, optional
         The width of core samples in cm. Defaults to 10 cm.
-    pixels_per_cm : positive int
+    pixels_per_cm : positive int, optional
         The number of pixels in cm used to determine the loaded width of core
         sample images. Image height is calculated so as to keep the aspect
         ratio. Defaults to 5 pixels.
