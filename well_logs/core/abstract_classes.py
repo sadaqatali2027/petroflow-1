@@ -3,7 +3,7 @@
 from abc import ABCMeta, abstractmethod
 
 
-class AbstractWellSegment(metaclass=ABCMeta):
+class AbstractWellSegment(metaclass=ABCMeta):  # pylint: disable=missing-docstring
     """Abstract class to check that all nesessary methods are implemented in
     `WellSegment` class."""
     @abstractmethod
@@ -63,7 +63,7 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
 
-class AbstractWell(AbstractWellSegment):
+class AbstractWell(AbstractWellSegment):  # pylint: disable=missing-docstring
     """Abstract class to check that all nesessary methods are implemented in
     `Well` and `WellBatch` classes."""
     @abstractmethod

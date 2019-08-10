@@ -1,4 +1,5 @@
 """Implements WellBatch class."""
+# pylint: disable=abstract-method
 
 from abc import ABCMeta
 from functools import wraps

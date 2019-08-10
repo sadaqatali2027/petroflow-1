@@ -1,5 +1,6 @@
 """Implements WellSegment - a class, representing a contiguous part of a well.
 """
+# pylint: disable=too-many-lines,no-member
 
 import os
 import json
@@ -1101,13 +1102,13 @@ class WellSegment(AbstractWellSegment):
         segments = [self[top:bottom] for _, (top, bottom) in df[['DEPTH_FROM', 'DEPTH_TO']].iterrows()]
         return segments
 
-    def _core_chunks(self, df):
+    @staticmethod
+    def _core_chunks(df):
         if len(df) > 0:
             chunks = [(item.DEPTH_FROM.min(), item.DEPTH_TO.max()) for item in select_contigious_intervals(df)]
             chunks = pd.DataFrame(chunks, columns=["DEPTH_FROM", "DEPTH_TO"])
             return chunks
-        else:
-            return pd.DataFrame(columns=["DEPTH_FROM", "DEPTH_TO"])
+        return pd.DataFrame(columns=["DEPTH_FROM", "DEPTH_TO"])
 
     def random_crop(self, length, n_crops=1):
         """Create random crops from the segment. All cropped segments have the same

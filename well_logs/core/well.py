@@ -1,4 +1,5 @@
 """Implements Well class."""
+# pylint: disable=abstract-method
 
 from abc import ABCMeta
 from copy import copy
@@ -318,4 +319,5 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     # def aggregate(self, name, func):
     #     for i in range(len(self.segments)):
-    #         self.segments[i] = [self.segments[i], func([getattr(subsegment, name) for subsegment in self.segments[i]])]
+    #         self.segments[i] = [self.segments[i], func([getattr(subsegment, name)
+    #                             for subsegment in self.segments[i]])]
