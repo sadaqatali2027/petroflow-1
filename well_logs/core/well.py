@@ -12,16 +12,16 @@ from .well_segment import WellSegment
 
 
 class SegmentDelegatingMeta(ABCMeta):
-    """ Metaclass to delegate abstract methods from `Well` to its children
-    (instances of `Well` or `WellSegment`). """
+    """A metaclass to delegate abstract methods from `Well` to its children
+    (instances of `Well` or `WellSegment`)."""
     def __new__(mcls, name, bases, namespace):
         abstract_methods = [
             base.__abstractmethods__ for base in bases if hasattr(base, "__abstractmethods__")
         ]
         abstract_methods = frozenset().union(*abstract_methods)
-        for name in abstract_methods:
-            if name not in namespace:
-                namespace[name] = mcls._make_delegator(name)
+        for method_name in abstract_methods:
+            if method_name not in namespace:
+                namespace[method_name] = mcls._make_delegator(method_name)
         return super().__new__(mcls, name, bases, namespace)
 
     @staticmethod
@@ -43,45 +43,50 @@ class SegmentDelegatingMeta(ABCMeta):
 class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     """A class, representing a well.
 
-    Initially an instance of `Well` class consists of a single segment,
-    representing the whole well. Subsequently, several `Well` methods, such as
-    `crop`, `random_crop` or `drop_nans`, increase the number of segments,
-    storing them in a tree-based structure.
+    A well consists of segments - instances of `WellSegment` class,
+    representing a contiguous part of a well. Initially an instance of `Well`
+    class has a single segment, containing information about the whole well.
+    Subsequently, several `Well` methods, such as `crop`, `random_crop` or
+    `drop_nans`, increase the number of segments, storing them in a tree-based
+    structure.
 
-    All methods that realized in `WellSegment` are redirected from the well to
-    its segments.
+    All methods, declared in `AbstractWell` and not overridden in `Well` will
+    be created by `SegmentDelegatingMeta` metaclass. These methods will
+    delegate the call to each segment of the well.
 
     Parameters
     ----------
     path : str or None
-        If None, `Well` will be created from `segments`.
-        If str, a path to a directory with well data, containing:
+        If `None`, `Well` will be created from `segments`. If `str`, a path to
+        a directory with well data, containing:
         - `meta.json` - a json dict with the following keys:
             - `name` - well name
             - `field` - field name
             - `depth_from` - minimum depth entry in the well logs
             - `depth_to` - maximum depth entry in the well logs
-          These values will be stored as instance attributes.
+          These values will be stored as segment attributes.
         - `samples_dl` and `samples_uv` (optional) - directories, containing
           daylight and ultraviolet images of core samples respectively. Images
           of the same sample must have the same name in both dirs.
-        - Optional `.csv`, `.las` or `.feather` file for certain class
-          attributes (see more details in the `Attributes` section).
-    core_width : positive float
+        - Optional `.csv`, `.las` or `.feather` file for certain segment
+          attributes (see more details in the `WellSegment.Attributes`
+          section).
+    core_width : positive float, optional
         The width of core samples in cm. Defaults to 10 cm.
-    pixels_per_cm : positive int
+    pixels_per_cm : positive int, optional
         The number of pixels in cm used to determine the loaded width of core
         sample images. Image height is calculated so as to keep the aspect
         ratio. Defaults to 5 pixels.
-    segments : list of `WellSegment` or `Well` instances or None
+    segments : list of `WellSegment` or `Well` instances or None, optional
         Segments to put into `segments` attribute. Usually is used by methods
-        which increase the tree depth. If None, `path` must be defined.
+        which increase the tree depth. If `None`, `path` must be defined.
 
     Attributes
     ----------
     segments : list of `WellSegment` or `Well` instances or None
-        Segments which represent the well and store the data. At the last
-        level of nesting it must be `WellSegments`.
+        A segment tree of the well. All leave nodes are instances of
+        `WellSegment` class, representing a contiguous part of a well. All
+        other tree nodes are instances of `Well` class.
     """
     def __init__(self, *args, segments=None, **kwargs):
         super().__init__()
@@ -92,9 +97,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     @property
     def tree_depth(self):
-        """Depth of the tree consisting of `Well` and `WellSegment` instances.
-        Initial value is equal to 2 because initially all well children are
-        `WellSegment` instances.
+        """positive int: Depth of the tree consisting of `Well` and
+        `WellSegment` instances. Initial depth of a created `Well` is 2: a
+        root and a single segment.
         """
         if self._has_segments():
             return 2
@@ -117,29 +122,30 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     @property
     def n_segments(self):
-        """int: Total number of `WellSegment` instances at last level."""
+        """int: Total number of `WellSegment` instances at the last level of
+        the segment tree."""
         return len(self.iter_level())
 
     def _has_segments(self):
         return all(isinstance(item, WellSegment) for item in self)
 
     def __iter__(self):
-        """Iterator over segments."""
+        """Iterate over segments."""
         for segment in self.segments:
             yield segment
 
     def iter_level(self, level=-1):
-        """Iterate over segments at some fixed level.
+        """Iterate over segments at some fixed level of the segment tree.
 
         Parameters
         ----------
         level : int
-            Level of the tree to iterate.
+            Level of the tree to iterate over.
 
         Returns
         -------
-        segments : list of `WellSegment` or `Well` instances or None
-            Segments from some level.
+        segments : list of `WellSegment` or `Well` instances
+            Segments from given level.
         """
         level = level if level >= 0 else self.tree_depth + level
         if (level < 0) or (level > self.tree_depth):
@@ -151,7 +157,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return [item for well in self for item in well.iter_level(level - 1)]
 
     def prune(self):
-        """Remove segments without children at last level of the tree.
+        """Remove subtrees without `WellSegment` instances at the last level
+        of the tree.
 
         Returns
         -------
@@ -176,8 +183,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return copy(self)
 
     def dump(self, path):
-        """Dump well data. The well will be aggregated and the resulting segment
-        will be dumped. Segment attributes are saved in the following manner:
+        """Dump well data. The well will be aggregated and the resulting
+        segment will be dumped. Segment attributes are saved in the following
+        manner:
         - `name`, `field`, `depth_from` and `depth_to` attributes are saved in
           `meta.json` file.
         - `core_dl` and `core_uv` are not saved. Instead, `samples_dl` and
@@ -199,21 +207,22 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self
 
     def create_segments(self, src, connected=True):
-        """Split segments at last levels. The tree depth will be increased.
+        """Split segments at the last level of the segment tree into parts
+        with depth ranges, specified in attributes in `src`.
 
         Parameters
         ----------
         src : str or iterable
-            Names of attributes to get depthes for splitting. If `src` consists of
-            attributes in fdtd format then each row will represent new segment else
-            exception will be raised.
-        connected : bool
-            Join segments which are one after another.
+            Names of attributes to get depths ranges for splitting. If `src`
+            consists of attributes in fdtd format then each row will represent
+            a new segment. Otherwise, an exception will be raised.
+        connected : bool, optional
+            Join segments which are one after another. Defaults to `True`.
 
         Returns
         -------
         self : AbstractWell
-            Well with splitted segments.
+            The well with split segments.
         """
         wells = self.iter_level(-2)
         for well in wells:
@@ -223,25 +232,26 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self
 
     def crop(self, length, step, drop_last=True):
-        """Create crops from segments at last level. All cropped segments have
-        the same length and are cropped with some fixed step. The tree depth
+        """Create crops from segments at the last level. All cropped segments
+        have the same length and are cropped with some fixed step. The tree depth
         will be increased.
 
         Parameters
         ----------
-        length : int
-            Length of each crop in cm.
-        step : int
-            Step of cropping.
-        drop_last : bool
-            If True, all segment which are out of image bounds will be dropped.
-            If False, the whole segment will be covered by crops. The first crop which
-            comes out of segment bounds will remain, the following will be dropped.
+        length : positive float
+            Length of each crop in meters.
+        step : positive float
+            Step of cropping in meters.
+        drop_last : bool, optional
+            If `True`, all segment that are out of segment bounds will be
+            dropped. If `False`, the whole segment will be covered by crops.
+            The first crop which comes out of segment bounds will be kept, the
+            following crops will be dropped. Defaults to `True`.
 
         Returns
         -------
         self : AbstractWell
-            Well with cropped segments.
+            The well with cropped segments.
         """
         wells = self.iter_level(-2)
         for well in wells:
@@ -252,21 +262,22 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self
 
     def random_crop(self, length, n_crops=1):
-        """Create random crops from the segments at last level. Positions of crops
-        are sampled uniformly from segment. The tree depth will be increased. Branches
-        at the tree without segemnts at last level will be dropped.
+        """Create random crops from segments at the last level. All cropped
+        segments have the same length, their positions are sampled uniformly
+        from the segment. The tree depth will be increased. Branches of the
+        tree without segments at last level will be dropped.
 
         Parameters
         ----------
-        length : int
-            Crop length in cm.
-        n_crops : int
-            Number of crops from the segment.
+        length : positive float
+            Length of each crop in meters.
+        n_crops : positive int, optional
+            The number of crops from the segment. Defaults to 1.
 
         Returns
         -------
-        segments : list of `WellSegment` instances
-            Cropped segments.
+        self : AbstractWell
+            The well with cropped segments.
         """
         wells = self.iter_level(-2)
         p = np.array([sum([segment.length for segment in item]) for item in wells])

@@ -1072,8 +1072,8 @@ class WellSegment(AbstractWellSegment):
             Names of attributes to get depths ranges for splitting. If `src`
             consists of attributes in fdtd format then each row will represent
             a new segment. Otherwise, an exception will be raised.
-        connected : bool
-            Join segments which are one after another.
+        connected : bool, optional
+            Join segments which are one after another. Defaults to `True`.
 
         Returns
         -------
@@ -1140,7 +1140,7 @@ class WellSegment(AbstractWellSegment):
         step : positive float
             Step of cropping in meters.
         drop_last : bool, optional
-            If `True`, all segment which are out of segment bounds will be
+            If `True`, all segment that are out of segment bounds will be
             dropped. If `False`, the whole segment will be covered by crops.
             The first crop which comes out of segment bounds will be kept, the
             following crops will be dropped. Defaults to `True`.
