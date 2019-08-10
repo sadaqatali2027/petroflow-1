@@ -1,9 +1,10 @@
 """Implements abstract classes for WellSegment, Well and WellBatch."""
+# pylint: disable=missing-docstring
 
 from abc import ABCMeta, abstractmethod
 
 
-class AbstractWellSegment(metaclass=ABCMeta):  # pylint: disable=missing-docstring
+class AbstractWellSegment(metaclass=ABCMeta):
     """Abstract class to check that all nesessary methods are implemented in
     `WellSegment` class."""
     @abstractmethod
@@ -63,7 +64,7 @@ class AbstractWellSegment(metaclass=ABCMeta):  # pylint: disable=missing-docstri
         pass
 
 
-class AbstractWell(AbstractWellSegment):  # pylint: disable=missing-docstring
+class AbstractWell(AbstractWellSegment):
     """Abstract class to check that all nesessary methods are implemented in
     `Well` and `WellBatch` classes."""
     @abstractmethod

@@ -7,7 +7,7 @@ max-attributes = 8
 max-locals = 25
 max-args = 8
 ignored-argument-names = args|kwargs
-good-names = _, i, j, k, m, n, t, x, X, y, z, ax, ix, df
+good-names = _, i, j, k, m, n, p, t, x, X, y, z, ax, ix, df
 
 [MESSAGE CONTROL]
 disable = no-value-for-parameter, keyword-arg-before-vararg, len-as-condition,
