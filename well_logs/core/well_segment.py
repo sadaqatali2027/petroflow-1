@@ -14,12 +14,12 @@ import numpy as np
 import pandas as pd
 import lasio
 import PIL
+import cv2
 from scipy.interpolate import interp1d
 from sklearn.linear_model import LinearRegression
 from plotly import graph_objs as go
 from plotly.subplots import make_subplots
 from plotly.offline import init_notebook_mode, plot
-import cv2
 
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
@@ -118,7 +118,7 @@ class WellSegment(AbstractWellSegment):
     depth_to : float
         Maximum depth entry in the well logs, loaded from `meta.json`.
     logs : pandas.DataFrame
-        Well logs, indexed by depth. Depth log in source file must have
+        Well logs, indexed by depth. Depth log in a source file must have
         `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
         `core_logs` should match. Loaded from the file with the same name from
         the well directory.
@@ -138,10 +138,10 @@ class WellSegment(AbstractWellSegment):
         another. If the file with the same name exists in the well directory,
         then `boring_sequences` is loaded from the file. Otherwise, it is
         calculated from `boring_intervals`. If core-to-log matching is
-        performed, then extra MODE and R2 columns with matching parameters and
-        results are created.
+        performed, then extra `MODE` and `R2` columns with matching parameters
+        and results are created.
     core_properties : pandas.DataFrame
-        Properties of core samples, indexed by depth. Depth column in source
+        Properties of core plugs, indexed by depth. Depth column in source
         file must be called `DEPTH`. Loaded from the file with the same name
         from the well directory.
     core_lithology : pandas.DataFrame
@@ -150,7 +150,7 @@ class WellSegment(AbstractWellSegment):
         structure: DEPTH_FROM - DEPTH_TO - FORMATION - COLOR - GRAINSIZE -
         GRAINCONTENT.
     core_logs : pandas.DataFrame
-        Core logs, indexed by depth. Depth log in source file must have
+        Core logs, indexed by depth. Depth log in a source file must have
         `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
         `core_logs` should match. Loaded from the file with the same name from
         the well directory.
@@ -162,12 +162,14 @@ class WellSegment(AbstractWellSegment):
         Concatenated daylight image of all core samples in the segment. If
         core samples are absent for several depth ranges, corresponding
         `core_dl` values are equal to `numpy.nan`. Loaded from images in
-        `samples_dl` directory, requires `samples` file in the well directory.
+        `samples_dl` directory, requires `samples` file to exist in the well
+        directory.
     core_uv : numpy.ndarray
         Concatenated ultraviolet image of all core samples in the segment. If
         core samples are absent for several depth ranges, corresponding
         `core_uv` values are equal to `numpy.nan`. Loaded from images in
-        `samples_uv` directory, requires `samples` file in the well directory.
+        `samples_uv` directory, requires `samples` file to exist in the well
+        directory.
     """
 
     attrs_depth_index = ("logs", "core_properties", "core_logs")
@@ -1061,21 +1063,22 @@ class WellSegment(AbstractWellSegment):
         return res_segments
 
     def create_segments(self, src, connected=True):
-        """Split into few segments.
+        """Split `self` into segments with depth ranges, specified in
+        attributes in `src`.
 
         Parameters
         ----------
         src : str or iterable
-            Names of attributes to get depthes for splitting. If `src` consists of
-            attributes in fdtd format then each row will represent new segment else
-            exception will be raised.
+            Names of attributes to get depths ranges for splitting. If `src`
+            consists of attributes in fdtd format then each row will represent
+            a new segment. Otherwise, an exception will be raised.
         connected : bool
             Join segments which are one after another.
 
         Returns
         -------
         segments : list of `WellSegment` instances
-            Splitted segments.
+            Split segments.
         """
         if not isinstance(src, list):
             src = [src]
@@ -1090,7 +1093,7 @@ class WellSegment(AbstractWellSegment):
         return res
 
     def _create_segments_by_fdtd(self, src, connected):
-        """Get segments created by attributes in fdtd format."""
+        """Get segments from depth ranges, specified in fdtd attributes."""
         tables = [getattr(self, item).reset_index() for item in src]
         df = tables[0] if len(tables) == 1 else reduce(fdtd_join, tables)
         if connected:
@@ -1107,15 +1110,15 @@ class WellSegment(AbstractWellSegment):
             return pd.DataFrame(columns=["DEPTH_FROM", "DEPTH_TO"])
 
     def random_crop(self, length, n_crops=1):
-        """Create random crops from the segment. Positions of crops are sampled uniformly
-        from segment.
+        """Create random crops from the segment. All cropped segments have the same
+        length, their positions are sampled uniformly from the segment.
 
         Parameters
         ----------
-        length : int
-            Crop length in cm.
-        n_crops : int
-            Number of crops from the segment.
+        length : positive float
+            Length of each crop in meters.
+        n_crops : positive int, optional
+            The number of crops from the segment. Defaults to 1.
 
         Returns
         -------
@@ -1127,19 +1130,20 @@ class WellSegment(AbstractWellSegment):
         return [self[pos:pos+length] for pos in positions]
 
     def crop(self, length, step, drop_last=True):
-        """Create crops from the segment. All cropped segments have the same length and
-        are cropped with some fixed step.
+        """Create crops from the segment. All cropped segments have the same
+        length and are cropped with some fixed step.
 
         Parameters
         ----------
-        length : int
-            Length of each crop in cm.
-        step : int
-            Step of cropping.
-        drop_last : bool
-            If True, all segment which are out of image bounds will be dropped.
-            If False, the whole segment will be covered by crops. The first crop which
-            comes out of segment bounds will remain, the following will be dropped.
+        length : positive float
+            Length of each crop in meters.
+        step : positive float
+            Step of cropping in meters.
+        drop_last : bool, optional
+            If `True`, all segment which are out of segment bounds will be
+            dropped. If `False`, the whole segment will be covered by crops.
+            The first crop which comes out of segment bounds will be kept, the
+            following crops will be dropped. Defaults to `True`.
 
         Returns
         -------
@@ -1155,42 +1159,44 @@ class WellSegment(AbstractWellSegment):
             positions = np.concatenate((crops_in, crops_out[:1]))
         return [self[pos:pos+length] for pos in positions]
 
-    def create_mask(self, src, column, labels=None, mode='logs', default=None, dst='mask'):
-        """Transform column from some `WellSegment` attribute into mask correponding to log
-        or to core photo.
+    def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask'):
+        """Transform a column from some `WellSegment` attribute into a mask
+        correponding to a well log or to a core image.
 
         Parameters
         ----------
         src : str
-            Attribute to get column.
+            Attribute to get the column from.
         column : str
             Name of the column to transform.
-        labels : dict or None
-            Mapping for column values. If None, values will be saved in mask.
+        mapping : dict or None
+            Mapping for column values. If `None`, original attribure values
+            will be kept in the mask. Defaults to `None`.
         mode : 'logs' or 'core'
-            If 'logs', mask will correspond to log counts. If 'core', mask will be created
-            for core images.
-        default : float
-            Default value for mask if `src` doesn't contain information for corresponding
-            depth.
-        dst : str
-            Attribute to save the mask.
+            A mode, specifying the length of computed mask. If 'logs', mask
+            lenght will match the length of well logs. If 'core', mask length
+            will match the heigth of `core_dl` in pixels. Defaults to
+            `'logs'`.
+        default : float, optional
+            Default value for mask if `src` doesn't contain information for
+            corresponding depth. Defaults to `numpy.nan`.
+        dst : str, optional
+            `WellSegment` attribute to save the mask to. Defaults to `mask`.
 
         Returns
         -------
         self : AbstractWellSegment
             Self with mask.
         """
-        default = np.nan if default is None else default
         if src in self.attrs_fdtd_index:
-            self._create_mask_fdtd(src, column, labels, mode, default, dst)
+            self._create_mask_fdtd(src, column, mapping, mode, default, dst)
         elif src in self.attrs_depth_index:
-            self._create_mask_depth_index(src, column, labels, mode, default, dst)
+            self._create_mask_depth_index(src, column, mapping, mode, default, dst)
         else:
             ValueError('Unknown src: ', src)
         return self
 
-    def _create_mask_fdtd(self, src, column, labels, mode, default, dst):
+    def _create_mask_fdtd(self, src, column, mapping, mode, default, dst):
         """Create mask from fdtd data."""
         if mode == 'core':
             mask = np.ones(len(self.core_dl)) * default
@@ -1205,11 +1211,11 @@ class WellSegment(AbstractWellSegment):
             depth_from, depth_to = row[1].name
             start = np.floor((max(depth_from, self.depth_from) - self.depth_from) * factor)
             end = np.ceil((min(depth_to, self.depth_to) - self.depth_from) * factor)
-            mask[int(start):int(end)] = row[1][column] if labels is None else labels[row[1][column]]
+            mask[int(start):int(end)] = row[1][column] if mapping is None else mapping[row[1][column]]
         setattr(self, dst, mask)
 
-    def _create_mask_depth_index(self, src, column, labels, mode, default, dst):
-        """Create mask from depth_index data."""
+    def _create_mask_depth_index(self, src, column, mapping, mode, default, dst):
+        """Create mask from depth-indexed data."""
         # TODO: fix interpolation
         if mode == 'core':
             mask = np.ones(len(self.core_dl)) * default
@@ -1223,7 +1229,7 @@ class WellSegment(AbstractWellSegment):
         for row in table.iterrows():
             depth = row[1].name
             pos = np.floor((depth - self.depth_from) * factor)
-            mask[int(pos)] = row[1][column] if labels is None else labels[row[1][column]]
+            mask[int(pos)] = row[1][column] if mapping is None else mapping[row[1][column]]
         setattr(self, dst, mask)
 
     def drop_layers(self):
@@ -1265,11 +1271,13 @@ class WellSegment(AbstractWellSegment):
         Parameters
         ----------
         src : None, str or iterable
-            Attributes to normalize. If None, `src` will be `('core_dl', 'core_uv')`.
+            Attributes to normalize. If `None`, `src` will be
+            `('core_dl', 'core_uv')`. Defaults to `None`.
         dst : None, str or iterable
-            Attributes to save normalized images. If None, images will be saved into `src`.
+            Attributes to save normalized images to. If `None`, images will be
+            saved into `src`. Defaults to `None`.
         channels : 'last' or 'first'
-            Channels axis in images.
+            Channels axis in images. Defaults to 'last'.
 
         Returns
         -------
