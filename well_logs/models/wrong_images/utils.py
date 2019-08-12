@@ -83,24 +83,31 @@ def _split(arr):
         arr = np.array(arr)[:-1]
     return arr
 
-def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None, load_labels=True, sort=False, proba_index=0):
+def _split(arr):
+    if len(arr.shape) != 1:
+        arr = np.split(arr, len(arr)) + [None]
+        arr = np.array(arr)[:-1]
+    return arr
+
+def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None,
+                            load_labels=True, sort=False, proba_index=0):
     """ Plot examples of predictions. """
     stat = ppl.get_variable('stat')
-    dl_images = np.concatenate([_split(item[0]) for item in stat])
-    uv_images = np.concatenate([_split(item[1]) for item in stat])
-    proba = np.concatenate([item[2][proba_index] for item in stat])
-    index = ppl.dataset.indices
-    
+    proba = np.concatenate([item[3][proba_index] for item in stat])
     if sort:
         order = list(enumerate(proba[:, 1]))
         order = np.array(sorted(order, key=lambda x: x[1], reverse=True))[:, 0].astype('int')
-        dl_images = dl_images[order]
-        uv_images = uv_images[order]
         proba = proba[order]
-        index = index[order]
+    else:
+        order = np.arange(len(proba))
+    
+    dl_images = np.concatenate([_split(item[0]) for item in stat])[order]
+    uv_images = np.concatenate([_split(item[1]) for item in stat])[order]
+    uv_images_bin = np.concatenate([_split(item[2]) for item in stat])[order]
+    index = ppl.dataset.indices[order]
     
     if load_labels:
-        labels = np.concatenate([item[3] for item in stat])
+        labels = np.concatenate([item[4] for item in stat])[order]
         indices = dict(
             fn=[i for i in range(len(labels)) if (labels[i] == 1) & (proba[i][1] < threshold)],
             fp=[i for i in range(len(labels)) if (labels[i] == 0) & (proba[i][1] > threshold)],
@@ -123,13 +130,15 @@ def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None, load_l
     for i in _indices[:n_images]:
         img1 = np.squeeze(dl_images[i])
         img2 = np.squeeze(uv_images[i])
+        img3 = np.squeeze(uv_images_bin[i])
         shape = np.min((img1.shape[0], img2.shape[0])), np.min((img1.shape[1], img2.shape[1]))
         image = np.concatenate(
             (
                 img1[:shape[0], :shape[1]],
-                img2[:shape[0], :shape[1]]
+                img2[:shape[0], :shape[1]],
+                img3[:shape[0], :shape[1]]
             ), axis=1)
-        figsize = np.array([10, 5]) * image.shape / np.array([1500, 300])
+        figsize = np.array([10, 7]) * image.shape / np.array([1500, 300])
         plt.figure(figsize=figsize)
         plt.imshow(image.transpose(), cmap='gray')
         plt.xticks([])
