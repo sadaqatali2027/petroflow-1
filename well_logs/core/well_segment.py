@@ -1233,6 +1233,21 @@ class WellSegment(AbstractWellSegment):
             mask[int(pos)] = row[1][column] if mapping is None else mapping[row[1][column]]
         setattr(self, dst, mask)
 
+    def reindex(self, step, attrs=None):
+        attrs = self.attrs_fdtd_index if attrs is None else attrs
+        new_index = np.arange(self.depth_from, self.depth_to, step)
+        for attr in np.intersect1d(attrs, self.attrs_depth_index):
+            res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=1e-4)
+            setattr(self, "_" + attr, res)
+        return self
+
+    def interpolate(self, *args, attrs=None, **kwargs):
+        attrs = self.attrs_fdtd_index if attrs is None else attrs
+        for attr in np.intersect1d(attrs, self.attrs_depth_index):
+            res = getattr(self, attr).interpolate(*args, **kwargs)
+            setattr(self, "_" + attr, res)
+        return self
+
     def drop_layers(self):
         pass
 

@@ -48,6 +48,14 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def reindex(self):
+        pass
+
+    @abstractmethod
+    def interpolate(self):
+        pass
+
+    @abstractmethod
     def fill_nans(self):
         pass
 
