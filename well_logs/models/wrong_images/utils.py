@@ -9,6 +9,23 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+class Assemble:
+    """ Namespace for pipeline to assmble predictions"""
+    @classmethod
+    def assemble(cls, predictions, images, mode='mean'):
+        """ Transform crops predictions into whole images predictions. """
+        _mode = mode if isinstance(mode, list) else [mode]
+        res = [[] for _ in range(len(_mode))]
+        i = 0
+        for item in images:
+            for j, m in enumerate(_mode):
+                res[j].append(getattr(np, m)(predictions[i:i+item.shape[0]], axis=0))
+            i = i + item.shape[0]
+        res = [np.array(item) for item in res]
+        if len(res) == 1:
+            res = res[0]
+        return res
+
 def plot_pair(path, name, length=1000):
     """ Plot DL and UV images. """
     dl_image = PIL.Image.open(os.path.join(path, 'samples_dl', name))
@@ -43,27 +60,6 @@ def read_annotation(path, df_name='samples.feather'):
     annotation = annotation.set_index('SAMPLE')
     return annotation
 
-def make_data(batch):
-    """ Transform array of arrays into array. """
-    crops1 = np.concatenate(batch.dl_crops)
-    crops2 = np.concatenate(batch.uv_crops)
-    if crops1.ndim == 3:
-        images = np.stack((crops1, crops2), axis=1)
-    else:
-        images = np.concatenate((crops1, crops2), axis=1)
-    labels = np.concatenate(batch.labels_crops)
-    return np.array(images, dtype='float32'), np.array(labels, dtype='float32')
-
-def assemble(batch):
-    """ Transform crops predictions into whole images predictions. """
-    predictions = batch.proba
-    res = []
-    i = 0
-    for item in batch.dl_crops:
-        res.append(np.mean(predictions[i:i+item.shape[0]], axis=0))
-        i = i + item.shape[0]
-    return np.array(res)
-
 def plot_crops_predictions(batch):
     """ Plot crops and corresponding predictions. """
     for i in np.random.choice(batch.dl.shape[0], 5):
@@ -87,23 +83,37 @@ def _split(arr):
         arr = np.array(arr)[:-1]
     return arr
 
-def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None):
+def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None, load_labels=True, sort=False, proba_index=0):
     """ Plot examples of predictions. """
     stat = ppl.get_variable('stat')
     dl_images = np.concatenate([_split(item[0]) for item in stat])
     uv_images = np.concatenate([_split(item[1]) for item in stat])
-    proba = np.concatenate([item[2] for item in stat])
-    labels = np.concatenate([item[3] for item in stat])
-
-    indices = dict(
-        fn=[i for i in range(len(labels)) if (labels[i] == 1) & (proba[i][1] < threshold)],
-        fp=[i for i in range(len(labels)) if (labels[i] == 0) & (proba[i][1] > threshold)],
-        tn=[i for i in range(len(labels)) if (labels[i] == 0) & (proba[i][1] < threshold)],
-        tp=[i for i in range(len(labels)) if (labels[i] == 1) & (proba[i][1] > threshold)],
-        all=np.arange(len(labels))
-    )
-
+    proba = np.concatenate([item[2][proba_index] for item in stat])
     index = ppl.dataset.indices
+    
+    if sort:
+        order = list(enumerate(proba[:, 1]))
+        order = np.array(sorted(order, key=lambda x: x[1], reverse=True))[:, 0].astype('int')
+        dl_images = dl_images[order]
+        uv_images = uv_images[order]
+        proba = proba[order]
+        index = index[order]
+    
+    if load_labels:
+        labels = np.concatenate([item[3] for item in stat])
+        indices = dict(
+            fn=[i for i in range(len(labels)) if (labels[i] == 1) & (proba[i][1] < threshold)],
+            fp=[i for i in range(len(labels)) if (labels[i] == 0) & (proba[i][1] > threshold)],
+            tn=[i for i in range(len(labels)) if (labels[i] == 0) & (proba[i][1] < threshold)],
+            tp=[i for i in range(len(labels)) if (labels[i] == 1) & (proba[i][1] > threshold)],
+            all=np.arange(len(labels))
+        )
+    else:
+        indices = dict(
+            p=[i for i in range(len(proba)) if (proba[i][1] > threshold)],
+            n=[i for i in range(len(proba)) if (proba[i][1] <= threshold)],
+            all=np.arange(len(proba))
+        )
 
     n_images = len(indices[mode]) if n_images is None else n_images
     if not isinstance(mode, list):
@@ -124,7 +134,10 @@ def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None):
         plt.imshow(image.transpose(), cmap='gray')
         plt.xticks([])
         plt.yticks([])
-        plt.title(index[i] + '      ' + str(labels[i]) + '     ' + str(proba[i][1]))
+        if load_labels:
+            plt.title(index[i] + '      ' + str(labels[i]) + '     ' + str(proba[i][1]))
+        else:
+            plt.title(index[i] + '      ' + str(proba[i][1]))
         plt.show()
 
 def fix_annotation(ppl, annotation, threshold=0.5):
