@@ -34,7 +34,7 @@ def to_list(obj):
     return np.array(obj).ravel().tolist()
 
 def leq_notclose(x1, x2):
-    """Return the truth value of (x1 <= x2) AND (x1 is not close to x2) element-wise."""
+    """Return the truth value of (x1 <= x2) AND (x1 is NOT close to x2) element-wise."""
     return np.less_equal(x1, x2) & ~np.isclose(x1, x2)
 
 def leq_close(x1, x2):

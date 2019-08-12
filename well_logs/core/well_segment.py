@@ -623,19 +623,19 @@ class WellSegment(AbstractWellSegment):
         
         Following checks applied for boring_intervals dataframe:
         1. If any values of CORE_RECOVERY column are nan.
-        2. If any values of CORE_RECOVERY column are greater 
+        2. If any values of CORE_RECOVERY column are greater
            than calculated CORE_INTERVAL values.
         3. If any values of DEPTH_FROM and DEPTH_TO columns of adjacent rows
            form intervals that overlap each other.
         4. If any values of DEPTH_FROM column are not increasing.
-        5. If any values of DEPTH_FROM column are greater than 
+        5. If any values of DEPTH_FROM column are greater than
            values of DEPTH_TO column of the same row.
         
         Following checks applied for core_lithology dataframe:
         1. If any values of DEPTH_FROM and DEPTH_TO columns of adjacent rows
            form intervals that overlap each other.
         2. If any values of DEPTH_FROM column are not increasing.
-        3. If any values of DEPTH_FROM column are greater than 
+        3. If any values of DEPTH_FROM column are greater than
            values of DEPTH_TO column of the same row.
         4. If any intervals formed by values of DEPTH_FROM and DEPTH_TO columns
            of the same row are not included in corresponding intervals from

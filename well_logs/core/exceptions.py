@@ -1,4 +1,4 @@
-""" Contains specific Exceptions """
+"""Contains specific Exceptions."""
 
 STARTERS = {
     "boring_nans" : "Missing CORE_RECOVERY values in boring_intervals:",
