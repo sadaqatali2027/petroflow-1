@@ -1254,22 +1254,23 @@ class WellSegment(AbstractWellSegment):
     def keep_layers(self):
         pass
 
-    def drop_nans(self, components_to_drop_nans):
-        # Drop rows with at least one NaN in places components_to_drop_nans
-        if isinstance(components_to_drop_nans, (list, tuple)):
-            not_nan_mask = ~np.isnan(self[components_to_drop_nans].logs)
+    def drop_nans(self, logs=None):
+        logs = self.logs.columns if logs is None else logs
+
+        # Drop rows with more than `logs` NaNs
+        if isinstance(logs, int):
+            not_nan_mask = (~np.isnan(self.logs)).sum(axis=1)
+            not_nan_indices = np.where(not_nan_mask >= logs)[0]
+        # Drop rows with at least one NaN in logs with mnemonics in `logs`
+        else:
+            not_nan_mask = ~np.isnan(self.logs[logs])
             not_nan_indices = np.where(np.all(not_nan_mask, axis=1))[0]
 
-        # Drop rows with greater than or equal to components_to_drop_nans NaN in row
-        elif isinstance(components_to_drop_nans, int):
-            not_nan_mask = (~np.isnan(self.logs)).sum(axis=1)
-            not_nan_indices = np.where(not_nan_mask >= components_to_drop_nans)[0]
-        else:
-            raise ValueError('components_to_drop_nans must be list or tuple or int')
-
-        not_nan_depth = not_nan_mask.index[not_nan_indices]
         borders = np.where((not_nan_indices[1:] - not_nan_indices[:-1]) != 1)[0] + 1
-        splits = np.split(not_nan_depth, borders)
+        if len(borders) == 0:
+            return [self]
+        not_nan_depths = not_nan_mask.index[not_nan_indices]
+        splits = np.split(not_nan_depths, borders)
         return [self[split[0]:split[-1]] for split in splits]
 
     def fill_nans(self):

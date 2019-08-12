@@ -157,6 +157,13 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             return self.segments
         return [item for well in self for item in well.iter_level(level - 1)]
 
+    def _prune(self):
+        """Recursively prune segment tree."""
+        self.segments = [well for well in self if isinstance(well, WellSegment) or well.n_segments > 0]
+        for well in self:
+            if isinstance(well, Well):
+                well._prune()
+
     def prune(self):
         """Remove subtrees without `WellSegment` instances at the last level
         of the tree.
@@ -166,11 +173,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell
             Self with prunned tree.
         """
-        # TODO: raise EmptyWellException if no segments left
-        self.segments = [well for well in self if isinstance(well, WellSegment) or well.n_segments > 0]
-        for well in self:
-            if isinstance(well, Well):
-                _ = well.prune()
+        self._prune()
+        if not self.segments:
+            raise Exception  # TODO: change to SkipWellException
         return self
 
     def copy(self):
@@ -319,12 +324,10 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 well.segments = []
         return self.prune()
 
-    def drop_nans(self, components_to_drop_nans):
+    def drop_nans(self, logs=None):
         wells = self.iter_level(-2)
         for well in wells:
-            well.segments = [
-                Well(segments=segment.drop_nans(components_to_drop_nans)) for segment in well
-            ]
+            well.segments = [Well(segments=segment.drop_nans(logs=logs)) for segment in well]
         return self.prune()
 
     def drop_short_segments(self, min_length):
