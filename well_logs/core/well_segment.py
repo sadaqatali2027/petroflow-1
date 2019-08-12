@@ -619,11 +619,35 @@ class WellSegment(AbstractWellSegment):
         return copy(self)
     
     def check_regularity(self):
-        """Intervals regularity checks.
+        """Checks intervals data regularity.
         
-        Throws
+        Following checks applied for boring_intervals dataframe:
+        1. If any values of CORE_RECOVERY column are nan.
+        2. If any values of CORE_RECOVERY column are greater 
+           than calculated CORE_INTERVAL values.
+        3. If any values of DEPTH_FROM and DEPTH_TO columns of adjacent rows
+           form intervals that overlap each other.
+        4. If any values of DEPTH_FROM column are not increasing.
+        5. If any values of DEPTH_FROM column are greater than 
+           values of DEPTH_TO column of the same row.
+        
+        Following checks applied for core_lithology dataframe:
+        1. If any values of DEPTH_FROM and DEPTH_TO columns of adjacent rows
+           form intervals that overlap each other.
+        2. If any values of DEPTH_FROM column are not increasing.
+        3. If any values of DEPTH_FROM column are greater than 
+           values of DEPTH_TO column of the same row.
+        4. If any intervals formed by values of DEPTH_FROM and DEPTH_TO columns
+           of the same row are not included in corresponding intervals from
+           boring_intervals dataframe.
+        5. If any values of CORE_TOTAL column (calculated as a sum of intervals
+           included in the same interval of boring_intervals dataframe) are greater
+           than values of CORE_RECOVERY column of boring_intervals dataframe.
+           
+        Raises
         ------
         DataRegularityError
+            If any of checks above are not passed.
         """
         boring_intervals = self.boring_intervals.copy()
         boring_intervals['DEPTH_FROM'] = boring_intervals.index.get_level_values('DEPTH_FROM')
@@ -708,7 +732,7 @@ class WellSegment(AbstractWellSegment):
         unfits = combined[unfits_mask]
         if not unfits.empty:
             raise DataRegularityError("lithology_unfits", unfits)
-    
+
     def check_samples(self):
         """Samples integrity checks
 
