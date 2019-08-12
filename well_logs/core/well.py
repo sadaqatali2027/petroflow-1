@@ -207,6 +207,29 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self.segments[0].dump(path)
         return self
 
+    def keep_matched_sequences(self, mode=None, threshold=0.6):
+        """Keep boring sequences, matched using given `mode` with `R^2`
+        greater than `threshold`.
+
+        Parameters
+        ----------
+        mode : str or list of str
+            Chosen matching mode to keep a sequence. It has the same structure
+            as `mode` in `match_core_logs`.
+        threshold : float
+            Minimum value of `R^2` to keep a sequence.
+
+        Returns
+        -------
+        self : AbstractWell
+            The well with kept matched segments.
+        """
+        for well in self.iter_level(-2):
+            well.segments = [
+                Well(segments=segment.keep_matched_sequences(mode, threshold)) for segment in well
+            ]
+        return self.prune()
+
     def create_segments(self, src, connected=True):
         """Split segments at the last level of the segment tree into parts
         with depth ranges, specified in attributes in `src`.
