@@ -1,39 +1,44 @@
 """Named expression for wells."""
 
-import copy
-
 from ..batchflow import NamedExpression
 from ..batchflow.batchflow.named_expr import _DummyBatch
+
 
 class NestedList:
     """Wrapper for nested lists."""
     def __init__(self, nested_list):
-        self.nested_list = nested_list
+        self._nested_list = nested_list
 
     def __getattr__(self, key):
-        return NestedList([[getattr(item, key) for item in inner_list] for inner_list in self.nested_list])
+        return NestedList([[getattr(item, key) for item in inner_list] for inner_list in self._nested_list])
 
     def __getitem__(self, key):
-        return NestedList([[item[key] for item in inner_list] for inner_list in self.nested_list])
+        return NestedList([[item[key] for item in inner_list] for inner_list in self._nested_list])
 
     def __repr__(self):
-        return repr(self.nested_list)
+        return repr(self._nested_list)
 
     def __copy__(self):
-        return NestedList([[copy.copy(item) for item in inner_list] for inner_list in self.nested_list])
+        return NestedList([[item.copy() for item in inner_list] for inner_list in self._nested_list])
 
     def to_list(self):
         """Return wrapped list."""
-        return self.nested_list
+        return self._nested_list
+
+    def ravel(self):
+        """Flatten a nested list into a list."""
+        return sum(self._nested_list, [])
+
 
 class WS(NamedExpression):
     """Component or attribute of each well segment.
 
     Notes
     -----
-    ``W()`` return list of wells.
+    `WS()` returns list of wells.
 
-    To avoid unexpected data changes the copy of the segments data may be returned, if ``copy=True``.
+    To avoid unexpected data changes the copy of the segments data may be
+    returned, if `copy=True`.
 
     Examples
     --------
