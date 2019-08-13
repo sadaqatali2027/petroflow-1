@@ -95,6 +95,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             self.segments = [WellSegment(*args, **kwargs)]
         else:
             self.segments = segments
+        self.name = self.segments[0].name
 
     @property
     def tree_depth(self):
@@ -281,7 +282,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             The well with cropped segments.
         """
         wells = self.iter_level(-2)
+        print(len(wells))
         p = np.array([sum([segment.length for segment in item]) for item in wells])
+        print(self.name, p)
         random_wells = Counter(np.random.choice(wells, n_crops, p=p/sum(p)))
         for well in wells:
             if well in random_wells:
