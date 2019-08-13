@@ -103,31 +103,3 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
         self.index = self.index.create_subset(self.indices[~skip_mask])
         self.wells = results
         return self
-
-    @action
-    def get_crops(self, src, dst):
-        """Get some attributes from well and put them into batch variables.
-
-        Parameters
-        ----------
-        src : str or iterable
-            Attributes of wells to load into batch
-        dst : str or iterable
-            Batch variables to save well attributes. Must be of the same
-            length as 'src'.
-
-        Returns
-        -------
-        batch : WellLogsBatch
-            Batch with loaded components. Changes batch data inplace.
-        """
-        src = to_list(src)
-        dst = to_list(dst)
-        if len(src) != len(dst):
-            raise ValueError(
-                "'src' and 'dst' must be of the same length but {} and {} were given".format(len(src), len(dst))
-            )
-        for attr_from, attr_to in zip(src, dst):
-            crops = [[getattr(segment, attr_from) for segment in well.iter_level()] for well in self.wells]
-            setattr(self, attr_to, np.array(crops))
-        return self
