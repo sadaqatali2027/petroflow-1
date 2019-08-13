@@ -27,7 +27,7 @@ class NestedList:
         return self.nested_list
 
 class WS(NamedExpression):
-    """Component or attribute name of well segments.
+    """Component or attribute of each well segment.
 
     Notes
     -----
