@@ -1,15 +1,17 @@
 """Implements WellBatch class."""
 # pylint: disable=abstract-method
 
+import traceback
 from abc import ABCMeta
 from functools import wraps
 
 import numpy as np
 
-from ..batchflow import FilesIndex, Batch, action, inbatch_parallel
+from ..batchflow import FilesIndex, Batch, SkipBatchException, action, inbatch_parallel, any_action_failed
 from .well import Well
 from .abstract_classes import AbstractWell
 from .utils import to_list
+from .exceptions import SkipWellException
 
 
 class WellDelegatingMeta(ABCMeta):
@@ -30,9 +32,8 @@ class WellDelegatingMeta(ABCMeta):
         @wraps(getattr(Well, name))
         def delegator(self, index, *args, **kwargs):
             pos = self.get_pos(None, "wells", index)
-            func = getattr(Well, name)
-            self.wells[pos] = func(self.wells[pos], *args, **kwargs)
-        return action()(inbatch_parallel(init="indices", target=target)(delegator))
+            return getattr(Well, name)(self.wells[pos], *args, **kwargs)
+        return action()(inbatch_parallel(init="indices", post="_filter_assemble", target=target)(delegator))
 
 
 class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
@@ -70,8 +71,11 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
 
     def __init__(self, index, preloaded=None, **kwargs):
         super().__init__(index, preloaded, **kwargs)
-        self.wells = np.array([None] * len(self.index))
-        self._init_wells(**kwargs)
+        if preloaded is None:
+            self.wells = np.array([None] * len(self.index))
+            self._init_wells(**kwargs)
+        else:  # Remove when batch.as_dataset is fixed
+            self.wells = np.array([preloaded[0][k] for k in index.indices] + [None])[:-1]
 
     @inbatch_parallel(init="indices", target="threads")
     def _init_wells(self, index, src=None, **kwargs):
@@ -85,6 +89,20 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
         well = Well(path, **kwargs)
         i = self.get_pos(None, "wells", index)
         self.wells[i] = well
+
+    def _filter_assemble(self, results, *args, **kwargs):
+        skip_mask = np.array([isinstance(res, SkipWellException) for res in results])
+        if sum(skip_mask) == len(self):
+            raise SkipBatchException
+        results = np.array(results)[~skip_mask]
+        if any_action_failed(results):
+            errors = self.get_errors(results)
+            print(errors)
+            traceback.print_tb(errors[0].__traceback__)
+            raise RuntimeError("Could not assemble the batch")
+        self.index = self.index.create_subset(self.indices[~skip_mask])
+        self.wells = results
+        return self
 
     @action
     def get_crops(self, src, dst):

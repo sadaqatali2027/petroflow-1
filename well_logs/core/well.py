@@ -10,6 +10,7 @@ import numpy as np
 
 from .abstract_classes import AbstractWell
 from .well_segment import WellSegment
+from .exceptions import SkipWellException
 
 
 class SegmentDelegatingMeta(ABCMeta):
@@ -175,7 +176,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         """
         self._prune()
         if not self.segments:
-            raise Exception  # TODO: change to SkipWellException
+            raise SkipWellException("Empty well after prunning")
         return self
 
     def copy(self):

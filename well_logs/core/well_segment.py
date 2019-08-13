@@ -26,7 +26,7 @@ from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
 from .joins import cross_join, between_join, fdtd_join
 from .utils import to_list, leq_notclose, leq_close, geq_close
-from .exceptions import DataRegularityError
+from .exceptions import SkipWellException, DataRegularityError
 
 def add_attr_properties(cls):
     """Add missing properties for lazy loading of `WellSegment` table-based
@@ -620,10 +620,10 @@ class WellSegment(AbstractWellSegment):
             Shallow copy.
         """
         return copy(self)
-    
+
     def check_regularity(self):
         """Checks intervals data regularity.
-        
+
         Following checks applied for boring_intervals dataframe:
         1. If any values of CORE_RECOVERY column are nan.
         2. If any values of CORE_RECOVERY column are greater
@@ -633,7 +633,7 @@ class WellSegment(AbstractWellSegment):
         4. If any values of DEPTH_FROM column are not increasing.
         5. If any values of DEPTH_FROM column are greater than
            values of DEPTH_TO column of the same row.
-        
+
         Following checks applied for core_lithology dataframe:
         1. If any values of DEPTH_FROM and DEPTH_TO columns of adjacent rows
            form intervals that overlap each other.
@@ -646,12 +646,15 @@ class WellSegment(AbstractWellSegment):
         5. If any values of CORE_TOTAL column (calculated as a sum of intervals
            included in the same interval of boring_intervals dataframe) are greater
            than values of CORE_RECOVERY column of boring_intervals dataframe.
-           
+
         Raises
         ------
         DataRegularityError
             If any of checks above are not passed.
         """
+        if not self._has_file("boring_intervals"):
+            raise SkipWellException("boring_intervals file is reqiured to perform checks")
+
         boring_intervals = self.boring_intervals.copy()
         boring_intervals['DEPTH_FROM'] = boring_intervals.index.get_level_values('DEPTH_FROM')
         boring_intervals['DEPTH_TO'] = boring_intervals.index.get_level_values('DEPTH_TO')
@@ -662,7 +665,7 @@ class WellSegment(AbstractWellSegment):
         nans = boring_intervals[nans_mask]
         if not nans.empty:
             raise DataRegularityError("boring_nans", nans[['CORE_RECOVERY']])
-        
+
         # Check if any CORE_RECOVERY values are greater than CORE_INTERVAL ones.
         unfits_mask = leq_notclose(boring_intervals['CORE_INTERVAL'], boring_intervals['CORE_RECOVERY'])
         unfits = boring_intervals[unfits_mask]
@@ -676,7 +679,7 @@ class WellSegment(AbstractWellSegment):
         overlaps = boring_intervals[overlaps_mask | overlaps_mask.shift(1)]
         if not overlaps.empty:
             raise DataRegularityError("boring_overlaps", overlaps[['CORE_RECOVERY']])
-        
+
         # Check if boring intervals DEPTH_FROM values are not increasing.
         if not boring_intervals.index.is_monotonic_increasing:
             nonincreasing_mask = boring_intervals['DEPTH_FROM'].shift(-1) < boring_intervals['DEPTH_FROM']
@@ -689,6 +692,9 @@ class WellSegment(AbstractWellSegment):
         if not disordered.empty:
             raise DataRegularityError('boring_disordered', disordered[['CORE_RECOVERY']])
 
+        if not self._has_file("core_lithology"):
+            return self
+
         lithology_intervals = self.core_lithology.copy()
         lithology_intervals['DEPTH_FROM'] = lithology_intervals.index.get_level_values('DEPTH_FROM')
         lithology_intervals['DEPTH_TO'] = lithology_intervals.index.get_level_values('DEPTH_TO')
@@ -700,13 +706,13 @@ class WellSegment(AbstractWellSegment):
         overlaps = lithology_intervals[overlaps_mask | overlaps_mask.shift(1)]
         if not overlaps.empty:
             raise DataRegularityError("lithology_overlaps", overlaps[['FORMATION']])
-        
+
         # Check if lithology intervals DEPTH_FROM values are not increasing.
         if not lithology_intervals.index.is_monotonic_increasing:
             nonincreasing_mask = lithology_intervals['DEPTH_FROM'].shift(-1) < lithology_intervals['DEPTH_FROM']
             nonincreasing = lithology_intervals[nonincreasing_mask | nonincreasing_mask.shift(1)]
             raise DataRegularityError("lithology_nonincreasing", nonincreasing[['FORMATION']])
-    
+
         # Check if lithology intervals DEPTH_FROM values are bigger than DEPTH_TO ones.
         disordered_mask = lithology_intervals['DEPTH_FROM'] > lithology_intervals['DEPTH_TO']
         disordered = lithology_intervals[disordered_mask]
@@ -735,6 +741,8 @@ class WellSegment(AbstractWellSegment):
         unfits = combined[unfits_mask]
         if not unfits.empty:
             raise DataRegularityError("lithology_unfits", unfits)
+
+        return self
 
     def check_samples(self):
         """Samples integrity checks
@@ -1004,6 +1012,9 @@ class WellSegment(AbstractWellSegment):
                 matched_boring_sequences.append(sequence)
                 matched_lithology_intervals.append(sequence_lithology_intervals)
 
+        if all(mode is None for mode in sequences_modes):
+            raise SkipWellException("None of the boring sequences can be matched")
+
         self._boring_intervals_deltas = pd.concat(matched_boring_sequences)
         self._core_lithology_deltas = pd.concat(matched_lithology_intervals)
         self._apply_matching()
@@ -1163,6 +1174,8 @@ class WellSegment(AbstractWellSegment):
         well : WellSegment
             A segment with filtered logs.
         """
+        if len(np.setdiff1d(mnemonics, self.logs.columns)) > 0:
+            raise SkipWellException
         res = self.copy()
         res._logs = res.logs[to_list(mnemonics)]
         return res

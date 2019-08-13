@@ -1,5 +1,6 @@
 """Contains specific Exceptions."""
 
+
 STARTERS = {
     "boring_nans" : "Missing CORE_RECOVERY values in boring_intervals:",
     "boring_unfits" : "CORE_RECOVERY is bigger than CORE_INTERVAL in boring_intervals:",
@@ -11,11 +12,17 @@ STARTERS = {
     "lithology_disordered" : "DEPTH_FROM is bigger than DEPTH_TO in core_lithology:",
     "lithology_exclusions" : "Following core_lithology intervals are not included in any of boring_intervals:",
     "lithology_unfits" : "Calculated CORE_TOTAL is greater than the corresponding CORE_RECOVERY in boring_intervals:"
-    }
+}
 
-class DataRegularityError(Exception):
-    """ Raised if any data regularity checks are not passed """
-    def __init__(self, bad_id, bad_data=''):
+
+class SkipWellException(Exception):
+    """Raised if a well should be dropped from a batch."""
+    pass
+
+
+class DataRegularityError(SkipWellException):
+    """Raised if any data regularity checks are not passed."""
+    def __init__(self, bad_id, bad_data=""):
         starter = STARTERS.get(bad_id, bad_id)
         message = f"{starter}\n\n{bad_data}"
         super().__init__(message)

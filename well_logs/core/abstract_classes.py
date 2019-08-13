@@ -24,6 +24,10 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def check_regularity(self):
+        pass
+
+    @abstractmethod
     def match_core_logs(self):
         pass
 
