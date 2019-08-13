@@ -1144,6 +1144,10 @@ class WellSegment(AbstractWellSegment):
         plot(fig)
         return self
 
+    def add_depth_log(self):
+        self.logs["DEPTH"] = self.logs.index
+        return self
+
     def drop_logs(self, mnemonics):
         """Drop well logs whose mnemonics are in `mnemonics`.
 

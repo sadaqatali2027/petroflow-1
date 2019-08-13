@@ -40,6 +40,10 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def add_depth_log(self):
+        pass
+
+    @abstractmethod
     def drop_logs(self):
         pass
 
