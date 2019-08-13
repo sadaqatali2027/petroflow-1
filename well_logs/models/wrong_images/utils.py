@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-class Assemble:
+class Assemble: # pylint: too-few-public-methods
     """Namespace for pipeline to assemble predictions."""
     @classmethod
     def assemble(cls, predictions, images, mode='mean'):
@@ -87,7 +87,7 @@ def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None,
     ppl : Pipeline
         Pipeline with `stat` variable.
     mode : str
-        Predictions to plot: 
+        Predictions to plot:
             'p': positive,
             'n': negative,
             'tp': true positive,
@@ -117,11 +117,11 @@ def plot_images_predictions(ppl, mode='fn', threshold=0.5, n_images=None,
         proba = proba[order]
     else:
         order = np.arange(len(proba))
-    
+
     dl_images = np.concatenate([_split(item[0]) for item in stat])[order]
     uv_images = np.concatenate([_split(item[1]) for item in stat])[order]
     index = ppl.dataset.indices[order]
-    
+
     if load_labels:
         labels = np.concatenate([item[3] for item in stat])[order]
         indices = dict(
