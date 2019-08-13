@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-class Assemble: # pylint: too-few-public-methods
+class Assemble: # pylint: disable=too-few-public-methods
     """Namespace for pipeline to assemble predictions."""
     @classmethod
     def assemble(cls, predictions, images, mode='mean'):
@@ -63,7 +63,7 @@ def plot_crops_predictions(batch, dl_attr='dl', uv_attr='uv'):
     for i in np.random.choice(getattr(batch, dl_attr).shape[0], 5):
         img1 = np.squeeze(getattr(batch, dl_attr)[i])
         img2 = np.squeeze(getattr(batch, uv_attr)[i])
-        shape = np.minimum(img1.shape, img2.shape)
+        shape = np.minimum(img1.shape, img2.shape) # pylint: disable=assignment-from-no-return
         img1 = img1[:shape[0], :shape[1]]
         img2 = img2[:shape[0], :shape[1]]
         image = np.concatenate((img1, img2), axis=1)
