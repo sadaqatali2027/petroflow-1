@@ -129,6 +129,21 @@ class CoreBatch(ImagesBatch):
         return res[0], res[1]
 
     @action
+    @inbatch_parallel(init='indices', post='_assemble_images')
+    def to_grayscale(self, index, src=None, **kwargs):
+        """ Load data.
+
+        Parameters
+        ----------
+        src : tuple of str
+            components to process. Default: ('dl', 'uv').
+        dst : tuple of str
+            components to save resulting images. Default: ('dl', 'uv').
+        """
+        src = self.components[:2] if src is None else src
+        return [img.convert('L') for img in self._get_components(index, src)]
+
+    @action
     @inbatch_parallel(init='indices', post='_assemble_labels')
     def create_labels(self, index, labels=None, **kwargs):
         """ Create labels from pd.DataSeries/dict
