@@ -1416,16 +1416,15 @@ class WellSegment(AbstractWellSegment):
 
     def drop_nans(self, logs=None):
         logs = self.logs.columns if logs is None else logs
-
-        # Drop rows with more than `logs` NaNs
         if isinstance(logs, int):
-            not_nan_mask = (~np.isnan(self.logs)).sum(axis=1)
-            not_nan_indices = np.where(not_nan_mask >= logs)[0]
-        # Drop rows with at least one NaN in logs with mnemonics in `logs`
+            # Drop rows with more than `logs` NaNs
+            not_nan_mask = (~np.isnan(self.logs)).sum(axis=1) >= logs
         else:
-            not_nan_mask = ~np.isnan(self.logs[logs])
-            not_nan_indices = np.where(np.all(not_nan_mask, axis=1))[0]
-
+            # Drop rows with at least one NaN in logs with mnemonics in `logs`
+            not_nan_mask = np.all(~np.isnan(self.logs[logs]))
+        not_nan_indices = np.where(not_nan_mask)[0]
+        if len(not_nan_indices) == 0:
+            return []
         borders = np.where((not_nan_indices[1:] - not_nan_indices[:-1]) != 1)[0] + 1
         if len(borders) == 0:
             return [self]
