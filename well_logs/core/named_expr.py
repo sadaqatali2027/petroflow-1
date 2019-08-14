@@ -16,7 +16,7 @@ class NestedList:
         if key == '_nested_list':
             self.__dict__['_nested_list'] = value
         else:
-            for item, val in zip(self.ravel(), val):
+            for item, val in zip(self.ravel(), value):
                 setattr(item, key, val)
 
     def __getitem__(self, key):
