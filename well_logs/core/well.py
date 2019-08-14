@@ -96,7 +96,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             self.segments = [WellSegment(*args, **kwargs)]
         else:
             self.segments = segments
-        self.name = self.segments[0].name
 
     @property
     def tree_depth(self):

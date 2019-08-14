@@ -7,10 +7,17 @@ from ..batchflow.batchflow.named_expr import _DummyBatch
 class NestedList:
     """Wrapper for nested lists."""
     def __init__(self, nested_list):
-        self._nested_list = nested_list
+        self.__dict__['_nested_list'] = nested_list
 
     def __getattr__(self, key):
         return NestedList([[getattr(item, key) for item in inner_list] for inner_list in self._nested_list])
+
+    def __setattr__(self, key, value):
+        i = 0
+        for inner_list in self._nested_list:
+            for item in inner_list:
+                setattr(item, key, value[i])
+                i += 1
 
     def __getitem__(self, key):
         return NestedList([[item[key] for item in inner_list] for inner_list in self._nested_list])
@@ -28,7 +35,6 @@ class NestedList:
     def ravel(self):
         """Flatten a nested list into a list."""
         return sum(self._nested_list, [])
-
 
 class WS(NamedExpression):
     """Component or attribute of each well segment.
@@ -64,5 +70,11 @@ class WS(NamedExpression):
             return nested_list.copy() if self.copy else nested_list
         return getattr(nested_list, name)
 
-    def assign(self, *args, **kwargs):
-        raise TypeError("WS expressions can't be overriden.")
+    def assign(self, value, batch=None, pipeline=None, model=None):
+        """ Assign a value to a well component """
+        if self.params:
+            batch, pipeline, model = self.params
+        name = super()._get_name(batch=batch, pipeline=pipeline, model=model)
+        nested_list = NestedList([[segment for segment in well.iter_level()] for well in batch.wells])
+        if name is not None:
+            setattr(nested_list, name, value)
