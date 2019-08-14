@@ -311,7 +311,6 @@ class CoreBatch(ImagesBatch):
             components to save resulting images. Default: 'uv'.
         """
         _ = kwargs
-        res = []
         src = self.components[1] if src is None else src
         pos = self.get_pos(None, src, index)
         image = np.array(getattr(self, src)[pos])
@@ -319,7 +318,7 @@ class CoreBatch(ImagesBatch):
 
     @action
     @inbatch_parallel(init='indices', post='_assemble_uv')
-    def smooth(self, index, kernel=10, src=None, channels='first', **kwargs):
+    def smooth(self, index, kernel=10, src=None, **kwargs):
         """ Binarize images.
 
         Parameters
@@ -331,18 +330,14 @@ class CoreBatch(ImagesBatch):
             components to process. Default: 'uv'.
         dst : tuple of str
             components to save resulting images. Default: 'uv'.
-        channels : str, 'first' or 'last'
-            channels axis.
         """
         _ = kwargs
-        res = []
         src = self.components[1] if src is None else src
         kernel = (kernel, kernel) if isinstance(kernel, int) else kernel
         kernel = np.ones(kernel, np.float32) / (kernel[0] * kernel[1])
         pos = self.get_pos(None, src, index)
         image = np.array(getattr(self, src)[pos])
-        axis = 0 if channels == 'first' else -1
-        return PIL.Image.fromarray(cv2.filter2D(image, -1, kernel))
+        return PIL.Image.fromarray(cv2.filter2D(image, -1, kernel)) # pylint: disable=no-member
 
     @action
     def make_random_crops(self, shape, n_crops=1, src=None, channels='first', **kwargs):
