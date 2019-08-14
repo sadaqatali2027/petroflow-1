@@ -1415,12 +1415,6 @@ class WellSegment(AbstractWellSegment):
             setattr(self, "_" + attr, res)
         return self
 
-    def drop_layers(self):
-        pass
-
-    def keep_layers(self):
-        pass
-
     def drop_nans(self, logs=None):
         logs = self.logs.columns if logs is None else logs
         if isinstance(logs, int):
@@ -1438,9 +1432,6 @@ class WellSegment(AbstractWellSegment):
         not_nan_depths = not_nan_mask.index[not_nan_indices]
         splits = np.split(not_nan_depths, borders)
         return [self[split[0]:split[-1]] for split in splits]
-
-    def fill_nans(self):
-        pass
 
     def norm_mean_std(self, mean=None, std=None, eps=1e-10):
         if mean is None:

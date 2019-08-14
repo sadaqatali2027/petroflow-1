@@ -64,10 +64,6 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def fill_nans(self):
-        pass
-
-    @abstractmethod
     def norm_mean_std(self):
         pass
 
@@ -101,14 +97,6 @@ class AbstractWell(AbstractWellSegment):
 
     @abstractmethod
     def random_crop(self):
-        pass
-
-    @abstractmethod
-    def drop_layers(self):
-        pass
-
-    @abstractmethod
-    def keep_layers(self):
         pass
 
     @abstractmethod

@@ -336,15 +336,3 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         for well in wells:
             well.segments = [segment for segment in well if segment.length > min_length]
         return self.prune()
-
-    # def assemble_crops(self, crops, name):
-    #     i = 0
-    #     for segment in self.segments:
-    #         for subsegment in segment:
-    #             setattr(subsegment, name, crops[i])
-    #             i += 1
-
-    # def aggregate(self, name, func):
-    #     for i in range(len(self.segments)):
-    #         self.segments[i] = [self.segments[i], func([getattr(subsegment, name)
-    #                             for subsegment in self.segments[i]])]
