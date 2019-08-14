@@ -7,17 +7,17 @@ from ..batchflow.batchflow.named_expr import _DummyBatch
 class NestedList:
     """Wrapper for nested lists."""
     def __init__(self, nested_list):
-        self.__dict__['_nested_list'] = nested_list
+        self._nested_list = nested_list
 
     def __getattr__(self, key):
         return NestedList([[getattr(item, key) for item in inner_list] for inner_list in self._nested_list])
 
     def __setattr__(self, key, value):
-        i = 0
-        for inner_list in self._nested_list:
-            for item in inner_list:
-                setattr(item, key, value[i])
-                i += 1
+        if key == '_nested_list':
+            self.__dict__['_nested_list'] = value
+        else:
+            for item, val in zip(self.ravel(), val):
+                setattr(item, key, val)
 
     def __getitem__(self, key):
         return NestedList([[item[key] for item in inner_list] for inner_list in self._nested_list])
