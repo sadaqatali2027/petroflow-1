@@ -1152,8 +1152,8 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def add_depth_log(self):
-        """Copy the index of `self.logs` to its column.
-        
+        """Copy the index of `self.logs` to its column `DEPTH`.
+
         Returns
         -------
         well : WellSegment
@@ -1412,7 +1412,25 @@ class WellSegment(AbstractWellSegment):
         setattr(self, dst, mask)
 
     def reindex(self, step, attrs=None):
-        attrs = self.attrs_fdtd_index if attrs is None else attrs
+        """Conform depth-indexed `attrs` of the segment to a new index,
+        starting from `self.depth_from` to `self.depth_to` with a step `step`,
+        placing `nan` values in locations having no value in the previous
+        index.
+
+        Parameters
+        ----------
+        step : positive float
+            Distance between any two adjacent values in the new index in
+            meters.
+        attrs : str or list of str
+            Depth-indexed attributes of the segment to be reindexed.
+
+        Returns
+        -------
+        well : WellSegment
+            The segment with reindexed `attrs`.
+        """
+        attrs = self.attrs_depth_index if attrs is None else attrs
         new_index = np.arange(self.depth_from, self.depth_to, step)
         for attr in np.intersect1d(attrs, self.attrs_depth_index):
             res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=1e-4)
@@ -1420,6 +1438,22 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def interpolate(self, *args, attrs=None, **kwargs):
+        """Interpolate `nan` values in `attrs`.
+
+        Parameters
+        ----------
+        attrs : str or list of str
+            Depth-indexed attributes of the segment to be interpolated.
+        args : misc
+            Any additional positional arguments to `pandas.interpolate`.
+        kwargs : misc
+            Any additional named arguments to `pandas.interpolate`.
+
+        Returns
+        -------
+        well : WellSegment
+            The segment with interpolated values in `attrs`.
+        """
         attrs = self.attrs_fdtd_index if attrs is None else attrs
         for attr in np.intersect1d(attrs, self.attrs_depth_index):
             res = getattr(self, attr).interpolate(*args, **kwargs)
@@ -1462,7 +1496,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : WellSegment
+        well : WellSegment
             The segment with standardized logs.
         """
         if mean is None:
@@ -1492,7 +1526,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : WellSegment
+        well : WellSegment
             The segment with normalized logs.
         """
         if min is None and q_min is None:
