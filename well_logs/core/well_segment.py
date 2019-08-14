@@ -24,9 +24,9 @@ from plotly.offline import init_notebook_mode, plot
 
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
-from .joins import between_join, fdtd_join
-from .utils import to_list
-
+from .joins import cross_join, between_join, fdtd_join
+from .utils import to_list, leq_notclose, leq_close, geq_close
+from .exceptions import SkipWellException, DataRegularityError
 
 def add_attr_properties(cls):
     """Add missing properties for lazy loading of `WellSegment` table-based
@@ -260,7 +260,10 @@ class WellSegment(AbstractWellSegment):
     def _filter_depth_df(self, df):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
-        return df[self.depth_from:self.depth_to]
+        df = df[self.depth_from:self.depth_to]
+        if np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
+            df.drop(df.index[-1], inplace=True)
+        return df
 
     def _load_depth_df(self, path, *args, **kwargs):
         """Load a `DataFrame`, indexed by depth, from a table format and keep
@@ -621,6 +624,161 @@ class WellSegment(AbstractWellSegment):
         """
         return copy(self)
 
+    def check_regularity(self):
+        """Checks intervals data regularity.
+
+        Following checks applied for boring_intervals dataframe:
+        1. If any values of CORE_RECOVERY column are nan.
+        2. If any values of CORE_RECOVERY column are greater
+           than calculated CORE_INTERVAL values.
+        3. If any values of DEPTH_FROM and DEPTH_TO columns of adjacent rows
+           form intervals that overlap each other.
+        4. If any values of DEPTH_FROM column are not increasing.
+        5. If any values of DEPTH_FROM column are greater than
+           values of DEPTH_TO column of the same row.
+
+        Following checks applied for core_lithology dataframe:
+        1. If any values of DEPTH_FROM and DEPTH_TO columns of adjacent rows
+           form intervals that overlap each other.
+        2. If any values of DEPTH_FROM column are not increasing.
+        3. If any values of DEPTH_FROM column are greater than
+           values of DEPTH_TO column of the same row.
+        4. If any intervals formed by values of DEPTH_FROM and DEPTH_TO columns
+           of the same row are not included in corresponding intervals from
+           boring_intervals dataframe.
+        5. If any values of CORE_TOTAL column (calculated as a sum of intervals
+           included in the same interval of boring_intervals dataframe) are greater
+           than values of CORE_RECOVERY column of boring_intervals dataframe.
+
+        Raises
+        ------
+        DataRegularityError
+            If any of checks above are not passed.
+        """
+        if not self._has_file("boring_intervals"):
+            raise SkipWellException("boring_intervals file is reqiured to perform checks")
+
+        boring_intervals = self.boring_intervals.copy()
+        boring_intervals['DEPTH_FROM'] = boring_intervals.index.get_level_values('DEPTH_FROM')
+        boring_intervals['DEPTH_TO'] = boring_intervals.index.get_level_values('DEPTH_TO')
+        boring_intervals['CORE_INTERVAL'] = boring_intervals['DEPTH_TO'] - boring_intervals['DEPTH_FROM']
+
+        # Check if any CORE_RECOVERY values are nan.
+        nans_mask = boring_intervals['CORE_RECOVERY'].isna()
+        nans = boring_intervals[nans_mask]
+        if not nans.empty:
+            raise DataRegularityError("boring_nans", nans[['CORE_RECOVERY']])
+
+        # Check if any CORE_RECOVERY values are greater than CORE_INTERVAL ones.
+        unfits_mask = leq_notclose(boring_intervals['CORE_INTERVAL'], boring_intervals['CORE_RECOVERY'])
+        unfits = boring_intervals[unfits_mask]
+        if not unfits.empty:
+            raise DataRegularityError("boring_unfits", unfits[['CORE_RECOVERY', 'CORE_INTERVAL']])
+
+        # Check if any adjacent boring intervals are overlapping.
+        preceding = boring_intervals['DEPTH_FROM'].shift(-1) < boring_intervals['DEPTH_TO']
+        following = boring_intervals['DEPTH_TO'].shift(-1) > boring_intervals['DEPTH_FROM']
+        overlaps_mask = preceding & following
+        overlaps = boring_intervals[overlaps_mask | overlaps_mask.shift(1)]
+        if not overlaps.empty:
+            raise DataRegularityError("boring_overlaps", overlaps[['CORE_RECOVERY']])
+
+        # Check if boring intervals DEPTH_FROM values are not increasing.
+        if not boring_intervals.index.is_monotonic_increasing:
+            nonincreasing_mask = boring_intervals['DEPTH_FROM'].shift(-1) < boring_intervals['DEPTH_FROM']
+            nonincreasing = boring_intervals[nonincreasing_mask | nonincreasing_mask.shift(1)]
+            raise DataRegularityError("boring_nonincreasing", nonincreasing[['CORE_RECOVERY']])
+
+        # Check if boring intervals DEPTH_FROM values are bigger than DEPTH_TO ones.
+        disordered_mask = boring_intervals['DEPTH_FROM'] > boring_intervals['DEPTH_TO']
+        disordered = boring_intervals[disordered_mask]
+        if not disordered.empty:
+            raise DataRegularityError('boring_disordered', disordered[['CORE_RECOVERY']])
+
+        if not self._has_file("core_lithology"):
+            return self
+
+        lithology_intervals = self.core_lithology.copy()
+        lithology_intervals['DEPTH_FROM'] = lithology_intervals.index.get_level_values('DEPTH_FROM')
+        lithology_intervals['DEPTH_TO'] = lithology_intervals.index.get_level_values('DEPTH_TO')
+
+        # Check if any adjacent lithology intervals are overlapping.
+        preceding = lithology_intervals['DEPTH_FROM'].shift(-1) < lithology_intervals['DEPTH_TO']
+        following = lithology_intervals['DEPTH_TO'].shift(-1) > lithology_intervals['DEPTH_FROM']
+        overlaps_mask = preceding & following
+        overlaps = lithology_intervals[overlaps_mask | overlaps_mask.shift(1)]
+        if not overlaps.empty:
+            raise DataRegularityError("lithology_overlaps", overlaps[['FORMATION']])
+
+        # Check if lithology intervals DEPTH_FROM values are not increasing.
+        if not lithology_intervals.index.is_monotonic_increasing:
+            nonincreasing_mask = lithology_intervals['DEPTH_FROM'].shift(-1) < lithology_intervals['DEPTH_FROM']
+            nonincreasing = lithology_intervals[nonincreasing_mask | nonincreasing_mask.shift(1)]
+            raise DataRegularityError("lithology_nonincreasing", nonincreasing[['FORMATION']])
+
+        # Check if lithology intervals DEPTH_FROM values are bigger than DEPTH_TO ones.
+        disordered_mask = lithology_intervals['DEPTH_FROM'] > lithology_intervals['DEPTH_TO']
+        disordered = lithology_intervals[disordered_mask]
+        if not disordered.empty:
+            raise DataRegularityError('lithology_disordered', disordered[['FORMATION']])
+
+        # Check if any lithology intervals are not included in boring intervals.
+        inclusions_mask = lithology_intervals.apply(lambda interval:
+            leq_close(boring_intervals['DEPTH_FROM'], interval['DEPTH_FROM']).any() &
+            geq_close(boring_intervals['DEPTH_TO'], interval['DEPTH_TO']).any(),
+            axis=1)
+        exclusions = lithology_intervals[~inclusions_mask]
+        if not exclusions.empty:
+            raise DataRegularityError("lithology_exclusions", exclusions[['FORMATION']])
+
+        # Check any CORE_TOTAL values are greater than the corresponding CORE_RECOVERY ones.
+        lithology_intervals = lithology_intervals[['DEPTH_FROM', 'DEPTH_TO']].add_prefix('CORE_')
+        combined = cross_join(boring_intervals, lithology_intervals)
+        relevant_mask = (leq_close(combined['DEPTH_FROM'], combined['CORE_DEPTH_FROM']) &
+                         geq_close(combined['DEPTH_TO'], combined['CORE_DEPTH_TO']))
+        combined = combined[relevant_mask]
+        combined['CORE_TOTAL'] = combined['CORE_DEPTH_TO'] - combined['CORE_DEPTH_FROM']
+        combined = combined.groupby(['CORE_RECOVERY', 'DEPTH_FROM', 'DEPTH_TO'])['CORE_TOTAL'].sum()
+        combined = pd.DataFrame(combined).reset_index('CORE_RECOVERY')
+        unfits_mask = leq_notclose(combined.CORE_RECOVERY, combined.CORE_TOTAL)
+        unfits = combined[unfits_mask]
+        if not unfits.empty:
+            raise DataRegularityError("lithology_unfits", unfits)
+
+        return self
+
+    def check_samples(self):
+        """Samples integrity checks
+
+        Throws
+        ------
+        DataRegularityError
+        """
+        names = [str(name) for name in self.samples['SAMPLE'].values]
+        if len(names) > len(set(names)):
+            raise DataRegularityError("Duplicate file names in samples.feather")
+
+        folders = ["samples_dl", "samples_uv"]
+        for folder in folders:
+            path = f"{self.path}/{folder}"
+            samples = os.listdir(path)
+
+            ok = [sample.endswith((".png", ".jpg")) for sample in samples]
+            if not np.all(ok):
+                raise DataRegularityError("Unknown sample image extension:", samples[ok.index(False)])
+            samples = [sample[:-4] for sample in samples]
+
+            if len(samples) > len(set(samples)):
+                raise DataRegularityError(f"Duplicate file names in {folder}")
+
+            samples_only = set(samples).difference(set(names))
+            if len(samples_only) != 0:
+                raise DataRegularityError(f"Files from {folder} are not present in samples.feather:", samples_only)
+            
+            names_only = set(names).difference(set(samples))
+            if len(names_only) != 0:
+                raise DataRegularityError(f"Following files from samples.feather are not present in {folder}:", names_only)
+
     def _apply_matching(self):
         """Update depths in all core-related attributes given calculated
         deltas."""
@@ -857,6 +1015,9 @@ class WellSegment(AbstractWellSegment):
                 matched_boring_sequences.append(sequence)
                 matched_lithology_intervals.append(sequence_lithology_intervals)
 
+        if all(mode is None for mode in sequences_modes):
+            raise SkipWellException("None of the boring sequences can be matched")
+
         self._boring_intervals_deltas = pd.concat(matched_boring_sequences)
         self._core_lithology_deltas = pd.concat(matched_lithology_intervals)
         self._apply_matching()
@@ -986,6 +1147,10 @@ class WellSegment(AbstractWellSegment):
         plot(fig)
         return self
 
+    def add_depth_log(self):
+        self.logs["DEPTH"] = self.logs.index
+        return self
+
     def drop_logs(self, mnemonics):
         """Drop well logs whose mnemonics are in `mnemonics`.
 
@@ -1016,6 +1181,8 @@ class WellSegment(AbstractWellSegment):
         well : WellSegment
             A segment with filtered logs.
         """
+        if len(np.setdiff1d(mnemonics, self.logs.columns)) > 0:
+            raise SkipWellException
         res = self.copy()
         res._logs = res.logs[to_list(mnemonics)]
         return res
@@ -1233,38 +1400,62 @@ class WellSegment(AbstractWellSegment):
             mask[int(pos)] = row[1][column] if mapping is None else mapping[row[1][column]]
         setattr(self, dst, mask)
 
-    def drop_layers(self):
-        pass
+    def reindex(self, step, attrs=None):
+        attrs = self.attrs_fdtd_index if attrs is None else attrs
+        new_index = np.arange(self.depth_from, self.depth_to, step)
+        for attr in np.intersect1d(attrs, self.attrs_depth_index):
+            res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=1e-4)
+            setattr(self, "_" + attr, res)
+        return self
 
-    def keep_layers(self):
-        pass
+    def interpolate(self, *args, attrs=None, **kwargs):
+        attrs = self.attrs_fdtd_index if attrs is None else attrs
+        for attr in np.intersect1d(attrs, self.attrs_depth_index):
+            res = getattr(self, attr).interpolate(*args, **kwargs)
+            setattr(self, "_" + attr, res)
+        return self
 
-    def drop_nans(self, components_to_drop_nans):
-        # Drop rows with at least one NaN in places components_to_drop_nans
-        if isinstance(components_to_drop_nans, (list, tuple)):
-            not_nan_mask = ~np.isnan(self[components_to_drop_nans].logs)
-            not_nan_indices = np.where(np.all(not_nan_mask, axis=1))[0]
-
-        # Drop rows with greater than or equal to components_to_drop_nans NaN in row
-        elif isinstance(components_to_drop_nans, int):
-            not_nan_mask = (~np.isnan(self.logs)).sum(axis=1)
-            not_nan_indices = np.where(not_nan_mask >= components_to_drop_nans)[0]
+    def drop_nans(self, logs=None):
+        logs = self.logs.columns if logs is None else logs
+        if isinstance(logs, int):
+            # Drop rows with more than `logs` NaNs
+            not_nan_mask = (~np.isnan(self.logs)).sum(axis=1) >= logs
         else:
-            raise ValueError('components_to_drop_nans must be list or tuple or int')
-
-        not_nan_depth = not_nan_mask.index[not_nan_indices]
+            # Drop rows with at least one NaN in logs with mnemonics in `logs`
+            not_nan_mask = np.all(~np.isnan(self.logs[logs]))
+        not_nan_indices = np.where(not_nan_mask)[0]
+        if len(not_nan_indices) == 0:
+            return []
         borders = np.where((not_nan_indices[1:] - not_nan_indices[:-1]) != 1)[0] + 1
-        splits = np.split(not_nan_depth, borders)
+        if len(borders) == 0:
+            return [self]
+        not_nan_depths = not_nan_mask.index[not_nan_indices]
+        splits = np.split(not_nan_depths, borders)
         return [self[split[0]:split[-1]] for split in splits]
 
-    def fill_nans(self):
-        pass
+    def norm_mean_std(self, mean=None, std=None, eps=1e-10):
+        if mean is None:
+            mean = self.logs.mean()
+        if std is None:
+            std = self.logs.std()
+        self._logs = (self.logs - mean) / (std + eps)
+        return self
 
-    def norm_mean_std(self, axis=-1, mean=None, std=None, eps=1e-10, *, components):
-        pass
+    def norm_min_max(self, min=None, max=None, q_min=None, q_max=None, clip=True):
+        if min is None and q_min is None:
+            min = self.logs.min()
+        elif q_min is not None:
+            min = self.logs.quantile(q_min)
 
-    def norm_min_max(self, axis=-1, min=None, max=None, *, components):
-        pass
+        if max is None and q_max is None:
+            max = self.logs.max()
+        elif q_max is not None:
+            max = self.logs.quantile(q_max)
+
+        self._logs = (self.logs - min) / (max - min)
+        if clip:
+            self._logs.clip(0, 1, inplace=True)
+        return self
 
     def equalize_histogram(self, src=None, dst=None, channels='last'):
         """Normalize core images by histogram equalization.

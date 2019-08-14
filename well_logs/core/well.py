@@ -10,6 +10,7 @@ import numpy as np
 
 from .abstract_classes import AbstractWell
 from .well_segment import WellSegment
+from .exceptions import SkipWellException
 
 
 class SegmentDelegatingMeta(ABCMeta):
@@ -158,6 +159,13 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             return self.segments
         return [item for well in self for item in well.iter_level(level - 1)]
 
+    def _prune(self):
+        """Recursively prune segment tree."""
+        self.segments = [well for well in self if isinstance(well, WellSegment) or well.n_segments > 0]
+        for well in self:
+            if isinstance(well, Well):
+                well._prune()
+
     def prune(self):
         """Remove subtrees without `WellSegment` instances at the last level
         of the tree.
@@ -167,11 +175,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell
             Self with prunned tree.
         """
-        # TODO: raise EmptyWellException if no segments left
-        self.segments = [well for well in self if isinstance(well, WellSegment) or well.n_segments > 0]
-        for well in self:
-            if isinstance(well, Well):
-                _ = well.prune()
+        self._prune()
+        if not self.segments:
+            raise SkipWellException("Empty well after prunning")
         return self
 
     def copy(self):
@@ -207,6 +213,29 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         # TODO: aggregate before dumping
         self.segments[0].dump(path)
         return self
+
+    def keep_matched_sequences(self, mode=None, threshold=0.6):
+        """Keep boring sequences, matched using given `mode` with `R^2`
+        greater than `threshold`.
+
+        Parameters
+        ----------
+        mode : str or list of str
+            Chosen matching mode to keep a sequence. It has the same structure
+            as `mode` in `match_core_logs`.
+        threshold : float
+            Minimum value of `R^2` to keep a sequence.
+
+        Returns
+        -------
+        self : AbstractWell
+            The well with kept matched segments.
+        """
+        for well in self.iter_level(-2):
+            well.segments = [
+                Well(segments=segment.keep_matched_sequences(mode, threshold)) for segment in well
+            ]
+        return self.prune()
 
     def create_segments(self, src, connected=True):
         """Split segments at the last level of the segment tree into parts
@@ -299,12 +328,10 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 well.segments = []
         return self.prune()
 
-    def drop_nans(self, components_to_drop_nans):
+    def drop_nans(self, logs=None):
         wells = self.iter_level(-2)
         for well in wells:
-            well.segments = [
-                Well(segments=segment.drop_nans(components_to_drop_nans)) for segment in well
-            ]
+            well.segments = [Well(segments=segment.drop_nans(logs=logs)) for segment in well]
         return self.prune()
 
     def drop_short_segments(self, min_length):
@@ -312,15 +339,3 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         for well in wells:
             well.segments = [segment for segment in well if segment.length > min_length]
         return self.prune()
-
-    # def assemble_crops(self, crops, name):
-    #     i = 0
-    #     for segment in self.segments:
-    #         for subsegment in segment:
-    #             setattr(subsegment, name, crops[i])
-    #             i += 1
-
-    # def aggregate(self, name, func):
-    #     for i in range(len(self.segments)):
-    #         self.segments[i] = [self.segments[i], func([getattr(subsegment, name)
-    #                             for subsegment in self.segments[i]])]

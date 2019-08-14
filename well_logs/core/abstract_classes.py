@@ -24,6 +24,10 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def check_regularity(self):
+        pass
+
+    @abstractmethod
     def match_core_logs(self):
         pass
 
@@ -33,6 +37,10 @@ class AbstractWellSegment(metaclass=ABCMeta):
 
     @abstractmethod
     def plot_matching(self):
+        pass
+
+    @abstractmethod
+    def add_depth_log(self):
         pass
 
     @abstractmethod
@@ -48,7 +56,11 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def fill_nans(self):
+    def reindex(self):
+        pass
+
+    @abstractmethod
+    def interpolate(self):
         pass
 
     @abstractmethod
@@ -85,14 +97,6 @@ class AbstractWell(AbstractWellSegment):
 
     @abstractmethod
     def random_crop(self):
-        pass
-
-    @abstractmethod
-    def drop_layers(self):
-        pass
-
-    @abstractmethod
-    def keep_layers(self):
         pass
 
     @abstractmethod
