@@ -582,8 +582,12 @@ class WellSegment(AbstractWellSegment):
             - If `key` is `str` or `list` of `str`, preserve only those logs
               in `self.logs`, that are in `key`.
             - If `key` is `slice` - perform well slicing along the wellbore.
-              Note that contrary to usual python slices, both `start` and
-              `stop` are included if present in `self.logs.index`.
+              If both `start` and `stop` are in `self.logs.index`, then only
+              `start` is kept in the resulting segment to ensure, that such
+              methods as `crop` always return the same number of samples
+              regardless of cropping position if crop size is given in meters.
+              If only one of the ends of the slice present in the index, it is
+              kept in the result contrary to usual python slices.
 
         Returns
         -------
@@ -774,7 +778,7 @@ class WellSegment(AbstractWellSegment):
             samples_only = set(samples).difference(set(names))
             if len(samples_only) != 0:
                 raise DataRegularityError(f"Files from {folder} are not present in samples.feather:", samples_only)
-            
+
             names_only = set(names).difference(set(samples))
             if len(names_only) != 0:
                 raise DataRegularityError(f"Following files from samples.feather are not present in {folder}:", names_only)
@@ -1434,6 +1438,26 @@ class WellSegment(AbstractWellSegment):
         return [self[split[0]:split[-1]] for split in splits]
 
     def norm_mean_std(self, mean=None, std=None, eps=1e-10):
+        """Standardize well logs by subtracting the mean and scaling to unit
+        variance.
+
+        Parameters
+        ----------
+        mean : None or ndarray, optional
+            Mean to be subtracted. If `None`, it is calculated independently
+            for each log in the segment.
+        std : None or ndarray, optional
+            Standard deviation to be divided by. If `None`, it is calculated
+            independently for each log in the segment.
+        eps: float, optional
+            A small float to be added to the denominator to avoid division by
+            zero.
+
+        Returns
+        -------
+        self : WellSegment
+            The segment with standardized logs.
+        """
         if mean is None:
             mean = self.logs.mean()
         if std is None:
@@ -1441,7 +1465,29 @@ class WellSegment(AbstractWellSegment):
         self._logs = (self.logs - mean) / (std + eps)
         return self
 
-    def norm_min_max(self, min=None, max=None, q_min=None, q_max=None, clip=True):
+    def norm_min_max(self, min=None, max=None, q_min=None, q_max=None, clip=True):  # pylint: disable=redefined-builtin
+        """Linearly scale well logs to a [0, 1] range.
+
+        Parameters
+        ----------
+        min : None or ndarray, optional
+            Minimum values of the logs. If `None`, it is calculated
+            independently for each log in the segment.
+        max : None or ndarray or tuple or list of ndarrays
+            Maximum values of the logs. If `None`, it is calculated
+            independently for each log in the segment.
+        q_min : float
+            A quantile of logs to use as `min` if `min` is not given.
+        q_max : float
+            A quantile of logs to use as `max` if `max` is not given.
+        clip : bool
+            Specify, whether to clip scaled logs to a [0, 1] range.
+
+        Returns
+        -------
+        self : WellSegment
+            The segment with normalized logs.
+        """
         if min is None and q_min is None:
             min = self.logs.min()
         elif q_min is not None:
