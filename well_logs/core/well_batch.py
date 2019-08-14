@@ -3,7 +3,6 @@
 
 import traceback
 from abc import ABCMeta
-from copy import deepcopy
 from functools import wraps
 
 import numpy as np
@@ -11,7 +10,6 @@ import numpy as np
 from ..batchflow import FilesIndex, Batch, SkipBatchException, action, inbatch_parallel, any_action_failed
 from .well import Well
 from .abstract_classes import AbstractWell
-from .utils import to_list
 from .exceptions import SkipWellException
 
 
@@ -75,8 +73,6 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
         if preloaded is None:
             self.wells = np.array([None] * len(self.index))
             self._init_wells(**kwargs)
-        else:  # Remove when batch.as_dataset is fixed
-            self.wells = np.array([deepcopy(preloaded[0][k]) for k in index.indices] + [None])[:-1]
 
     @inbatch_parallel(init="indices", target="threads")
     def _init_wells(self, index, src=None, **kwargs):
