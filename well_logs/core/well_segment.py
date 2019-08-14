@@ -1152,6 +1152,13 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def add_depth_log(self):
+        """Copy the index of `self.logs` to its column.
+        
+        Returns
+        -------
+        well : WellSegment
+            A segment with created depth log.
+        """
         self.logs["DEPTH"] = self.logs.index
         return self
 
