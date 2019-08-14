@@ -260,7 +260,10 @@ class WellSegment(AbstractWellSegment):
     def _filter_depth_df(self, df):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
-        return df[self.depth_from:self.depth_to]
+        df = df[self.depth_from:self.depth_to]
+        if np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
+            df.drop(df.index[-1], inplace=True)
+        return df
 
     def _load_depth_df(self, path, *args, **kwargs):
         """Load a `DataFrame`, indexed by depth, from a table format and keep
@@ -1439,11 +1442,29 @@ class WellSegment(AbstractWellSegment):
     def fill_nans(self):
         pass
 
-    def norm_mean_std(self, axis=-1, mean=None, std=None, eps=1e-10, *, components):
-        pass
+    def norm_mean_std(self, mean=None, std=None, eps=1e-10):
+        if mean is None:
+            mean = self.logs.mean()
+        if std is None:
+            std = self.logs.std()
+        self._logs = (self.logs - mean) / (std + eps)
+        return self
 
-    def norm_min_max(self, axis=-1, min=None, max=None, *, components):
-        pass
+    def norm_min_max(self, min=None, max=None, q_min=None, q_max=None, clip=True):
+        if min is None and q_min is None:
+            min = self.logs.min()
+        elif q_min is not None:
+            min = self.logs.quantile(q_min)
+
+        if max is None and q_max is None:
+            max = self.logs.max()
+        elif q_max is not None:
+            max = self.logs.quantile(q_max)
+
+        self._logs = (self.logs - min) / (max - min)
+        if clip:
+            self._logs.clip(0, 1, inplace=True)
+        return self
 
     def equalize_histogram(self, src=None, dst=None, channels='last'):
         """Normalize core images by histogram equalization.
