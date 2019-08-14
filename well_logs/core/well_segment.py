@@ -1422,7 +1422,7 @@ class WellSegment(AbstractWellSegment):
             not_nan_mask = (~np.isnan(self.logs)).sum(axis=1) >= logs
         else:
             # Drop rows with at least one NaN in logs with mnemonics in `logs`
-            not_nan_mask = np.all(~np.isnan(self.logs[logs]))
+            not_nan_mask = np.all(~np.isnan(self.logs[logs]), axis=1)
         not_nan_indices = np.where(not_nan_mask)[0]
         if len(not_nan_indices) == 0:
             return []
