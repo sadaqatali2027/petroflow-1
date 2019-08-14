@@ -70,8 +70,8 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
     components = ("wells",)
     targets = dict() # inbatch_parallel target depending on action name
 
-    def __init__(self, index, preloaded=None, **kwargs):
-        super().__init__(index, preloaded, **kwargs)
+    def __init__(self, index, *args, preloaded=None, **kwargs):
+        super().__init__(index, *args, preloaded=preloaded, **kwargs)
         if preloaded is None:
             self.wells = np.array([None] * len(self.index))
             self._init_wells(**kwargs)
