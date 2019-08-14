@@ -38,7 +38,7 @@ class CoreIndex(FilesIndex):
         *args, **kwargs
             parameters of FilesIndex.
         """
-        path = path if path is None else os.path.join(path, '*/samples_dl/*.png')
+        path = path if path is None else os.path.join(path, '*/samples_dl/*.*')
         super().__init__(index, path, *args, **kwargs)
 
     @staticmethod
