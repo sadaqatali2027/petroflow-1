@@ -1461,7 +1461,7 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def drop_nans(self, logs=None):
-        """Create segments without NaN in selected places logs from `logs` attribute.
+        """Create segments that drop NaN in logs, as indicated in `logs`.
 
         Parameters
         ----------

@@ -347,12 +347,12 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def drop_short_segments(self, min_length):
-        """Drop segments at the last level with length smaller than in attribute `min_length`.
+        """Drop segments at the last level with length smaller than `min_length`.
 
         Parameters
         ----------
         min_length : positive float
-            Minimum length so as not to drop a segment.
+            Segments shorter than `min_length` are dropped.
 
         Returns
         -------
