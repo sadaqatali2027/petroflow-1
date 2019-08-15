@@ -8,10 +8,11 @@ from functools import wraps
 
 import numpy as np
 
-from ..batchflow import FilesIndex, Batch, SkipBatchException, action, inbatch_parallel, any_action_failed
+from ..batchflow import Batch, SkipBatchException, action, inbatch_parallel, any_action_failed
 from .well import Well
 from .abstract_classes import AbstractWell
 from .exceptions import SkipWellException
+from .utils import get_path
 
 
 class WellDelegatingMeta(ABCMeta):
@@ -79,12 +80,7 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
 
     @inbatch_parallel(init="indices", target="threads")
     def _init_wells(self, index, src=None, **kwargs):
-        if src is not None:
-            path = src[index]
-        elif isinstance(self.index, FilesIndex):
-            path = self.index.get_fullpath(index)
-        else:
-            raise ValueError("Source path is not specified")
+        path = get_path(self, index, src)
 
         well = Well(path, **kwargs)
         i = self.get_pos(None, "wells", index)
@@ -94,12 +90,12 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
         skip_mask = np.array([isinstance(res, SkipWellException) for res in results])
         if sum(skip_mask) == len(self):
             raise SkipBatchException
-        results = np.array(results)[~skip_mask]
+        results = np.array(results)[~skip_mask] # pylint: disable=invalid-unary-operand-type
         if any_action_failed(results):
             errors = self.get_errors(results)
             print(errors)
             traceback.print_tb(errors[0].__traceback__)
             raise RuntimeError("Could not assemble the batch")
-        self.index = self.index.create_subset(self.indices[~skip_mask])
+        self.index = self.index.create_subset(self.indices[~skip_mask]) # pylint: disable=invalid-unary-operand-type
         self.wells = results
         return self

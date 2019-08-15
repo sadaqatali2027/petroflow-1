@@ -124,8 +124,8 @@ def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log):
     interval_deltas = np.concatenate([np.cumsum(d) for d in np.split(deltas[1:], np.cumsum(bi_n_lith_ints)[:-1])])
     interval_deltas += segment_delta
     shifted_depths = []
-    for depths, deltas in zip(core_depths, interval_deltas):
-        shifted_depths.append(depths + deltas)
+    for depths, _deltas in zip(core_depths, interval_deltas):
+        shifted_depths.append(depths + _deltas)
     shifted_depths = np.concatenate(shifted_depths)
     well_log = np.nan_to_num(log_interpolator(shifted_depths))
     # TODO: find out why NaNs appear
@@ -231,7 +231,7 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
 
     futures = []
     init_deltas = generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, delta_from, delta_to, delta_step)
-    with mp.Pool() as pool:
+    with mp.Pool() as pool: #pylint: disable=not-callable
         for init_delta in init_deltas:
             args = (loss, init_delta)
             kwargs = {

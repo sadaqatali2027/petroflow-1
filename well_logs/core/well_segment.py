@@ -1,6 +1,6 @@
 """Implements WellSegment - a class, representing a contiguous part of a well.
 """
-# pylint: disable=too-many-lines,no-member
+# pylint: disable=no-member,protected-access
 
 import os
 import json
@@ -15,12 +15,12 @@ import numpy as np
 import pandas as pd
 import lasio
 import PIL
-import cv2
 from scipy.interpolate import interp1d
 from sklearn.linear_model import LinearRegression
 from plotly import graph_objs as go
 from plotly.subplots import make_subplots
 from plotly.offline import init_notebook_mode, plot
+import cv2
 
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
@@ -204,6 +204,8 @@ class WellSegment(AbstractWellSegment):
         self._samples = None
         self._core_dl = None
         self._core_uv = None
+        self._boring_intervals_deltas = None
+        self._core_lithology_deltas = None
 
     @property
     def length(self):
@@ -465,7 +467,7 @@ class WellSegment(AbstractWellSegment):
             if attr_val is None:
                 try:
                     shutil.copy2(self._get_full_name(self.path, attr), path)
-                except Exception:
+                except Exception: # pylint: disable=broad-except
                     pass
             else:
                 if attr not in self.attrs_no_index:
@@ -1102,8 +1104,8 @@ class WellSegment(AbstractWellSegment):
                 raise ValueError("Mode length must match the number of matching intervals")
             boring_sequences["MODE"] = mode_list
             r2_list = []
-            for _, (depth_from, depth_to, mode) in boring_sequences[["DEPTH_FROM", "DEPTH_TO", "MODE"]].iterrows():
-                log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(mode)
+            for _, (depth_from, depth_to, _mode) in boring_sequences[["DEPTH_FROM", "DEPTH_TO", "MODE"]].iterrows():
+                log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(_mode)
                 well_log = self.logs[log_mnemonic].dropna()
                 core_log_segment = getattr(self, core_attr)[core_mnemonic].dropna()[depth_from:depth_to]
                 r2_list.append(self._calc_matching_r2(well_log, core_log_segment))
@@ -1121,8 +1123,8 @@ class WellSegment(AbstractWellSegment):
         subplot_titles = ["{}<br>R^2 = {:.3f}".format(mode, r2) for mode, r2 in zip(mode_list, r2_list)]
         fig = make_subplots(rows=1, cols=n_cols, subplot_titles=subplot_titles)
 
-        for i, (depth_from, depth_to, mode) in enumerate(zip(depth_from_list, depth_to_list, mode_list), 1):
-            log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(mode)
+        for i, (depth_from, depth_to, _mode) in enumerate(zip(depth_from_list, depth_to_list, mode_list), 1):
+            log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(_mode)
             well_log_segment = self.logs[log_mnemonic].dropna()[depth_from - 3 : depth_to + 3]
             core_log_segment = getattr(self, core_attr)[core_mnemonic].dropna()[depth_from:depth_to]
 

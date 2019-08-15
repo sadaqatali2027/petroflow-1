@@ -163,7 +163,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self.segments = [well for well in self if isinstance(well, WellSegment) or well.n_segments > 0]
         for well in self:
             if isinstance(well, Well):
-                well._prune()
+                well._prune() # pylint: disable=protected-access
 
     def prune(self):
         """Remove subtrees without `WellSegment` instances at the last level
