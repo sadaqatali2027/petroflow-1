@@ -326,15 +326,15 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def drop_nans(self, logs=None):
-        """Create segments from each segment at the last level.
-        All created segments haven't NaN in selected places from `logs` attribute.
+        """Create segments that don't have NaN in selected places from `logs` attribute.
+        All created segments are created at the last level.
 
         Parameters
         ----------
         logs : int or list of str
-        if `list` create segments in whose logs with mnemonics in `logs` not NaN values.
-        If `int` create segments in whose logs at least `logs` not NaN value in each row.
-        if `None` create segments without NaN values in logs. Defaults to `None`.
+            If `list` create segments in whose logs with mnemonics in `logs` not NaN values.
+            If `int` create segments in whose logs at least `logs` not NaN value in each row.
+            If `None` create segments without NaN values in logs. Defaults to `None`.
 
         Returns
         -------

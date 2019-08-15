@@ -1466,9 +1466,9 @@ class WellSegment(AbstractWellSegment):
         Parameters
         ----------
         logs : int or list of str
-        if `list` create segments in whose logs with mnemonics in `logs` not NaN values.
-        If `int` create segments in whose logs at least `logs` not NaN value in each row.
-        if `None` create segments without NaN values in logs. Defaults to `None`.
+            If `list` create segments in whose logs with mnemonics in `logs` not NaN values.
+            If `int` create segments in whose logs at least `logs` not NaN value in each row.
+            If `None` create segments without NaN values in logs. Defaults to `None`.
 
         Returns
         -------
