@@ -147,7 +147,7 @@ def fdtd_join(left, right, left_on=("DEPTH_FROM", "DEPTH_TO"), right_on=("DEPTH_
     left_from, left_to = left_on
     right_from, right_to = right_on
 
-    depths = pd.concat([left_from, left_to, right_from, right_to])
+    depths = pd.concat([left[left_from], left[left_to], right[right_from], right[right_to]])
     depths = np.sort(pd.unique(depths))
     res = pd.DataFrame({"_TMP_DEPTH_FROM": depths[:-1],
                         "_TMP_DEPTH_TO": depths[1:]})
