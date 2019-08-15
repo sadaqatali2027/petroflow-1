@@ -1,12 +1,12 @@
-# well_logs
+# WellLogs
 
 `WellLogs` is a library that allows to process well data (logs, core photo etc.) and conveniently train
 machine learning models.
 
 Main features:
 
-* load and process well logs data:
-    * logs
+* load and process well data:
+    * well logs
     * core images in daylight (DL) and ultraviolet light (UV)
     * core logs
     * inclination
