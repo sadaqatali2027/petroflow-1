@@ -727,11 +727,12 @@ class WellSegment(AbstractWellSegment):
             raise DataRegularityError('lithology_disordered', disordered[['FORMATION']])
 
         # Check if any lithology intervals are not included in boring intervals.
-        inclusions_mask = lithology_intervals.apply(
-            lambda interval:
-            leq_close(boring_intervals['DEPTH_FROM'], interval['DEPTH_FROM']).any() &
-            geq_close(boring_intervals['DEPTH_TO'], interval['DEPTH_TO']).any(),
-            axis=1)
+        inclusions_mask = lithology_intervals.apply(lambda interval:
+                                                    leq_close(boring_intervals['DEPTH_FROM'],
+                                                              interval['DEPTH_FROM']).any() &
+                                                    geq_close(boring_intervals['DEPTH_TO'],
+                                                              interval['DEPTH_TO']).any(),
+                                                    axis=1)
         exclusions = lithology_intervals[~inclusions_mask]
         if not exclusions.empty:
             raise DataRegularityError("lithology_exclusions", exclusions[['FORMATION']])
@@ -753,36 +754,45 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def check_samples(self):
-        """Samples integrity checks
+        """Checks samples filenames conformity.
 
-        Throws
+        1. If duplicate filenames exist in samples.feather dataframe.
+        2. If filenames have different extension lengths in samples.feather dataframe.
+        3. If files in samples folder have same names but different extensions.
+        4. If files from samples folder are not present in samples.feather dataframe.
+        5. If files from samples.feather dataframe are not present in any of samples folders.
+
+        Raises
         ------
         DataRegularityError
         """
         names = [str(name) for name in self.samples['SAMPLE'].values]
         if len(names) > len(set(names)):
-            raise DataRegularityError("Duplicate file names in samples.feather")
+            raise DataRegularityError("duplicate_files", "samples.feather")
 
-        folders = ["samples_dl", "samples_uv"]
-        for folder in folders:
-            path = f"{self.path}/{folder}"
+        ext_lens = [len(os.path.splitext(name)[1]) for name in names]
+        if ext_lens[1:] != ext_lens[:-1]:
+            raise DataRegularityError("different_extensions", "samples.feather")
+
+        desired_folders = set(["samples_dl", "samples_uv"])
+        existing_folders = set(os.listdir(self.path))
+        samples_folders = desired_folders.intersection(existing_folders)
+
+        for folder in samples_folders:
+            path = "{}/{}".format(self.path, folder)
             samples = os.listdir(path)
-
-            ok = [sample.endswith((".png", ".jpg")) for sample in samples]
-            if not np.all(ok):
-                raise DataRegularityError("Unknown sample image extension:", samples[ok.index(False)])
-            samples = [sample[:-4] for sample in samples]
-
-            if len(samples) > len(set(samples)):
-                raise DataRegularityError(f"Duplicate file names in {folder}")
+            if ext_lens[0] == 0:
+                samples = [os.path.splitext(sample)[0] for sample in samples]
+                if len(samples) != len(set(samples)):
+                    raise DataRegularityError("duplicate_files", folder)
 
             samples_only = set(samples).difference(set(names))
             if len(samples_only) != 0:
-                raise DataRegularityError(f"Files from {folder} are not present in samples.feather:", samples_only)
+                raise DataRegularityError("missing_files", folder, "samples.feather", samples_only)
 
             names_only = set(names).difference(set(samples))
             if len(names_only) != 0:
-                raise DataRegularityError(f"Following files from samples.feather are not present in {folder}:", names_only)
+                raise DataRegularityError("missing_files", "samples.feather", folder, names_only)
 
     def _apply_matching(self):
         """Update depths in all core-related attributes given calculated
