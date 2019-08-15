@@ -3,11 +3,11 @@ extension-pkg-whitelist = numpy
 
 [FORMAT]
 max-line-length = 120
-max-attributes = 8
+max-attributes = 25
 max-locals = 25
-max-args = 8
+max-args = 20
 ignored-argument-names = args|kwargs
-good-names = _, i, j, k, m, n, p, t, x, X, y, z, ax, ix, df
+good-names = _, i, j, k, m, n, p, t, x, X, y, z, ax, ix, df, x1, x2
 
 [MESSAGE CONTROL]
 disable = no-value-for-parameter, keyword-arg-before-vararg, len-as-condition,
