@@ -1,4 +1,4 @@
-""" Batch class for core images procrssing """
+"""Batch class for core images procrssing"""
 
 import os
 from itertools import product
@@ -25,9 +25,9 @@ def _get_uv_path(path_dl):
     return path_uv
 
 class CoreIndex(FilesIndex):
-    """ FilesIndex that include well name into indices as prefix. """
+    """FilesIndex that include well name into indices as prefix."""
     def __init__(self, index=None, path=None, *args, **kwargs):
-        """ Create index.
+        """Create index.
 
         Parameters
         ----------
@@ -43,7 +43,7 @@ class CoreIndex(FilesIndex):
 
     @staticmethod
     def build_key(fullpathname, no_ext=False):
-        """ Create index item from full path name. Well name will be added
+        """Create index item from full path name. Well name will be added
         to index as prefix. """
         folder_name = fullpathname
         splitted_path = []
@@ -58,7 +58,7 @@ class CoreIndex(FilesIndex):
         return key_name, fullpathname
 
 class CoreBatch(ImagesBatch):
-    """ Batch class for core images processing. Contains core images in daylight (DL)
+    """Batch class for core images processing. Contains core images in daylight (DL)
     and ultraviolet light (UV) and labels for that pairs: 1 if the pair has defects
     and 0 otherwise. Path to images must have the following form:
     '*/well_name/samples_{uv, dl}/*'.
@@ -112,7 +112,7 @@ class CoreBatch(ImagesBatch):
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
     def load(self, index, grayscale=False, **kwargs):
-        """ Load data.
+        """Load data.
 
         Parameters
         ----------
@@ -131,7 +131,7 @@ class CoreBatch(ImagesBatch):
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
     def to_grayscale(self, index, src=None, **kwargs):
-        """ Load data.
+        """Load data.
 
         Parameters
         ----------
@@ -146,7 +146,7 @@ class CoreBatch(ImagesBatch):
     @action
     @inbatch_parallel(init='indices', post='_assemble_labels')
     def create_labels(self, index, labels=None, **kwargs):
-        """ Create labels from pd.DataSeries/dict
+        """Create labels from pd.DataSeries/dict
 
         Parameters
         ----------
@@ -162,7 +162,8 @@ class CoreBatch(ImagesBatch):
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
     def mirror_padding(self, index, shape, src=None, **kwargs):
-        """ Add padding to images with the size which is less then shape.
+        """Add padding to images with the size which is less then shape.
+
         Parameters
         ----------
         shape : tuple
@@ -179,7 +180,7 @@ class CoreBatch(ImagesBatch):
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
     def fix_shape(self, index, src=None, **kwargs):
-        """ Transform shapes of DL and UV to the same values. Image with larger
+        """Transform shapes of DL and UV to the same values. Image with larger
         shape will be croppped.
 
         Parameters
@@ -199,7 +200,7 @@ class CoreBatch(ImagesBatch):
     @action
     @inbatch_parallel(init='indices', post='_assemble_uv_labels')
     def flip_uv(self, index, proba=0.5, src=None, **kwargs):
-        """ Randomly flip UV images. Flipped images always will have label 1.
+        """Randomly flip UV images. Flipped images always will have label 1.
 
         Parameters
         ----------
@@ -221,7 +222,7 @@ class CoreBatch(ImagesBatch):
     @action
     @inbatch_parallel(init='indices', post='_assemble_uv_labels')
     def shift_uv(self, index, proba=0.5, bounds=(10, 100), src=None, **kwargs):
-        """ Randomly shift UV images. Flipped images always will have label 1.
+        """Randomly shift UV images. Flipped images always will have label 1.
 
         Parameters
         ----------
@@ -248,7 +249,7 @@ class CoreBatch(ImagesBatch):
 
     @action
     def shuffle_images(self, proba=0.5, src=None, dst=None):
-        """ Shuffle DL and UV images. Shuffled images will have label 1.
+        """Shuffle DL and UV images. Shuffled images will have label 1.
 
         Parameters
         ----------
@@ -278,7 +279,7 @@ class CoreBatch(ImagesBatch):
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
     def normalize(self, index, src=None, **kwargs):
-        """ Normalize images histograms.
+        """Normalize images histograms.
 
         Parameters
         ----------
@@ -299,7 +300,7 @@ class CoreBatch(ImagesBatch):
     @action
     @inbatch_parallel(init='indices', post='_assemble_uv')
     def binarize(self, index, threshold=127, src=None, **kwargs):
-        """ Binarize images.
+        """Binarize images.
 
         Parameters
         ----------
@@ -319,7 +320,7 @@ class CoreBatch(ImagesBatch):
     @action
     @inbatch_parallel(init='indices', post='_assemble_uv')
     def smooth(self, index, kernel=10, src=None, **kwargs):
-        """ Binarize images.
+        """Binarize images.
 
         Parameters
         ----------
@@ -341,7 +342,7 @@ class CoreBatch(ImagesBatch):
 
     @action
     def make_random_crops(self, shape, n_crops=1, src=None, channels='first', **kwargs):
-        """ Get random crops from images.
+        """Get random crops from images.
 
         Parameters
         ----------
@@ -365,7 +366,7 @@ class CoreBatch(ImagesBatch):
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
     def make_crops(self, index, shape, positions=None, step=None, src=None, channels='first', **kwargs):
-        """ Get crops from images.
+        """Get crops from images.
 
         Parameters
         ----------
