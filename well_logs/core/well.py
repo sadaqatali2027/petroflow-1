@@ -326,12 +326,40 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def drop_nans(self, logs=None):
+        """Create segments from each segment at the last level.
+        All created segments haven't NaN in selected places from `logs` attribute.
+
+        Parameters
+        ----------
+        logs : int or list of str
+        if `list` create segments in whose logs with mnemonics in `logs` not NaN values.
+        If `int` create segments in whose logs at least `logs` not NaN value in each row.
+        if `None` create segments without NaN values in logs. Defaults to `None`.
+
+        Returns
+        -------
+        self : AbstractWell
+            The well with dropped NaN values in segments.
+        """
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [Well(segments=segment.drop_nans(logs=logs)) for segment in well]
         return self.prune()
 
     def drop_short_segments(self, min_length):
+        """Drop segments at the last level with length of
+        segments samaller than in attribute `min_length`.
+
+        Parameters
+        ----------
+        min_length : positive float
+            Minimum length so as not to drop a segment.
+
+        Returns
+        -------
+        self : AbstractWell
+            The well with dropped segments.
+        """
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [segment for segment in well if segment.length > min_length]

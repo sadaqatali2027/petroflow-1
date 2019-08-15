@@ -1461,12 +1461,24 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def drop_nans(self, logs=None):
+        """Create segments without NaN in selected places logs from `logs` attribute.
+
+        Parameters
+        ----------
+        logs : int or list of str
+        if `list` create segments in whose logs with mnemonics in `logs` not NaN values.
+        If `int` create segments in whose logs at least `logs` not NaN value in each row.
+        if `None` create segments without NaN values in logs. Defaults to `None`.
+
+        Returns
+        -------
+        segments : list of `WellSegment` instances
+            Segments with dropped NaN values.
+        """
         logs = self.logs.columns if logs is None else logs
         if isinstance(logs, int):
-            # Drop rows with more than `logs` NaNs
             not_nan_mask = (~np.isnan(self.logs)).sum(axis=1) >= logs
         else:
-            # Drop rows with at least one NaN in logs with mnemonics in `logs`
             not_nan_mask = np.all(~np.isnan(self.logs[logs]), axis=1)
         not_nan_indices = np.where(not_nan_mask)[0]
         if len(not_nan_indices) == 0:
