@@ -6,16 +6,12 @@ import re
 from setuptools import setup, find_packages
 
 
-with open('batchflow/__init__.py', 'r') as f:
+with open('well_logs/__init__.py', 'r') as f:
     version = re.search(r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', f.read(), re.MULTILINE).group(1)
 
 
-with open('docs/index.rst', 'r') as f:
-    long_description = f.read()
-
-
 setup(
-    name='dataset',
+    name='well_logs',
     packages=find_packages(exclude=['examples']),
     version=version,
     url='https://github.com/analysiscenter/well_logs',
@@ -23,7 +19,6 @@ setup(
     author='Gazprom Neft DS team',
     author_email='rhudor@gmail.com',
     description='A framework for well data processing',
-    long_description=long_description,
     zip_safe=False,
     platforms='any',
     install_requires=[
@@ -42,14 +37,21 @@ setup(
         'pandas==0.24.0',
         'setuptools==40.6.3',
         'scipy==1.1.0',
-        'plotly==3.7.1',
+        'plotly==4.1.0',
         'scikit_image==0.14.1',
         'dask==1.0.0',
         'Pillow==6.1.0',
         'blosc==1.8.1',
-        'feather==0.9.1dev',
-        'skimage==0.0'
+        'feather-format==0.4.0',
+        'scikit-image==0.14.1',
+        'Scikit-learn==0.20.1',
+        'opencv-python==3.4.2.17'
     ],
+    extras_require={
+        'tensorflow': ['tensorflow>=1.12.0'],
+        'tensorflow-gpu': ['tensorflow-gpu>=1.12.0'],
+        'torch': ['torch>=1.1.0']
+    },
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
