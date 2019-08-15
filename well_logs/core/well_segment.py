@@ -393,7 +393,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment
+        self : AbstractWellSegment or a child class
             Self with core images loaded for each segment.
         """
         self.core_width = core_width if core_width is not None else self.core_width
@@ -444,7 +444,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment
+        self : AbstractWellSegment or a child class
             Self unchanged.
         """
         path = os.path.join(path, self.name)
@@ -509,7 +509,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment
+        self : AbstractWellSegment or a child class
             Self unchanged.
         """
         init_notebook_mode(connected=True)
@@ -591,7 +591,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : WellSegment
+        well : AbstractWellSegment or a child class
             A segment with filtered logs.
         """
         if not isinstance(key, slice):
@@ -623,7 +623,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment
+        self : AbstractWellSegment or a child class
             Shallow copy.
         """
         return copy(self)
@@ -727,7 +727,8 @@ class WellSegment(AbstractWellSegment):
             raise DataRegularityError('lithology_disordered', disordered[['FORMATION']])
 
         # Check if any lithology intervals are not included in boring intervals.
-        inclusions_mask = lithology_intervals.apply(lambda interval:
+        inclusions_mask = lithology_intervals.apply(
+            lambda interval:
             leq_close(boring_intervals['DEPTH_FROM'], interval['DEPTH_FROM']).any() &
             geq_close(boring_intervals['DEPTH_TO'], interval['DEPTH_TO']).any(),
             axis=1)
@@ -937,7 +938,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : WellSegment
+        well : AbstractWellSegment or a child class
             Matched well segment with updated core depths. Changes all
             core-related depths inplace.
         """
@@ -1075,7 +1076,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment
+        self : AbstractWellSegment or a child class
             Self unchanged.
         """
         init_notebook_mode(connected=True)
@@ -1156,7 +1157,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : WellSegment
+        well : AbstractWellSegment or a child class
             A segment with created depth log.
         """
         self.logs["DEPTH"] = self.logs.index
@@ -1172,7 +1173,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : WellSegment
+        well : AbstractWellSegment or a child class
             A segment with filtered logs.
         """
         res = self.copy()
@@ -1189,7 +1190,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : WellSegment
+        well : AbstractWellSegment or a child class
             A segment with filtered logs.
         """
         if len(np.setdiff1d(mnemonics, self.logs.columns)) > 0:
@@ -1208,7 +1209,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : WellSegment
+        well : AbstractWellSegment or a child class
             A segment with renamed logs. Changes `self.logs` inplace.
         """
         self.logs.rename(columns=rename_dict, inplace=True)
@@ -1256,7 +1257,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        segments : list of `WellSegment` instances
+        segments : list of WellSegment
             Split segments.
         """
         if not isinstance(src, list):
@@ -1301,7 +1302,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        segments : list of `WellSegment` instances
+        segments : list of WellSegment
             Cropped segments.
         """
         bounds = self.depth_from, max(self.depth_from, self.depth_to-length)
@@ -1326,7 +1327,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        segments : list of `WellSegment` instances
+        segments : list of WellSegment
             Cropped segments.
         """
         positions = np.arange(self.depth_from, self.depth_to, step)
@@ -1364,7 +1365,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment
+        self : AbstractWellSegment or a child class
             Self with mask.
         """
         if src in self.attrs_fdtd_index:
@@ -1427,7 +1428,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : WellSegment
+        well : AbstractWellSegment or a child class
             The segment with reindexed `attrs`.
         """
         attrs = self.attrs_depth_index if attrs is None else attrs
@@ -1451,7 +1452,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : WellSegment
+        well : AbstractWellSegment or a child class
             The segment with interpolated values in `attrs`.
         """
         attrs = self.attrs_fdtd_index if attrs is None else attrs
@@ -1496,7 +1497,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : WellSegment
+        well : AbstractWellSegment or a child class
             The segment with standardized logs.
         """
         if mean is None:
@@ -1526,7 +1527,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : WellSegment
+        well : AbstractWellSegment or a child class
             The segment with normalized logs.
         """
         if min is None and q_min is None:
@@ -1560,7 +1561,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment
+        self : AbstractWellSegment or a child class
             Self with normalized images.
         """
         src = to_list(src)
