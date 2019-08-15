@@ -146,7 +146,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Returns
         -------
-        segments : list of `WellSegment` or `Well` instances
+        segments : list of WellSegment or Well
             Segments from given level.
         """
         level = level if level >= 0 else self.tree_depth + level
@@ -171,7 +171,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Returns
         -------
-        self : AbstractWell
+        self : AbstractWell or a child class
             Self with prunned tree.
         """
         self._prune()
@@ -184,7 +184,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Returns
         -------
-        self : AbstractWell
+        self : AbstractWell or a child class
             Shallow copy.
         """
         return copy(self)
@@ -206,7 +206,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Returns
         -------
-        self : AbstractWell
+        self : AbstractWell or a child class
             Self unchanged.
         """
         # TODO: aggregate before dumping
@@ -227,7 +227,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Returns
         -------
-        self : AbstractWell
+        self : AbstractWell or a child class
             The well with kept matched segments.
         """
         for well in self.iter_level(-2):
@@ -251,7 +251,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Returns
         -------
-        self : AbstractWell
+        self : AbstractWell or a child class
             The well with split segments.
         """
         wells = self.iter_level(-2)
@@ -280,7 +280,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Returns
         -------
-        self : AbstractWell
+        self : AbstractWell or a child class
             The well with cropped segments.
         """
         wells = self.iter_level(-2)
@@ -306,7 +306,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Returns
         -------
-        self : AbstractWell
+        self : AbstractWell or a child class
             The well with cropped segments.
         """
         wells = self.iter_level(-2)
