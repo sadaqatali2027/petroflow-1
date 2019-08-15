@@ -326,15 +326,15 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def drop_nans(self, logs=None):
-        """Create segments that don't have NaN in selected places from `logs` attribute.
+        """Create segments that drop NaN in logs, as indicated in `logs`.
         The tree depth will be increased.
 
         Parameters
         ----------
         logs : int or list of str
-            If `list` create segments without NaN values in logs with mnemonics in `logs`.
-            If `int` create segments with greater or equal `logs` not NaN values ​​in each row of logs.
-            If `None` create segments without NaN values in logs. Defaults to `None`.
+            If `list`, create segments without NaN values in logs with mnemonics in `logs`.
+            If `int`, create segments where ​​in each row of logs at least `logs` not NaN values.
+            If `None`, create segments without NaN values in logs. Defaults to `None`.
 
         Returns
         -------
