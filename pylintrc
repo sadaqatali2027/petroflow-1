@@ -18,4 +18,4 @@ disable = no-value-for-parameter, keyword-arg-before-vararg, len-as-condition,
           fixme, too-many-public-methods, too-many-lines, no-member
 
 [TYPECHECK]
-ignored-modules = numpy,cv2
+ignored-modules = numpy,cv2,plotly

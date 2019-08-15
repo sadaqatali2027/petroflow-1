@@ -17,10 +17,10 @@ import lasio
 import PIL
 from scipy.interpolate import interp1d
 from sklearn.linear_model import LinearRegression
+import cv2
 from plotly import graph_objs as go
 from plotly.subplots import make_subplots
 from plotly.offline import init_notebook_mode, plot
-import cv2
 
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
