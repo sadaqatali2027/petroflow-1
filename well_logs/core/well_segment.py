@@ -617,7 +617,7 @@ class WellSegment(AbstractWellSegment):
             Shallow copy.
         """
         return copy(self)
-    
+
     def check_regularity(self):
         """Checks intervals data regularity.
 
@@ -630,7 +630,7 @@ class WellSegment(AbstractWellSegment):
         4. If any values of DEPTH_FROM column are not increasing.
         5. If any values of DEPTH_FROM column are greater than
            values of DEPTH_TO column of the same row.
-        
+
         Following checks applied for core_lithology dataframe:
         1. If any values of DEPTH_FROM and DEPTH_TO columns of adjacent rows
            form intervals that overlap each other.
@@ -643,7 +643,7 @@ class WellSegment(AbstractWellSegment):
         5. If any values of CORE_TOTAL column (calculated as a sum of intervals
            included in the same interval of boring_intervals dataframe) are greater
            than values of CORE_RECOVERY column of boring_intervals dataframe.
-           
+
         Raises
         ------
         DataRegularityError
@@ -659,7 +659,7 @@ class WellSegment(AbstractWellSegment):
         nans = boring_intervals[nans_mask]
         if not nans.empty:
             raise DataRegularityError("boring_nans", nans[['CORE_RECOVERY']])
-        
+
         # Check if any CORE_RECOVERY values are greater than CORE_INTERVAL ones.
         unfits_mask = leq_notclose(boring_intervals['CORE_INTERVAL'], boring_intervals['CORE_RECOVERY'])
         unfits = boring_intervals[unfits_mask]
@@ -673,7 +673,7 @@ class WellSegment(AbstractWellSegment):
         overlaps = boring_intervals[overlaps_mask | overlaps_mask.shift(1)]
         if not overlaps.empty:
             raise DataRegularityError("boring_overlaps", overlaps[['CORE_RECOVERY']])
-        
+
         # Check if boring intervals DEPTH_FROM values are not increasing.
         if not boring_intervals.index.is_monotonic_increasing:
             nonincreasing_mask = boring_intervals['DEPTH_FROM'].shift(-1) < boring_intervals['DEPTH_FROM']
@@ -697,13 +697,13 @@ class WellSegment(AbstractWellSegment):
         overlaps = lithology_intervals[overlaps_mask | overlaps_mask.shift(1)]
         if not overlaps.empty:
             raise DataRegularityError("lithology_overlaps", overlaps[['FORMATION']])
-        
+
         # Check if lithology intervals DEPTH_FROM values are not increasing.
         if not lithology_intervals.index.is_monotonic_increasing:
             nonincreasing_mask = lithology_intervals['DEPTH_FROM'].shift(-1) < lithology_intervals['DEPTH_FROM']
             nonincreasing = lithology_intervals[nonincreasing_mask | nonincreasing_mask.shift(1)]
             raise DataRegularityError("lithology_nonincreasing", nonincreasing[['FORMATION']])
-    
+
         # Check if lithology intervals DEPTH_FROM values are bigger than DEPTH_TO ones.
         disordered_mask = lithology_intervals['DEPTH_FROM'] > lithology_intervals['DEPTH_TO']
         disordered = lithology_intervals[disordered_mask]
@@ -712,9 +712,11 @@ class WellSegment(AbstractWellSegment):
 
         # Check if any lithology intervals are not included in boring intervals.
         inclusions_mask = lithology_intervals.apply(lambda interval:
-            leq_close(boring_intervals['DEPTH_FROM'], interval['DEPTH_FROM']).any() &
-            geq_close(boring_intervals['DEPTH_TO'], interval['DEPTH_TO']).any(),
-            axis=1)
+                                                    leq_close(boring_intervals['DEPTH_FROM'],
+                                                              interval['DEPTH_FROM']).any() &
+                                                    geq_close(boring_intervals['DEPTH_TO'],
+                                                              interval['DEPTH_TO']).any(),
+                                                    axis=1)
         exclusions = lithology_intervals[~inclusions_mask]
         if not exclusions.empty:
             raise DataRegularityError("lithology_exclusions", exclusions[['FORMATION']])
@@ -748,31 +750,31 @@ class WellSegment(AbstractWellSegment):
         """
         names = [str(name) for name in self.samples['SAMPLE'].values]
         if len(names) > len(set(names)):
-            raise DataRegularityError("Duplicate file names in samples.feather")
+            raise DataRegularityError("duplicate_files", "samples.feather")
 
         ext_lens = [len(os.path.splitext(name)[1]) for name in names]
         if ext_lens[1:] != ext_lens[:-1]:
-            raise DataRegularityError("File extensions from samples.feather have different extension length")
+            raise DataRegularityError("different_extensions", "samples.feather")
 
         desired_folders = set(["samples_dl", "samples_uv"])
         existing_folders = set(os.listdir(self.path))
         samples_folders = desired_folders.intersection(existing_folders)
 
         for folder in samples_folders:
-            path = f"{self.path}/{folder}"
+            path = "{}/{}".format(self.path, folder)
             samples = os.listdir(path)
             if ext_lens[0] == 0:
                 samples = [os.path.splitext(sample)[0] for sample in samples]
                 if len(samples) != len(set(samples)):
-                    raise DataRegularityError(f"Duplicate file names with different extensions in {folder}")
+                    raise DataRegularityError("duplicate_files", folder)
 
             samples_only = set(samples).difference(set(names))
             if len(samples_only) != 0:
-                raise DataRegularityError(f"Files from {folder} are not present in samples.feather:", samples_only)
+                raise DataRegularityError("missing_files", folder, "samples.feather", samples_only)
 
             names_only = set(names).difference(set(samples))
             if len(names_only) != 0:
-                raise DataRegularityError(f"Following files from samples.feather are not present in {folder}:", names_only)
+                raise DataRegularityError("missing files", "samples.feather", folder, names_only)
 
     def _apply_matching(self):
         """Update depths in all core-related attributes given calculated
