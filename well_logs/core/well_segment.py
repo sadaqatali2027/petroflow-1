@@ -774,7 +774,7 @@ class WellSegment(AbstractWellSegment):
 
             names_only = set(names).difference(set(samples))
             if len(names_only) != 0:
-                raise DataRegularityError("missing files", "samples.feather", folder, names_only)
+                raise DataRegularityError("missing_files", "samples.feather", folder, names_only)
 
     def _apply_matching(self):
         """Update depths in all core-related attributes given calculated
