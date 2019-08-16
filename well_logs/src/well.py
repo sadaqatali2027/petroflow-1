@@ -326,20 +326,23 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def drop_nans(self, logs=None):
-        """Create segments that drop NaN in logs, as indicated in `logs`.
-        The tree depth will be increased.
+        """Split a well into contiguous segments, that does not contain `nan`
+        values in logs, indicated in `logs`. The tree depth will be increased.
 
         Parameters
         ----------
-        logs : int or list of str
-            If `list`, create segments without NaN values in logs with mnemonics in `logs`.
-            If `int`, create segments where ​​in each row of logs at least `logs` not NaN values.
-            If `None`, create segments without NaN values in logs. Defaults to `None`.
+        logs : None or int or list of str
+            - If `None`, create segments without `nan` values in all logs.
+            - If `int`, create segments so that each row of logs has at least
+              `logs` not-nan values.
+            - If `list`, create segments without `nan` values in logs with
+              mnemonics in `logs`.
+            Defaults to `None`.
 
         Returns
         -------
         self : AbstractWell
-            The well with dropped NaN values in segments.
+            The well with dropped `nan` values from segments.
         """
         wells = self.iter_level(-2)
         for well in wells:
@@ -347,7 +350,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def drop_short_segments(self, min_length):
-        """Drop segments at the last level with length smaller than `min_length`.
+        """Drop segments at the last level with length smaller than
+        `min_length`.
 
         Parameters
         ----------
@@ -357,7 +361,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         Returns
         -------
         self : AbstractWell
-            The well with dropped segments.
+            The well with dropped short segments.
         """
         wells = self.iter_level(-2)
         for well in wells:

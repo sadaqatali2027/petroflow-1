@@ -1474,19 +1474,23 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def drop_nans(self, logs=None):
-        """Create segments that drop NaN in logs, as indicated in `logs`.
+        """Create segments that does not contain `nan` values in logs,
+        indicated in `logs`.
 
         Parameters
         ----------
-        logs : int or list of str
-            If `list`, create segments without NaN values in logs with mnemonics in `logs`.
-            If `int`, create segments where ​​in each row of logs at least `logs` not NaN values.
-            If `None`, create segments without NaN values in logs. Defaults to `None`.
+        logs : None or int or list of str
+            - If `None`, create segments without `nan` values in all logs.
+            - If `int`, create segments so that each row of logs has at least
+              `logs` not-nan values.
+            - If `list`, create segments without `nan` values in logs with
+              mnemonics in `logs`.
+            Defaults to `None`.
 
         Returns
         -------
-        segments : list of `WellSegment` instances
-            Segments with dropped NaN values.
+        segments : list of WellSegment
+            Segments with dropped `nan` values.
         """
         logs = self.logs.columns if logs is None else logs
         if isinstance(logs, int):
