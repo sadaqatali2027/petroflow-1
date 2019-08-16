@@ -23,7 +23,7 @@ class SkipWellException(Exception):
 
 
 class DataRegularityError(SkipWellException):
-    """ Raised if any data regularity checks are not passed """
+    """Raised if any data regularity checks are not passed."""
     def __init__(self, error_id, *args):
         starter = STARTERS.get(error_id, error_id)
         message = starter.format(*args)
