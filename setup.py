@@ -56,7 +56,7 @@ setup(
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'Intended Audience :: Science/Research',
-        'License :: Attribution-NonCommercial-ShareAlike 4.0 International',
+        'License :: CC BY-NC-SA 4.0',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
