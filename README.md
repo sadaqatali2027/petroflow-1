@@ -26,16 +26,16 @@ Main features:
 However, it is not required, especially at the beginning.
 
 
-WellLogs has two main modules: [``src``](https://github.com/analysiscenter/well_logs/tree/master/well_logs/core) and [``models``](https://github.com/analysiscenter/well_logs/tree/master/well_logs/models).
+WellLogs has two main modules: [``src``](https://github.com/analysiscenter/well_logs/tree/master/well_logs/src) and [``models``](https://github.com/analysiscenter/well_logs/tree/master/well_logs/models).
 
 
 ``src`` module contains ``Well``, ``WellBatch``, ``CoreBatch`` and ``WellLogsBatch`` classes.
-``Well`` is a class, representing a well and includes methods for well data processing. All that methods are inherited by ``WellBatch`` class and might be used to build multi-staged workflows that can also involve machine learning models. ``CoreBatch`` is a class for core images processing, especially for detecting of mismatched pairs. ``WellLogsBatch`` allows to work with well logs separately.
+``Well`` is a class, representing a well and includes methods for well data processing. All these methods are inherited by ``WellBatch`` class and might be used to build multi-staged workflows that can also involve machine learning models. ``CoreBatch`` is a class for core images processing, especially for detection of mismatched pairs. ``WellLogsBatch`` allows working with well logs separately.
 
 ``models`` module provides several ready to use models for important problems:
 
 * logs and core data matching
-* predicting of some reservoir properties (e.g., porosity) by logs or core
+* predicting of some reservoir properties (e.g., porosity) by well logs
 * detecting mismatched pairs of DL and UV core photos
 * logs recovering (e.g., DT log) by other logs
 * detecting of oil collectors by logs
@@ -43,7 +43,7 @@ WellLogs has two main modules: [``src``](https://github.com/analysiscenter/well_
 ## Basic usage
 
 Here is an example of a pipeline that loads well data, makes preprocessing and trains
-a model for 3000 epochs for porosity prediction:
+a model for porosity prediction for 3000 epochs:
 ```python
 train_pipeline = (
   ds.Pipeline()
