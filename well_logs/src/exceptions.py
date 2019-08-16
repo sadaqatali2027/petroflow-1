@@ -17,10 +17,12 @@ STARTERS = {
     "different_extensions" : "File extensions from {} have different extension length"
     }
 
+
 class SkipWellException(Exception):
     """Raised if a well should be dropped from a batch."""
 
-class DataRegularityError(Exception):
+
+class DataRegularityError(SkipWellException):
     """ Raised if any data regularity checks are not passed """
     def __init__(self, error_id, *args):
         starter = STARTERS.get(error_id, error_id)
