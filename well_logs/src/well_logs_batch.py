@@ -7,8 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from . import well_logs_batch_tools as bt
-from .utils import for_each_component
-from ..batchflow import Batch, FilesIndex, DatasetIndex, SkipBatchException
+from .utils import for_each_component, get_path
+from ..batchflow import Batch, DatasetIndex, SkipBatchException
 from ..batchflow import action, inbatch_parallel, any_action_failed
 
 
@@ -112,12 +112,7 @@ class WellLogsBatch(Batch):
     @inbatch_parallel(init="indices", target="threads")
     def _load_npz(self, index, src=None, fmt=None, components=None, *args, **kwargs):
         _ = fmt
-        if src is not None:
-            path = src[index]
-        elif isinstance(self.index, FilesIndex):
-            path = self.index.get_fullpath(index)
-        else:
-            raise ValueError("Source path is not specified")
+        path = get_path(self, index, src)
 
         i = self.get_pos(None, "logs", index)
         well_data = np.load(path)
