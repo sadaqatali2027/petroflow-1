@@ -1,5 +1,6 @@
 """Core classes of the package."""
 
+from .well import Well
 from .well_logs_batch import WellLogsBatch
 from .well_logs_dataset import WellLogsDataset
 from .core_images import CoreBatch, CoreIndex

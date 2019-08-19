@@ -1,4 +1,4 @@
-"""Batch class for core images procrssing"""
+"""Batch class for core images processing"""
 
 import os
 from itertools import product
