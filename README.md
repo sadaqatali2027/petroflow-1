@@ -76,7 +76,7 @@ train_pipeline = (
 
 > `WellLogs` module is in the beta stage. Your suggestions and improvements are very welcome.
 
-> `WellLogs` supports python 3.6 or higher.
+> `WellLogs` supports python 3.5 or higher.
 
 
 ### Installation as a python package
