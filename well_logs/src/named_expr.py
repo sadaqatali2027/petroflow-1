@@ -22,6 +22,10 @@ class NestedList:
     def __getitem__(self, key):
         return NestedList([[item[key] for item in inner_list] for inner_list in self._nested_list])
 
+    def __setitem__(self, key, value):
+        for item, val in zip(self.ravel(), value):
+            item[key] = val
+
     def __repr__(self):
         return repr(self._nested_list)
 
