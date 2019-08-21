@@ -108,7 +108,7 @@ Please cite WellLogs in your publications if it helps your research.
     Khudorozhkov R., Kozhevin A., Kuvaev A. WellLogs library for data science research of well data. 2019.
 
 ```
-@misc{cardio_2017_1156085,
+@misc{
   author       = {R. Khudorozhkov and A. Kozhevin and A. Kuvaev},
   title        = {WellLogs library for data science research of well data},
   year         = 2019
