@@ -100,3 +100,17 @@ import well_logs
 When cloning repo from GitHub use flag ``--recursive`` to make sure that ``batchflow`` submodule is also cloned.
 
     git clone --recursive https://github.com/analysiscenter/well_logs.git
+
+## Citing WellLogs
+
+Please cite WellLogs in your publications if it helps your research.
+
+    Khudorozhkov R., Kozhevin A., Kuvaev A. WellLogs library for data science research of well data. 2019.
+
+```
+@misc{cardio_2017_1156085,
+  author       = {R. Khudorozhkov and A. Kozhevin and A. Kuvaev},
+  title        = {WellLogs library for data science research of well data},
+  year         = 2019
+}
+```
