@@ -5,8 +5,10 @@ from abc import ABCMeta
 from copy import copy
 from functools import wraps
 from collections import Counter
+import re
 
 import numpy as np
+import pandas as pd
 
 from .abstract_classes import AbstractWell
 from .well_segment import WellSegment
@@ -366,4 +368,106 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [segment for segment in well if segment.length > min_length]
+        return self.prune()
+
+   def _assemble_crops(self, agg_segments=list()):
+        for well in self.iter_level(-self.tree_depth+1):
+            if well._has_segments():
+                agg_segments.extend(well.segments)
+                well.segments.clear()
+            else:
+                return well._assemble_crops(agg_segments)
+
+        return [agg_segments.pop(0) for i in range(len(agg_segments))]
+
+    def aggregate(self, func, level=None):
+        if level in (-1, -2):
+            raise ValueError("Level can't be ({})".format(level))
+
+        if level is None:
+            level = -self.tree_depth
+
+        wells = self.iter_level(level)
+        for well in wells:
+            well.segments = well._assemble_crops()
+
+        for well in wells:
+
+            seg_0 = well.segments[0]
+            depth_from = well.depth_from
+            depth_to = well.depth_to
+            # Reset index of 0 segment
+            for attr in seg_0.attrs_depth_index+seg_0.attrs_fdtd_index:
+                try:
+                    attr_val_0 = getattr(seg_0, attr)
+                except FileNotFoundError:
+                    continue
+                setattr(seg_0, '_'+attr, attr_val_0.reset_index())
+
+            # Reset index of all segments and merge it
+            for i, segment in enumerate(well.segments[1:]):
+                for attr in segment.attrs_depth_index+segment.attrs_fdtd_index:
+                    try:
+                        attr_val = getattr(segment, attr)
+                    except FileNotFoundError:
+                        continue
+
+                    attr_val = attr_val.reset_index()
+                    attr_val_0 = getattr(seg_0, attr)
+
+                    if attr in segment.attrs_depth_index:
+                        attr_val_0 = pd.merge_ordered(attr_val_0, attr_val, on='DEPTH', suffixes=('_'+str(i), ''))
+                    elif attr in ['layers', 'core_lithology']: # String values
+                        attr_val_0 = pd.concat([attr_val_0, attr_val])
+                    else:
+                        attr_val_0 = pd.merge_ordered(attr_val_0, attr_val, on=['DEPTH_FROM', 'DEPTH_TO'], suffixes=('_'+str(i), ''))
+
+                    setattr(seg_0, '_'+attr, attr_val_0)
+
+            for attr in seg_0.attrs_depth_index+seg_0.attrs_fdtd_index:
+                try:
+                    attr_val_0 = getattr(seg_0, attr)
+                except FileNotFoundError:
+                    continue
+
+
+                if attr in seg_0.attrs_depth_index:
+                    attr_val_0 = attr_val_0.set_index('DEPTH')
+                else:
+                    attr_val_0 = attr_val_0.set_index(['DEPTH_FROM', 'DEPTH_TO'])
+
+                if attr in ['layers', 'core_lithology']:
+                    attr_val_0.drop_duplicates(inplace=True)
+                    attr_val_0.sort_index(inplace=True)
+                    setattr(seg_0, '_'+attr, attr_val_0)
+                    continue
+
+                columns = [column for column in attr_val_0 if not re.match(r'.*_\d*$', column)] # List of origin columns
+                duplicate_columns = [[] for i in range(len(columns))] #  List of lists duplicates of origin column
+
+                # Fill duplicate_columns
+                for column_copy in attr_val_0.columns:
+                    for i, column in enumerate(columns):
+                        pattern = re.compile(column+'_\d*$')
+                        if re.match(pattern, column_copy):
+                            duplicate_columns[i].append(column_copy)
+
+                # Aggreagte and drop duplicate_columns
+                for column, duplicate in zip(columns, duplicate_columns):
+                    attr_val_0[column] = getattr(attr_val_0[duplicate+[column]], func)(axis=1)
+                    attr_val_0.drop(duplicate, axis=1, inplace=True)
+
+                # Add NaN values to logs
+                if attr == 'logs':
+                    nan_array = pd.DataFrame(np.nan,
+                                             index=np.arange(attr_val_0.index.min()*10, attr_val_0.index.max()*10)/seg_0.core_width,
+                                             columns=attr_val_0.columns)
+                    nan_array.update(attr_val_0)
+                    attr_val_0 = nan_array
+
+                setattr(seg_0, '_'+attr, attr_val_0)
+
+            setattr(seg_0, 'depth_from', depth_from)
+            setattr(seg_0, 'depth_to', depth_to)
+            well.segments = [seg_0]
         return self.prune()
