@@ -370,13 +370,15 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [segment for segment in well if segment.length > min_length]
         return self.prune()
 
-    def _assemble_crops(self, agg_segments=list()):
+    def assemble_crops(self, agg_segments=None):
+        agg_segments = [] if agg_segments is None else agg_segments
+
         for well in self.iter_level(-self.tree_depth+1):
             if well._has_segments():
                 agg_segments.extend(well.segments)
                 well.segments.clear()
             else:
-                return well._assemble_crops(agg_segments)
+                return well.assemble_crops(agg_segments)
 
         return [agg_segments.pop(0) for i in range(len(agg_segments))]
 
@@ -389,7 +391,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         wells = self.iter_level(level)
         for well in wells:
-            well.segments = well._assemble_crops()
+            well.segments = well.assemble_crops()
 
         for well in wells:
 
@@ -416,11 +418,13 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     attr_val_0 = getattr(seg_0, attr)
 
                     if attr in segment.attrs_depth_index:
-                        attr_val_0 = pd.merge_ordered(attr_val_0, attr_val, on='DEPTH', suffixes=('_'+str(i), ''))
+                        attr_val_0 = pd.merge_ordered(attr_val_0, attr_val, on='DEPTH',
+                                                      suffixes=('_'+str(i), ''))
                     elif attr in ['layers', 'core_lithology']: # String values
                         attr_val_0 = pd.concat([attr_val_0, attr_val])
                     else:
-                        attr_val_0 = pd.merge_ordered(attr_val_0, attr_val, on=['DEPTH_FROM', 'DEPTH_TO'], suffixes=('_'+str(i), ''))
+                        attr_val_0 = pd.merge_ordered(attr_val_0, attr_val, on=['DEPTH_FROM', 'DEPTH_TO'],
+                                                      suffixes=('_'+str(i), ''))
 
                     setattr(seg_0, '_'+attr, attr_val_0)
 
@@ -448,7 +452,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 # Fill duplicate_columns
                 for column_copy in attr_val_0.columns:
                     for i, column in enumerate(columns):
-                        pattern = re.compile(column+'_\d*$')
+                        pattern = re.compile(column+r'_\d*$')
                         if re.match(pattern, column_copy):
                             duplicate_columns[i].append(column_copy)
 
@@ -459,11 +463,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
                 # Add NaN values to logs
                 if attr == 'logs':
-                    nan_array = pd.DataFrame(np.nan,
-                                             index=np.arange(attr_val_0.index.min()*10, attr_val_0.index.max()*10)/seg_0.core_width,
-                                             columns=attr_val_0.columns)
-                    nan_array.update(attr_val_0)
-                    attr_val_0 = nan_array
+                    index_step = attr_val_0.index[1] - attr_val_0.index[0]
+                    index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1], index_step)
+                    attr_val_0 = attr_val_0.reindex(index_array, method='nearest', fill_value=np.nan, tolerance=1e-5)
 
                 setattr(seg_0, '_'+attr, attr_val_0)
 
