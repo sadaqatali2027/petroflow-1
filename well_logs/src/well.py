@@ -401,9 +401,11 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             # Reset index of 0 segment
             for attr in seg_0.attrs_depth_index+seg_0.attrs_fdtd_index:
                 try:
-                    attr_val_0 = getattr(seg_0, attr)
+                    attr_val_0 = getattr(seg_0, '_'+attr)
                 except FileNotFoundError:
                     continue
+                if attr_val_0 is None:
+                        continue
                 setattr(seg_0, '_'+attr, attr_val_0.reset_index())
 
             # Reset index of all segments and merge it
@@ -416,6 +418,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
                     attr_val = attr_val.reset_index()
                     attr_val_0 = getattr(seg_0, attr)
+
+                    if attr_val.dropna(how='all').empty:
+                        continue
 
                     if attr in segment.attrs_depth_index:
                         attr_val_0 = pd.merge_ordered(attr_val_0, attr_val, on='DEPTH',
@@ -430,14 +435,13 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
             for attr in seg_0.attrs_depth_index+seg_0.attrs_fdtd_index:
                 try:
-                    attr_val_0 = getattr(seg_0, attr)
+                    attr_val_0 = getattr(seg_0, '_'+attr)
                 except FileNotFoundError:
                     continue
 
-
-                if attr in seg_0.attrs_depth_index:
+                if attr in seg_0.attrs_depth_index and not attr_val_0.empty:
                     attr_val_0 = attr_val_0.set_index('DEPTH')
-                else:
+                elif attr in seg_0.attrs_fdtd_index and not attr_val_0.empty:
                     attr_val_0 = attr_val_0.set_index(['DEPTH_FROM', 'DEPTH_TO'])
 
                 if attr in ['layers', 'core_lithology']:
