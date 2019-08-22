@@ -370,7 +370,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [segment for segment in well if segment.length > min_length]
         return self.prune()
 
-   def _assemble_crops(self, agg_segments=list()):
+    def _assemble_crops(self, agg_segments=list()):
         for well in self.iter_level(-self.tree_depth+1):
             if well._has_segments():
                 agg_segments.extend(well.segments)
