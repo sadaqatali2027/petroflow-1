@@ -401,11 +401,11 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             # Reset index of 0 segment
             for attr in seg_0.attrs_depth_index+seg_0.attrs_fdtd_index:
                 try:
-                    attr_val_0 = getattr(seg_0, '_'+attr)
+                    attr_val_0 = getattr(seg_0, attr)
                 except FileNotFoundError:
                     continue
                 if attr_val_0 is None:
-                        continue
+                    continue
                 setattr(seg_0, '_'+attr, attr_val_0.reset_index())
 
             # Reset index of all segments and merge it
@@ -414,6 +414,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     try:
                         attr_val = getattr(segment, attr)
                     except FileNotFoundError:
+                        continue
+
+                    if attr_val is None:
                         continue
 
                     attr_val = attr_val.reset_index()
@@ -434,9 +437,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     setattr(seg_0, '_'+attr, attr_val_0)
 
             for attr in seg_0.attrs_depth_index+seg_0.attrs_fdtd_index:
-                try:
-                    attr_val_0 = getattr(seg_0, '_'+attr)
-                except FileNotFoundError:
+                attr_val_0 = getattr(seg_0, '_'+attr)
+
+                if attr_val_0 is None:
                     continue
 
                 if attr in seg_0.attrs_depth_index and not attr_val_0.empty:
