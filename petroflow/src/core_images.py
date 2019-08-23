@@ -7,7 +7,7 @@ import numpy as np
 import PIL
 import cv2
 
-from well_logs.batchflow import FilesIndex, ImagesBatch, action, inbatch_parallel
+from petroflow.batchflow import FilesIndex, ImagesBatch, action, inbatch_parallel
 
 def _mirror_padding(image, shape):
     new_shape = (np.array(shape) - image.size) * (np.array(shape) - image.size > 0)

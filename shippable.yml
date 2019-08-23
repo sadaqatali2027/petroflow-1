@@ -12,11 +12,11 @@ build:
     image_tag: $TAG
   ci:
     - pip3 install -r requirements.txt
-    - find ./well_logs -not -path "./well_logs/batchflow/*" -iname "*.py" | xargs -r pylint --rcfile pylintrc
+    - pylint -rn --rcfile pylintrc petroflow
 
 integrations:
   hub:
-    - integrationName: DockerHub analysiscenter.ru
+    - integrationName: DockerHub analysiscenter
       type: docker
 
   notifications:
