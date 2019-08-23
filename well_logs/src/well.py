@@ -481,9 +481,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     attr_val_0.drop(duplicate, axis=1, inplace=True)
 
                 # Add NaN values to logs
-                if attr == 'logs' and not attr_val_0.empty:
-                    index_step = attr_val_0.index[1] - attr_val_0.index[0]
-                    index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1], index_step)
+                if attr == 'logs' and attr_val_0.shape[0] > 1:
+                    index_step = (attr_val_0.index[1:] - attr_val_0.index[:-1]).min()
+                    index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1]+index_step, index_step)
                     attr_val_0 = attr_val_0.reindex(index_array, method='nearest', fill_value=np.nan, tolerance=1e-5)
 
                 setattr(seg_0, '_'+attr, attr_val_0)
