@@ -371,10 +371,22 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def assemble_crops(self, agg_segments=None):
+        """Assemble segments
+
+        Parameters
+        ----------
+        agg_segments : None
+            Assembled segments
+
+        Returns
+        -------
+        segments : list of WellSegment
+            All segments that lies inside this self.
+        """
         agg_segments = [] if agg_segments is None else agg_segments
 
         for well in self.iter_level(-self.tree_depth+1):
-            if well._has_segments():
+            if well._has_segments(): # pylint: disable=protected-access
                 agg_segments.extend(well.segments)
                 well.segments.clear()
             else:
@@ -469,7 +481,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     attr_val_0.drop(duplicate, axis=1, inplace=True)
 
                 # Add NaN values to logs
-                if attr == 'logs':
+                if attr == 'logs' and not attr_val_0.empty:
                     index_step = attr_val_0.index[1] - attr_val_0.index[0]
                     index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1], index_step)
                     attr_val_0 = attr_val_0.reindex(index_array, method='nearest', fill_value=np.nan, tolerance=1e-5)
