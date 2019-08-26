@@ -14,7 +14,7 @@ setup(
     name='petroflow',
     packages=find_packages(exclude=['examples']),
     version=version,
-    url='https://github.com/analysiscenter/well_logs',
+    url='https://github.com/gazprom-neft/petroflow',
     license='CC BY-NC-SA 4.0',
     author='Gazprom Neft DS team',
     author_email='rhudor@gmail.com',
