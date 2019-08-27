@@ -9,21 +9,6 @@ import cv2
 
 from petroflow.batchflow import FilesIndex, ImagesBatch, action, inbatch_parallel
 
-def _mirror_padding(image, shape):
-    new_shape = (np.array(shape) - image.size) * (np.array(shape) - image.size > 0)
-    padding_shape = ((new_shape[1], new_shape[1]), (new_shape[0], new_shape[0]), (0, 0))
-    image = np.array(image)
-    if image.ndim == 2:
-        padding_shape = padding_shape[:-1]
-    return PIL.Image.fromarray(np.pad(image, padding_shape, mode='reflect'))
-
-def _get_uv_path(path_dl):
-    _path = os.path.split(path_dl)
-    filename = _path[1]
-    dirname_uv = _path[0][:-2] + 'uv'
-    path_uv = os.path.join(dirname_uv, filename)
-    return path_uv
-
 class CoreIndex(FilesIndex):
     """FilesIndex with a well name added to its indices as a prefix."""
     def __init__(self, index=None, path=None, *args, **kwargs):
@@ -82,6 +67,23 @@ class CoreBatch(ImagesBatch):
 
     components = 'dl', 'uv', 'labels'
 
+    @staticmethod
+    def _mirror_padding(image, shape):
+        new_shape = (np.array(shape) - image.size) * (np.array(shape) - image.size > 0)
+        padding_shape = ((new_shape[1], new_shape[1]), (new_shape[0], new_shape[0]), (0, 0))
+        image = np.array(image)
+        if image.ndim == 2:
+            padding_shape = padding_shape[:-1]
+        return PIL.Image.fromarray(np.pad(image, padding_shape, mode='reflect'))
+
+    @staticmethod
+    def _get_uv_path(path_dl):
+        _path = os.path.split(path_dl)
+        filename = _path[1]
+        dirname_uv = _path[0][:-2] + 'uv'
+        path_uv = os.path.join(dirname_uv, filename)
+        return path_uv
+
     def _get_components(self, index, components=None):
         if components is None:
             components = self.components
@@ -122,7 +124,7 @@ class CoreBatch(ImagesBatch):
             components to save resulting images. Default: ('dl', 'uv').
         """
         full_path_dl = self._get_file_name(index, src=None)
-        full_path_uv = _get_uv_path(full_path_dl)
+        full_path_uv = self._get_uv_path(full_path_dl)
         res = (PIL.Image.open(full_path_dl), PIL.Image.open(full_path_uv))
         if grayscale:
             res = [item.convert('L') for item in res]
@@ -175,7 +177,7 @@ class CoreBatch(ImagesBatch):
         """
         _ = kwargs
         src = self.components[:2] if src is None else src
-        return [_mirror_padding(img, shape) for img in self._get_components(index, src)]
+        return [self._mirror_padding(img, shape) for img in self._get_components(index, src)]
 
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
@@ -319,13 +321,13 @@ class CoreBatch(ImagesBatch):
 
     @action
     @inbatch_parallel(init='indices', post='_assemble_uv')
-    def smooth(self, index, kernel=10, src=None, **kwargs):
-        """Binarize images.
+    def blur(self, index, kernel=10, src=None, **kwargs):
+        """Blur the images.
 
         Parameters
         ----------
         kernel : int, tuple
-            kernel size to smooth image. If int, image will be smoothed with kernel
+            kernel size to blur image. If int, image will be blurred with kernel
             `(kernel, kernel)`.
         src : tuple of str
             components to process. Default: 'uv'.
