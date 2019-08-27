@@ -108,11 +108,11 @@ When cloning repo from GitHub use flag ``--recursive`` to make sure that ``batch
 
 Please cite `PetroFlow` in your publications if it helps your research.
 
-    Khudorozhkov R., Kozhevin A., Kuvaev A. PetroFlow library for data science research of well data. 2019.
+    Khudorozhkov R., Kuvaev A., Kozhevin A. PetroFlow library for data science research of well data. 2019.
 
 ```
 @misc{
-  author       = {R. Khudorozhkov and A. Kozhevin and A. Kuvaev},
+  author       = {R. Khudorozhkov and A. Kuvaev and A. Kozhevin},
   title        = {PetroFlow library for data science research of well data},
   year         = 2019
 }
