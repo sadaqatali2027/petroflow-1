@@ -25,7 +25,7 @@ def _get_uv_path(path_dl):
     return path_uv
 
 class CoreIndex(FilesIndex):
-    """FilesIndex that include well name into indices as prefix."""
+    """FilesIndex with a well name added to its indices as a prefix."""
     def __init__(self, index=None, path=None, *args, **kwargs):
         """Create index.
 
