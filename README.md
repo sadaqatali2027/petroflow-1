@@ -1,9 +1,12 @@
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python](https://img.shields.io/badge/python-3.5-blue.svg)](https://python.org)
+[![TensorFlow](https://img.shields.io/badge/TensorFlow-1.12-orange.svg)](https://tensorflow.org)
+[![PyTorch](https://img.shields.io/badge/torch-1.1-orange.svg)](https://pytorch.org)
+[![Run Status](https://api.shippable.com/projects/5d5fd94288fdbd00078b3924/badge?branch=master)](https://app.shippable.com/github/gazprom-neft/petroflow)
 
-# WellLogs
+# PetroFlow
 
-`WellLogs` is a library that allows to process well data (logs, core photo etc.) and conveniently train
+`PetroFlow` is a library that allows to process well data (logs, core photo etc.) and conveniently train
 machine learning models.
 
 Main features:
@@ -23,13 +26,13 @@ Main features:
 * recover missed logs and DT log by other logs
 * detect collectors by logs
 
-## About WellLogs
+## About PetroFlow
 
-> WellLogs is based on [BatchFlow](https://github.com/analysiscenter/batchflow). You might benefit from reading [its documentation](https://analysiscenter.github.io/batchflow).
+> PetroFlow is based on [BatchFlow](https://github.com/analysiscenter/batchflow). You might benefit from reading [its documentation](https://analysiscenter.github.io/batchflow).
 However, it is not required, especially at the beginning.
 
 
-WellLogs has two main modules: [``src``](https://github.com/analysiscenter/well_logs/tree/master/well_logs/src) and [``models``](https://github.com/analysiscenter/well_logs/tree/master/well_logs/models).
+PetroFlow has two main modules: [``src``](https://github.com/gazprom-neft/petroflow/tree/master/petroflow/src) and [``models``](https://github.com/gazprom-neft/petroflow/tree/master/petroflow/models).
 
 
 ``src`` module contains ``Well``, ``WellBatch``, ``CoreBatch`` and ``WellLogsBatch`` classes.
@@ -74,24 +77,24 @@ train_pipeline = (
 
 ## Installation
 
-> `WellLogs` module is in the beta stage. Your suggestions and improvements are very welcome.
+> `PetroFlow` module is in the beta stage. Your suggestions and improvements are very welcome.
 
-> `WellLogs` supports python 3.5 or higher.
+> `PetroFlow` supports python 3.5 or higher.
 
 
 ### Installation as a python package
 
 With [pipenv](https://docs.pipenv.org/):
 
-    pipenv install git+https://github.com/analysiscenter/well_logs.git#egg=well_logs
+    pipenv install git+https://github.com/gazprom-neft/petroflow.git#egg=petroflow
 
 With [pip](https://pip.pypa.io/en/stable/):
 
-    pip3 install git+https://github.com/analysiscenter/well_logs.git
+    pip3 install git+https://github.com/gazprom-neft/petroflow.git
 
-After that just import `well_logs`:
+After that just import `petroflow`:
 ```python
-import well_logs
+import petroflow
 ```
 
 
@@ -99,4 +102,4 @@ import well_logs
 
 When cloning repo from GitHub use flag ``--recursive`` to make sure that ``batchflow`` submodule is also cloned.
 
-    git clone --recursive https://github.com/analysiscenter/well_logs.git
+    git clone --recursive https://github.com/gazprom-neft/petroflow.git
