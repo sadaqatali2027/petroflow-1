@@ -28,11 +28,11 @@ Main features:
 
 ## About PetroFlow
 
-> PetroFlow is based on [BatchFlow](https://github.com/analysiscenter/batchflow). You might benefit from reading [its documentation](https://analysiscenter.github.io/batchflow).
+> `PetroFlow` is based on [BatchFlow](https://github.com/analysiscenter/batchflow). You might benefit from reading [its documentation](https://analysiscenter.github.io/batchflow).
 However, it is not required, especially at the beginning.
 
 
-PetroFlow has two main modules: [``src``](https://github.com/gazprom-neft/petroflow/tree/master/petroflow/src) and [``models``](https://github.com/gazprom-neft/petroflow/tree/master/petroflow/models).
+`PetroFlow` has two main modules: [``src``](https://github.com/gazprom-neft/petroflow/tree/master/petroflow/src) and [``models``](https://github.com/gazprom-neft/petroflow/tree/master/petroflow/models).
 
 
 ``src`` module contains ``Well``, ``WellBatch``, ``CoreBatch`` and ``WellLogsBatch`` classes.
@@ -106,7 +106,7 @@ When cloning repo from GitHub use flag ``--recursive`` to make sure that ``batch
 
 ## Citing PetroFlow
 
-Please cite WellLogs in your publications if it helps your research.
+Please cite `PetroFlow` in your publications if it helps your research.
 
     Khudorozhkov R., Kozhevin A., Kuvaev A. PetroFlow library for data science research of well data. 2019.
 
