@@ -103,3 +103,17 @@ import petroflow
 When cloning repo from GitHub use flag ``--recursive`` to make sure that ``batchflow`` submodule is also cloned.
 
     git clone --recursive https://github.com/gazprom-neft/petroflow.git
+
+## Citing PetroFlow
+
+Please cite WellLogs in your publications if it helps your research.
+
+    Khudorozhkov R., Kozhevin A., Kuvaev A. PetroFlow library for data science research of well data. 2019.
+
+```
+@misc{
+  author       = {R. Khudorozhkov and A. Kozhevin and A. Kuvaev},
+  title        = {PetroFlow library for data science research of well data},
+  year         = 2019
+}
+```
