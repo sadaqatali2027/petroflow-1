@@ -162,7 +162,7 @@ class CoreBatch(ImagesBatch):
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
     def mirror_padding(self, index, shape, src=None, **kwargs):
-        """Add padding to images with the size which is less then shape.
+        """Add padding to images, whose size is less than `shape`.
 
         Parameters
         ----------
