@@ -1607,7 +1607,7 @@ class WellSegment(AbstractWellSegment):
                 _slice = [slice(None)] * 3
                 axis = -1 if channels == 'last' else 0
                 _slice[axis] = 0
-                img[_slice] = cv2.equalizeHist(img[_slice])
+                img[tuple(_slice)] = cv2.equalizeHist(img[tuple(_slice)])
                 img = cv2.cvtColor(img, cv2.COLOR_YCrCb2RGB)
             else:
                 img = cv2.equalizeHist(img)
