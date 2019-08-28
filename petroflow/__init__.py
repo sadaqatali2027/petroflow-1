@@ -1,4 +1,4 @@
-"""Well Logs package."""
+"""PetroFlow package."""
 
 from . import batchflow
 from .src import *
