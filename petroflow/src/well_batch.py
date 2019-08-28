@@ -96,6 +96,9 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
             print(errors)
             traceback.print_tb(errors[0].__traceback__)
             raise RuntimeError("Could not assemble the batch")
-        self.index = self.index.create_subset(self.indices[~skip_mask]) # pylint: disable=invalid-unary-operand-type
-        self.wells = results
-        return self
+        new_index = self.index.create_subset(self.indices[~skip_mask]) # pylint: disable=invalid-unary-operand-type
+        batch = WellBatch(
+            index=new_index,
+            preloaded=({k: v for k, v in zip(new_index.indices, results)}, )
+        )
+        return batch
