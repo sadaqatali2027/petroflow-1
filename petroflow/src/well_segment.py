@@ -177,7 +177,7 @@ class WellSegment(AbstractWellSegment):
     attrs_fdtd_index = ("layers", "boring_sequences", "boring_intervals", "core_lithology", "samples")
     attrs_no_index = ("inclination",)
 
-    def __init__(self, path, *args, core_width=10, pixels_per_cm=5, **kwargs):
+    def __init__(self, path, *args, core_width=10, pixels_per_cm=5, resize=True, **kwargs):
         super().__init__()
         _ = args, kwargs
         self.path = path
@@ -190,6 +190,7 @@ class WellSegment(AbstractWellSegment):
         self.field = meta["field"]
         self.depth_from = float(meta["depth_from"])
         self.depth_to = float(meta["depth_to"])
+        self.resize = resize
 
         self.has_samples = self._has_file("samples")
 
@@ -414,7 +415,12 @@ class WellSegment(AbstractWellSegment):
             dl_img = self._load_image(dl_path)
             uv_path = self._get_full_name(os.path.join(self.path, "samples_uv"), sample_name)
             uv_img = self._load_image(uv_path)
-            dl_img, uv_img = self._match_samples(dl_img, uv_img, sample_height, width)
+
+            if self.resize:
+                dl_img, uv_img = self._match_samples(dl_img, uv_img, sample_height, width)
+            else:
+                dl_img = np.array(dl_img)
+                uv_img = np.array(uv_img)
 
             top_crop = max(0, self._meters_to_pixels(self.depth_from - sample_depth_from))
             bottom_crop = sample_height - max(0, self._meters_to_pixels(sample_depth_to - self.depth_to))
