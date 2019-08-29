@@ -394,6 +394,29 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         return [agg_segments.pop(0) for i in range(len(agg_segments))]
 
+    def _aggregate_array(self, attr):
+        pixels_per_m = self.segments[0].pixels_per_cm * 100
+        segments = sorted(self.segments, key=lambda segment: segment.depth_from)
+        depth_to = segments[0].depth_to
+        aggregated_array = getattr(segments[0], attr)
+
+        for segment in segments[1:]:
+            if depth_to > segment.depth_to:
+                continue
+
+            if depth_to < segment.depth_from:
+                empty_hight_pix = round((segment.depth_from-depth_to)*pixels_per_m)
+                empty_part = np.fill([empty_hight_pix, *aggregated_array.shape[1:]], np.nan)
+                aggregated_array = np.vstack((aggregated_array, empty_part, getattr(segment, attr)))
+                depth_to = segment.depth_to
+                continue
+
+            intersection_pix = round((depth_to-segment.depth_from)*pixels_per_m)
+            aggregated_array = np.vstack((aggregated_array, getattr(segment, attr)[intersection_pix:]))
+            depth_to = segment.depth_to
+        return aggregated_array
+
+
     def aggregate(self, func, level=None):
         if level in (-1, -2):
             raise ValueError("Level can't be ({})".format(level))
@@ -406,10 +429,13 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = well.assemble_crops()
 
         for well in wells:
-
             seg_0 = well.segments[0]
             depth_from = well.depth_from
             depth_to = well.depth_to
+
+            for attr in seg_0.attrs_pixel_index:
+                setattr(seg_0, '_'+attr, well._aggregate_array(attr))
+
             # Reset index of 0 segment
             for attr in seg_0.attrs_depth_index+seg_0.attrs_fdtd_index:
                 try:
@@ -475,7 +501,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                         if re.match(pattern, column_copy):
                             duplicate_columns[i].append(column_copy)
 
-                # Aggreagte and drop duplicate_columns
+                # Aggregate and drop duplicate_columns
                 for column, duplicate in zip(columns, duplicate_columns):
                     attr_val_0[column] = getattr(attr_val_0[duplicate+[column]], func)(axis=1)
                     attr_val_0.drop(duplicate, axis=1, inplace=True)
