@@ -394,28 +394,32 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         return [agg_segments.pop(0) for i in range(len(agg_segments))]
 
-    def _aggregate_array(self, attr):
+    def _aggregate_array(self, func, attr):
+        func = "nan" + func
         pixels_per_m = self.segments[0].pixels_per_cm * 100
-        segments = sorted(self.segments, key=lambda segment: segment.depth_from)
-        depth_to = segments[0].depth_to
-        aggregated_array = getattr(segments[0], attr)
 
-        for segment in segments[1:]:
-            if depth_to > segment.depth_to:
-                continue
+        agg_array_hight_pix = round((self.depth_to-self.depth_from)*pixels_per_m)
+        attr_val_shape = getattr(self.segments[0], attr).shape
 
-            if depth_to < segment.depth_from:
-                empty_hight_pix = round((segment.depth_from-depth_to)*pixels_per_m)
-                empty_part = np.fill([empty_hight_pix, *aggregated_array.shape[1:]], np.nan)
-                aggregated_array = np.vstack((aggregated_array, empty_part, getattr(segment, attr)))
-                depth_to = segment.depth_to
-                continue
+        total = np.zeros((agg_array_hight_pix, *attr_val_shape[1:]), dtype=int)
+        background = np.full_like(total, np.nan, dtype=np.double)
+        for segment in self.segments:
 
-            intersection_pix = round((depth_to-segment.depth_from)*pixels_per_m)
-            aggregated_array = np.vstack((aggregated_array, getattr(segment, attr)[intersection_pix:]))
-            depth_to = segment.depth_to
-        return aggregated_array
+            attr_val = getattr(segment, attr)
+            segment_place = slice(round((segment.depth_from-self.depth_from)*pixels_per_m),
+                                  round((segment.depth_to-self.depth_from)*pixels_per_m))
 
+            if func == 'nanmax':
+                background[segment_place] = np.fmax(background[segment_place], attr_val)
+            if func == 'nanmean':
+                background[segment_place] = np.nansum([background[segment_place], attr_val], axis=0)
+                total[segment_place] += 1
+
+        if func == 'nanmax':
+            return background
+        if func == 'nanmean':
+            total = np.where(total == 0, 1, total)
+            return background / total
 
     def aggregate(self, func, level=None):
         if level in (-1, -2):
@@ -430,11 +434,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         for well in wells:
             seg_0 = well.segments[0]
-            depth_from = well.depth_from
-            depth_to = well.depth_to
 
             for attr in seg_0.attrs_pixel_index:
-                setattr(seg_0, '_'+attr, well._aggregate_array(attr))
+                setattr(seg_0, '_'+attr, well._aggregate_array(func, attr)) # pylint: disable=protected-access
 
             # Reset index of 0 segment
             for attr in seg_0.attrs_depth_index+seg_0.attrs_fdtd_index:
@@ -514,7 +516,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
                 setattr(seg_0, '_'+attr, attr_val_0)
 
-            setattr(seg_0, 'depth_from', depth_from)
-            setattr(seg_0, 'depth_to', depth_to)
+            setattr(seg_0, 'depth_from', well.depth_from)
+            setattr(seg_0, 'depth_to', well.depth_to)
             well.segments = [seg_0]
         return self.prune()
