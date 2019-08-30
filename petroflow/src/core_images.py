@@ -91,8 +91,6 @@ class CoreBatch(ImagesBatch):
             components = [components]
         pos = self.get_pos(None, components[0], index)
         res = [getattr(self, component)[pos] for component in components]
-        if len(res) == 1:
-            res = res[0]
         return res
 
     def _assemble_images(self, all_results, *args, dst=None, **kwargs):
@@ -113,22 +111,25 @@ class CoreBatch(ImagesBatch):
 
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
-    def load(self, index, grayscale=False, **kwargs):
+    def load(self, index, uv=True, **kwargs):
         """Load data.
 
         Parameters
         ----------
         grayscale : bool
             if True, convert images to gray scale.
-        dst : tuple
+        uv : bool
+            load UV images or not
+        dst : str ot tuple
             components to save resulting images. Default: ('dl', 'uv').
         """
         full_path_dl = self._get_file_name(index, src=None)
-        full_path_uv = self._get_uv_path(full_path_dl)
-        res = (PIL.Image.open(full_path_dl), PIL.Image.open(full_path_uv))
-        if grayscale:
-            res = [item.convert('L') for item in res]
-        return res[0], res[1]
+        if uv:
+            full_path_uv = self._get_uv_path(full_path_dl)
+            res = (PIL.Image.open(full_path_dl), PIL.Image.open(full_path_uv))
+            return res[0], res[1]
+        else:
+            return PIL.Image.open(full_path_dl)
 
     @action
     @inbatch_parallel(init='indices', post='_assemble_images')
@@ -293,11 +294,18 @@ class CoreBatch(ImagesBatch):
         _ = kwargs
         res = []
         src = self.components[:2] if src is None else src
+        src = np.array(src).ravel().tolist()
         for component in src:
             pos = self.get_pos(None, component, index)
             image = np.array(getattr(self, component)[pos])
-            res.append(PIL.Image.fromarray(cv2.equalizeHist(image))) # pylint: disable=no-member
-        return res
+            if image.ndim == 3:
+                image = cv2.cvtColor(image.astype('uint8'), cv2.COLOR_RGB2YCrCb)
+                image[:,:,0] = cv2.equalizeHist(image[:,:,0])
+                image = cv2.cvtColor(image, cv2.COLOR_YCrCb2RGB)
+            else:
+                image = cv2.equalizeHist(image)
+            res.append(PIL.Image.fromarray(image)) # pylint: disable=no-member
+        return res if len(res) > 1 else res[0]
 
     @action
     @inbatch_parallel(init='indices', post='_assemble_uv')
@@ -414,5 +422,5 @@ class CoreBatch(ImagesBatch):
             for i, axis in enumerate(spatial_axis):
                 _slice[axis] = slice(_pos[i], _pos[i] + shape[i])
             for i, img in enumerate(images):
-                crops[i].append(img[_slice])
-        return np.array(crops)
+                crops[i].append(img[tuple(_slice)])
+        return crops if len(crops) > 1 else crops[0]
