@@ -799,8 +799,6 @@ class WellSegment(AbstractWellSegment):
     def _apply_matching(self):
         """Update depths in all core-related attributes given calculated
         deltas."""
-        core_lithology_deltas = self._core_lithology_deltas.reset_index()
-
         # Update DataFrames with depth index
         attrs_depth_index = [attr for attr in self.attrs_depth_index if attr.startswith("core_")]
         for attr in attrs_depth_index:
@@ -808,19 +806,23 @@ class WellSegment(AbstractWellSegment):
                 continue
             attr_df = getattr(self, attr).reset_index()
             columns = attr_df.columns
-            merged_df = between_join(attr_df, core_lithology_deltas)
+            merged_df = between_join(attr_df, self._core_lithology_deltas)
             merged_df["DEPTH"] += merged_df["DELTA"]
             setattr(self, "_" + attr, merged_df[columns].set_index("DEPTH").sort_index())
 
         # TODO: carfully update samples and reload core images if needed
 
-        core_lithology = pd.merge(self._core_lithology.reset_index(),
-                                  self._core_lithology_deltas[["DEPTH_FROM", "DEPTH_TO", "DELTA"]],
-                                  on=["DEPTH_FROM", "DEPTH_TO"])
-        core_lithology["DEPTH_FROM"] += core_lithology["DELTA"]
-        core_lithology["DEPTH_TO"] += core_lithology["DELTA"]
-        core_lithology = core_lithology.drop("DELTA", axis=1)
-        self._core_lithology = core_lithology.set_index(["DEPTH_FROM", "DEPTH_TO"]).sort_index()
+        if self._has_file("core_lithology"):
+            core_lithology = cross_join(self.core_lithology.reset_index(),
+                                        self._core_lithology_deltas[["DEPTH_FROM", "DEPTH_TO", "DELTA"]],
+                                        suffixes=("", "_deltas"))
+            mask = ((core_lithology["DEPTH_FROM"] >= core_lithology["DEPTH_FROM_deltas"]) &
+                    (core_lithology["DEPTH_TO"] <= core_lithology["DEPTH_TO_deltas"]))
+            core_lithology = core_lithology[mask]
+            core_lithology["DEPTH_FROM"] += core_lithology["DELTA"]
+            core_lithology["DEPTH_TO"] += core_lithology["DELTA"]
+            core_lithology = core_lithology[self.core_lithology.reset_index().columns]
+            self._core_lithology = core_lithology.set_index(["DEPTH_FROM", "DEPTH_TO"]).sort_index()
 
         boring_intervals = pd.merge(self._boring_intervals.reset_index(),
                                     self._boring_intervals_deltas[["DEPTH_FROM", "DEPTH_TO", "DELTA"]],
@@ -916,7 +918,8 @@ class WellSegment(AbstractWellSegment):
         """Delete all spaces from a matching mode string."""
         return [mode.replace(" ", "") for mode in to_list(mode)]
 
-    def match_core_logs(self, mode="GK ~ core_logs.GK", max_shift=5, delta_from=-4, delta_to=4, delta_step=0.1,
+    def match_core_logs(self, mode="GK ~ core_logs.GK", split_lithology_intervals=True,
+                        max_shift=10, delta_from=-8, delta_to=8, delta_step=0.1,
                         max_iter=50, max_iter_time=0.25, save_report=False):
         """Perform core-to-log matching by shifting core samples in order to
         maximize correlation between well and core logs.
@@ -931,6 +934,9 @@ class WellSegment(AbstractWellSegment):
             - core_attr - an attribute of `self` to get core data from
             - core_log - mnemonic of a core log or property to use
             Defaults to gamma ray matching.
+        split_lithology_intervals : bool
+            Specifies whether to independently shift lithology intervals
+            inside a boring interval. Defaults to `True`.
         max_shift : positive float
             Maximum shift of a boring sequence in meters. Defaults to 5.
         delta_from : float
@@ -963,10 +969,9 @@ class WellSegment(AbstractWellSegment):
 
         mode_list = self._unify_matching_mode(mode)
 
-        if not self._has_file("core_lithology"):
-            core_lithology = self.boring_intervals.reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
-            self._core_lithology = core_lithology.set_index(["DEPTH_FROM", "DEPTH_TO"])
-        lithology_intervals = self.core_lithology.reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
+        split_lithology_intervals = split_lithology_intervals and self._has_file("core_lithology")
+        lithology_df = self.core_lithology if split_lithology_intervals else self.boring_intervals
+        lithology_intervals = lithology_df.reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
 
         # `boring_sequences` is a list of DataFrames, containing contiguous boring intervals, extracted one after
         # another. They are considered together since they must be shifted by the same delta.
