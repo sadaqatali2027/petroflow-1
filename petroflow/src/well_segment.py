@@ -263,7 +263,7 @@ class WellSegment(AbstractWellSegment):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
         df = df[self.depth_from:self.depth_to]
-        if np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
+        if not df.empty and np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
             df.drop(df.index[-1], inplace=True)
         return df
 
@@ -425,8 +425,8 @@ class WellSegment(AbstractWellSegment):
             core_dl[insert_pos:insert_pos+dl_img.shape[0]] = dl_img
             core_uv[insert_pos:insert_pos+uv_img.shape[0]] = uv_img
 
-        self._core_dl = core_dl # / 255
-        self._core_uv = core_uv # / 255
+        self._core_dl = core_dl
+        self._core_uv = core_uv
         return self
 
     def dump(self, path):
@@ -918,7 +918,20 @@ class WellSegment(AbstractWellSegment):
         """Delete all spaces from a matching mode string."""
         return [mode.replace(" ", "") for mode in to_list(mode)]
 
-    def match_core_logs(self, mode="GK ~ core_logs.GK", split_lithology_intervals=True,
+    @staticmethod
+    def _blur_log(log, win_size):
+        if win_size is None:
+            return log
+        old_index = log.index
+        new_index = np.arange(old_index.min(), old_index.max(), 0.01)
+        log = log.reindex(index=new_index, method="nearest", tolerance=1e-4)
+        log = log.interpolate(limit_direction="both")
+        std = win_size / 6  # three-sigma rule
+        log = log.rolling(window=win_size, min_periods=1, win_type="gaussian", center=True).mean(std=std)
+        log = log.reindex(index=old_index, method="nearest")
+        return log
+
+    def match_core_logs(self, mode="GK ~ core_logs.GK", split_lithology_intervals=True, gaussian_win_size=None,
                         max_shift=10, delta_from=-8, delta_to=8, delta_step=0.1,
                         max_iter=50, max_iter_time=0.25, save_report=False):
         """Perform core-to-log matching by shifting core samples in order to
@@ -991,19 +1004,24 @@ class WellSegment(AbstractWellSegment):
 
             # Independently optimize R^2 for each boring sequence
             for sequence in boring_sequences:
+                sequence_depth_from = sequence["DEPTH_FROM"].min()
+                sequence_depth_to = sequence["DEPTH_TO"].max()
+
                 mode = self._select_matching_mode(sequence, mode_list)
                 sequences_modes.append(mode)
                 if mode is None:
                     # Don't shift a sequence if there's no data to perform matching
-                    segment_depth_from = sequence["DEPTH_FROM"].min()
-                    segment_depth_to = sequence["DEPTH_TO"].max()
-                    zero_shift = Shift(segment_depth_from, segment_depth_to, 0, 0, np.nan)
+                    zero_shift = Shift(sequence_depth_from, sequence_depth_to, 0, 0, np.nan)
                     sequences_shifts.append([zero_shift])
                     continue
 
                 log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(mode)
                 well_log = self.logs[log_mnemonic].dropna()
+                well_log = well_log[sequence_depth_from - max_shift : sequence_depth_to + max_shift]
+                well_log = self._blur_log(well_log, gaussian_win_size)
                 core_log = getattr(self, core_attr)[core_mnemonic].dropna()
+                core_log = core_log[sequence_depth_from:sequence_depth_to]
+                core_log = self._blur_log(core_log, gaussian_win_size)
 
                 shifts = match_boring_sequence(sequence, lithology_intervals, well_log, core_log,
                                                max_shift, delta_from, delta_to, delta_step,
@@ -1017,7 +1035,7 @@ class WellSegment(AbstractWellSegment):
                 sorted_shifts = sorted(shifts, key=lambda x: x.depth_from)
                 do_overlap = False
                 for int1, int2 in zip(sorted_shifts[:-1], sorted_shifts[1:]):
-                    if int1.depth_to > int2.depth_from:
+                    if int1.depth_to >= int2.depth_from:
                         do_overlap = True
                         break
                 loss = np.nanmean([interval.loss for interval in sorted_shifts])
@@ -1472,10 +1490,22 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             The segment with interpolated values in `attrs`.
         """
-        attrs = self.attrs_fdtd_index if attrs is None else attrs
+        attrs = self.attrs_depth_index if attrs is None else attrs
         for attr in np.intersect1d(attrs, self.attrs_depth_index):
             res = getattr(self, attr).interpolate(*args, **kwargs)
             setattr(self, "_" + attr, res)
+        return self
+
+    def gaussian_blur(self, win_size, std=None, attrs=None):
+        if std is None:
+            std = win_size / 6  # three-sigma rule
+        attrs = self.attrs_depth_index if attrs is None else attrs
+        for attr in np.intersect1d(attrs, self.attrs_depth_index):
+            val = getattr(self, attr)
+            nan_mask = val.isna()
+            val = val.rolling(window=win_size, min_periods=1, win_type="gaussian", center=True).mean(std=std)
+            val[nan_mask] = np.nan
+            setattr(self, "_" + attr, val)
         return self
 
     def drop_nans(self, logs=None):
