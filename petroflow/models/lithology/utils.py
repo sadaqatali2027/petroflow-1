@@ -1,7 +1,13 @@
+import os
+import sys
 import cv2
+import pandas as pd
 import numpy as np
+import collections
 from collections import Counter
 import matplotlib.pyplot as plt
+from petroflow import CoreBatch, CoreIndex
+from petroflow.batchflow import Dataset, Pipeline, B, V
 
 def plot_examples(batch, test=False, mapping=None, reverse_mapping=None, examples=50):
     mapping = dict() if mapping is None else mapping
@@ -81,3 +87,58 @@ class LithologyUtils:
         default = pd.DataFrame({'DEPTH_FROM': [], 'DEPTH_TO': [], 'FORMATION': []}).set_index(['DEPTH_FROM', 'DEPTH_TO'])
         res = [df if len(df) > 0 else default for df in res]
         return res
+
+def get_input_data(path, lithology, ratio=0.8):
+    index = CoreIndex(path=path)
+    annotation = pd.read_feather(os.path.join(path, 'annotation.feather'))
+    annotation['SAMPLE'] = annotation['WELL'] + '_' + annotation['SAMPLE']
+    annotation = annotation.set_index('SAMPLE')    
+    annotation = annotation[annotation['LITHOLOGY'].isin(lithology)]
+
+    np.random.seed(42)
+    train_wells = np.random.choice(annotation.WELL.unique(),
+                                   int(len(annotation.WELL.unique()) * ratio),
+                                   replace=False)
+    test_wells = np.setdiff1d(annotation.WELL.unique(), train_wells)
+
+    index = index.create_subset(annotation.index.values)
+    train_index = index.create_subset(annotation[annotation.WELL.isin(train_wells)].index.values)
+    test_index = index.create_subset(annotation[annotation.WELL.isin(test_wells)].index.values)
+
+    ds = Dataset(index, CoreBatch)
+    ds_train = Dataset(train_index, CoreBatch)
+    ds_test = Dataset(test_index, CoreBatch)
+    
+    return annotation, ds, ds_train, ds_test
+
+def get_statistics(ds, annotation):
+    counter_ppl = (
+        Pipeline()
+        .set_dataset(ds)
+        .load(uv=False, dst=['dl'])
+        .normalize(src='dl', dst='dl')
+        .create_labels(annotation.LITHOLOGY.loc)
+        .update(B('labels'), B('labels').tolist())
+        .init_variable('lithology', default=[])
+        .update(V('lithology', mode='e'), B('labels'))
+    )
+
+    (counter_ppl
+     .after
+     .add_namespace(collections)
+     .init_variable('counter')
+     .Counter(V('lithology'), save_to=V('counter'))
+    )
+    
+    counter_ppl.run(16, n_epochs=1, drop_last=False)
+    counter = counter_ppl.v('counter')
+
+    labels_mapping = {i: k for k, i in enumerate(counter)}
+    reverse_mapping = {v: k for k, v in labels_mapping.items()}
+    weights = np.array([1 / counter[reverse_mapping[i]] for i in range(len(labels_mapping))])
+    weights = weights / sum(weights)
+
+    return labels_mapping, reverse_mapping, counter, weights
+
+def encode(labels, mapping):
+    return np.array([mapping[item] for item in labels])
