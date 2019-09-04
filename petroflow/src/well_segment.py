@@ -1032,14 +1032,11 @@ class WellSegment(AbstractWellSegment):
             best_shifts = None
             best_loss = None
             for shifts in product(*sequences_shifts):
-                sorted_shifts = sorted(shifts, key=lambda x: x.depth_from)
-                do_overlap = False
-                for int1, int2 in zip(sorted_shifts[:-1], sorted_shifts[1:]):
-                    if int1.depth_to >= int2.depth_from:
-                        do_overlap = True
-                        break
-                loss = np.nanmean([interval.loss for interval in sorted_shifts])
-                if (not do_overlap) and (best_shifts is None or loss < best_loss):
+                is_valid = all(int1.depth_to < int2.depth_from for int1, int2 in zip(shifts[:-1], shifts[1:]))
+                if not is_valid:
+                    continue
+                loss = np.nanmean([interval.loss for interval in shifts])
+                if best_shifts is None or loss < best_loss:
                     best_shifts = shifts
                     best_loss = loss
 
