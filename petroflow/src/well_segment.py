@@ -896,7 +896,7 @@ class WellSegment(AbstractWellSegment):
         core_attr, core_mnemonic = split_core_mode
         return log_mnemonic, core_mnemonic, core_attr
 
-    def _select_matching_mode(self, segment, mode_list):
+    def _select_matching_mode(self, segment, mode_list, min_points, min_points_per_meter):
         """Select appropriate matching mode based on data, availible for given
         segment."""
         segment_depth_from = segment["DEPTH_FROM"].min()
@@ -909,7 +909,7 @@ class WellSegment(AbstractWellSegment):
                 core_log = getattr(self, core_attr)[core_mnemonic].dropna()
                 well_log_len = len(well_log[segment_depth_from:segment_depth_to])
                 core_log_len = len(core_log[segment_depth_from:segment_depth_to])
-                if min(well_log_len, core_log_len) > max(core_len, 1):
+                if min(well_log_len, core_log_len) >= max(min_points_per_meter * core_len, min_points):
                     return mode
         return None
 
@@ -932,8 +932,8 @@ class WellSegment(AbstractWellSegment):
         return log
 
     def match_core_logs(self, mode="GK ~ core_logs.GK", split_lithology_intervals=True, gaussian_win_size=None,
-                        max_shift=10, delta_from=-8, delta_to=8, delta_step=0.1,
-                        max_iter=50, max_iter_time=0.25, save_report=False):
+                        min_points=10, min_points_per_meter=1, max_shift=10, delta_from=-8, delta_to=8,
+                        delta_step=0.1, max_iter=50, max_iter_time=0.25, save_report=False):
         """Perform core-to-log matching by shifting core samples in order to
         maximize correlation between well and core logs.
 
@@ -980,6 +980,9 @@ class WellSegment(AbstractWellSegment):
         if max(np.abs(delta_from), np.abs(delta_to)) > max_shift:
             raise ValueError("delta_from and delta_to must not exceed max_shift in absolute value")
 
+        # TODO: extra checks for min_points
+        min_points = max(min_points, 2)
+
         mode_list = self._unify_matching_mode(mode)
 
         split_lithology_intervals = split_lithology_intervals and self._has_file("core_lithology")
@@ -1007,7 +1010,7 @@ class WellSegment(AbstractWellSegment):
                 sequence_depth_from = sequence["DEPTH_FROM"].min()
                 sequence_depth_to = sequence["DEPTH_TO"].max()
 
-                mode = self._select_matching_mode(sequence, mode_list)
+                mode = self._select_matching_mode(sequence, mode_list, min_points, min_points_per_meter)
                 sequences_modes.append(mode)
                 if mode is None:
                     # Don't shift a sequence if there's no data to perform matching

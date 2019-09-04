@@ -96,7 +96,7 @@ def generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, sequence_delta_from, se
     return [np.concatenate([[d1], d2]) for d1, d2 in product(segment_delta, interval_deltas)]
 
 
-def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log):
+def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log, eps=1e-8):
     """Calculate optimization loss as negative correlation between well log
     and core log.
 
@@ -129,7 +129,9 @@ def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log):
     shifted_depths = np.concatenate(shifted_depths)
     well_log = np.nan_to_num(log_interpolator(shifted_depths))
     # TODO: find out why NaNs appear
-    return -np.corrcoef(well_log, core_log)[0, 1]
+    cov = np.mean(well_log * core_log) - well_log.mean() * core_log.mean()
+    cor = np.clip(cov / ((well_log.std() + eps) * (core_log.std() + eps)), -1, 1)
+    return -cor
 
 
 def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_log, max_shift,
