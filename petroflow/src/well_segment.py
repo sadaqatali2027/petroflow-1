@@ -1071,7 +1071,7 @@ class WellSegment(AbstractWellSegment):
         return self
 
     @staticmethod
-    def _calc_matching_r2(well_log, core_log):
+    def _calc_matching_r2(well_log, core_log, eps=1e-8):
         """Calculate squared correlation coefficient between well and core
         logs.
 
@@ -1082,7 +1082,9 @@ class WellSegment(AbstractWellSegment):
         well_log = well_log.dropna()
         interpolator = interp1d(well_log.index, well_log, kind="linear", fill_value="extrapolate")
         well_log = interpolator(core_log.index)
-        return np.corrcoef(core_log, well_log)[0, 1]**2
+        cov = np.mean(well_log * core_log) - well_log.mean() * core_log.mean()
+        cor = np.clip(cov / ((well_log.std() + eps) * (core_log.std() + eps)), -1, 1)
+        return cor**2
 
     def plot_matching(self, mode=None, scale=False, subplot_height=750, subplot_width=200):
         """Plot well log and corresponding core log for each boring sequence.
