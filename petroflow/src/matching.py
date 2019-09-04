@@ -133,7 +133,7 @@ def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log):
 
 
 def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_log, max_shift,
-                          delta_from, delta_to, delta_step, max_iter, timeout):
+                          delta_from, delta_to, delta_step, max_iter, timeout, top_shifts=25):
     """Perform core-to-log matching of a boring sequence by shifting core
     samples in order to maximize correlation between well and core logs.
 
@@ -227,7 +227,7 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
     zero_deltas = np.zeros(np.sum(bi_n_lith_ints) + 1)
     zero_shift_loss = loss(zero_deltas, bi_n_lith_ints, core_depths, log_interpolator, core_logs)
     zero_shift = Shift(sequence_depth_from, sequence_depth_to, 0, zero_deltas[1:], zero_shift_loss)
-    shifts = [zero_shift]
+    shifts = []
 
     futures = []
     init_deltas = generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, delta_from, delta_to, delta_step)
@@ -259,4 +259,5 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
             shift = Shift(sequence_depth_from + sequence_delta, sequence_depth_to + sequence_delta,
                           sequence_delta, interval_deltas, future_loss)
             shifts.append(shift)
-    return shifts
+    top_shifts = sorted(shifts, key=lambda x: x.loss)[:top_shifts] + [zero_shift]
+    return top_shifts
