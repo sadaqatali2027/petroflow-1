@@ -932,7 +932,7 @@ class WellSegment(AbstractWellSegment):
         return log
 
     def match_core_logs(self, mode="GK ~ core_logs.GK", split_lithology_intervals=True, gaussian_win_size=None,
-                        min_points=10, min_points_per_meter=1, max_shift=10, delta_from=-8, delta_to=8,
+                        min_points=3, min_points_per_meter=1, max_shift=10, delta_from=-8, delta_to=8,
                         delta_step=0.1, max_iter=50, max_iter_time=0.25, save_report=False):
         """Perform core-to-log matching by shifting core samples in order to
         maximize correlation between well and core logs.
