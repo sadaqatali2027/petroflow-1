@@ -23,7 +23,7 @@ from plotly.subplots import make_subplots
 from plotly.offline import init_notebook_mode, plot
 
 from .abstract_classes import AbstractWellSegment
-from .matching import select_contigious_intervals, match_boring_sequence, Shift
+from .matching import select_contigious_intervals, match_boring_sequence, find_best_shifts, Shift
 from .joins import cross_join, between_join, fdtd_join
 from .utils import to_list, leq_notclose, leq_close, geq_close
 from .exceptions import SkipWellException, DataRegularityError
@@ -1031,23 +1031,13 @@ class WellSegment(AbstractWellSegment):
                                                max_iter, timeout=max_iter*max_iter_time)
                 sequences_shifts.append(shifts)
 
-            # Choose best shift for each boring sequence so that they don't overlap and maximize matching R^2
-            best_shifts = None
-            best_loss = None
-            for shifts in product(*sequences_shifts):
-                is_valid = all(int1.depth_to < int2.depth_from for int1, int2 in zip(shifts[:-1], shifts[1:]))
-                if not is_valid:
-                    continue
-                loss = np.nanmean([interval.loss for interval in shifts])
-                if best_shifts is None or loss < best_loss:
-                    best_shifts = shifts
-                    best_loss = loss
+            best_shifts = find_best_shifts(sequences_shifts)
 
             # Store shift deltas, mode and R^2
             for sequence, shift in zip(boring_sequences, best_shifts):
                 mask = ((lithology_intervals["DEPTH_FROM"] >= sequence["DEPTH_FROM"].min()) &
                         (lithology_intervals["DEPTH_TO"] <= sequence["DEPTH_TO"].max()))
-                sequence_lithology_intervals = lithology_intervals[mask]
+                sequence_lithology_intervals = lithology_intervals[mask].copy()  # to avoid SettingWithCopyWarning
                 sequence_lithology_intervals["DELTA"] = shift.interval_deltas
                 sequence["DELTA"] = shift.sequence_delta
 

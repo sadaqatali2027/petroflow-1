@@ -1,5 +1,6 @@
 """Implements core-to-log matching algorithm."""
 
+from math import ceil
 from itertools import product
 from collections import namedtuple
 
@@ -261,5 +262,32 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
             shift = Shift(sequence_depth_from + sequence_delta, sequence_depth_to + sequence_delta,
                           sequence_delta, interval_deltas, future_loss)
             shifts.append(shift)
-    top_shifts = sorted(shifts, key=lambda x: x.loss)[:top_shifts] + [zero_shift]
-    return top_shifts
+    return  [zero_shift] + shifts
+
+
+def find_best_shifts(sequences_shifts, max_combinations=1e5):
+    """Choose best shift for each boring sequence so that they don't overlap
+    and maximize matching R^2."""
+    n_sequences = len(sequences_shifts)
+    top_n = ceil(max_combinations ** (1 / n_sequences))
+    if len(sequences_shifts[0]) - 1 <= top_n:
+        top_shifts = sequences_shifts
+    else:
+        # shifts[0] is a zero shift of a sequence and should be considered separately
+        top_shifts = [shifts[:1] + sorted(shifts[1:], key=lambda x: x.loss)[:top_n] for shifts in sequences_shifts]
+
+    best_shifts = None
+    best_loss = None
+    for shifts in product(*top_shifts):
+        is_valid = all(int1.depth_to < int2.depth_from for int1, int2 in zip(shifts[:-1], shifts[1:]))
+        if not is_valid:
+            continue
+        interval_losses = [interval.loss for interval in shifts]
+        if np.isnan(interval_losses).all():  # the whole boring group cannot be matched
+            mean_loss = 1  # maximum loss
+        else:
+            mean_loss = np.nanmean(interval_losses)
+        if best_shifts is None or mean_loss < best_loss:
+            best_shifts = shifts
+            best_loss = mean_loss
+    return best_shifts
