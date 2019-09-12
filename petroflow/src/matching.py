@@ -270,11 +270,14 @@ def find_best_shifts(sequences_shifts, max_combinations=1e5):
     and maximize matching R^2."""
     n_sequences = len(sequences_shifts)
     top_n = ceil(max_combinations ** (1 / n_sequences))
-    if len(sequences_shifts[0]) - 1 <= top_n:
-        top_shifts = sequences_shifts
-    else:
-        # shifts[0] is a zero shift of a sequence and should be considered separately
-        top_shifts = [shifts[:1] + sorted(shifts[1:], key=lambda x: x.loss)[:top_n] for shifts in sequences_shifts]
+
+    top_shifts = []
+    for shifts in sequences_shifts:
+        if len(shifts) - 1 <= top_n:
+            top_shifts.append(shifts)
+        else:
+            # shifts[0] is a zero shift of a sequence and should be considered separately
+            top_shifts.append(shifts[:1] + sorted(shifts[1:], key=lambda x: x.loss)[:top_n])
 
     best_shifts = None
     best_loss = None
