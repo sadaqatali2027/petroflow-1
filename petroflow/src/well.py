@@ -395,7 +395,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return [agg_segments.pop(0) for i in range(len(agg_segments))]
 
     def _aggregate_array(self, func, attr):
-        func = "nan" + func
         pixels_per_m = self.segments[0].pixels_per_cm * 100
 
         agg_array_hight_pix = round((self.depth_to-self.depth_from)*pixels_per_m)
@@ -409,15 +408,15 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             segment_place = slice(round((segment.depth_from-self.depth_from)*pixels_per_m),
                                   round((segment.depth_to-self.depth_from)*pixels_per_m))
 
-            if func == 'nanmax':
+            if func == 'max':
                 background[segment_place] = np.fmax(background[segment_place], attr_val)
-            if func == 'nanmean':
+            if func == 'mean':
                 background[segment_place] = np.nansum([background[segment_place], attr_val], axis=0)
                 total[segment_place] += 1
 
-        if func == 'nanmax':
+        if func == 'max':
             return background
-        if func == 'nanmean':
+        if func == 'mean':
             total = np.where(total == 0, 1, total)
             return background / total
 
