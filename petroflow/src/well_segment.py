@@ -1389,7 +1389,7 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def _create_mask_fdtd(self, src, column, mapping, mode, default, dst):
-        """Create mask from fdtd data"""
+        """Create mask from fdtd data."""
         if mode not in ['core', 'logs']:
             raise ValueError('Unknown mode: ', mode)
 
@@ -1409,7 +1409,7 @@ class WellSegment(AbstractWellSegment):
             factor = len(mask) / self.length
             start = np.round((np.maximum(depth_from, self.depth_from) - self.depth_from) * factor).astype(int)
             end = np.round((np.minimum(depth_to, self.depth_to) - self.depth_from) * factor).astype(int)
-            end = end + self.pixels_per_cm - 1 # Compensate for rounding
+            end = end + (self.pixels_per_cm - 1)
         elif mode == 'logs':
             mask = np.ones(len(self.logs)) * default
             start = np.searchsorted(self.logs.index, depth_from, side='left')
