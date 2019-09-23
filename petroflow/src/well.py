@@ -397,6 +397,35 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             return background / total
         raise ValueError("Aggregation function can't be ({})".format(func))
 
+    def _aggregate_logs(self, func, step):
+        logs_from = min(self.iter_level(), key=lambda segment: segment.logs.index[0]).logs.index[0]
+        logs_to = max(self.iter_level(), key=lambda segment: segment.logs.index[-1]).logs.index[-1]
+        mnemonics = self.iter_level()[0].logs.columns
+
+        indices = pd.Index(np.arange(logs_from, logs_to + step, step), name='DEPTH')
+        total = np.zeros((indices.shape[0], len(mnemonics)), dtype=int)
+        background = np.full_like(total, np.nan, dtype=np.double)
+
+        for segment in self.segments:
+            logs = segment.logs
+            logs_place = slice(round(float(logs.index[0] - logs_from) / step),
+                               round(float(logs.index[-1] - logs_from) / step)+1)
+
+            if func == 'max':
+                background[logs_place] = np.fmax(background[logs_place], logs.values)
+            if func == 'mean':
+                mask = np.isnan(background[logs_place]) & np.isnan(logs.values)
+                background[logs_place] = np.nansum([background[logs_place], logs.values], axis=0)
+                background[logs_place] = np.where(mask, np.nan, background[logs_place])
+                total[logs_place] += 1
+
+        if func == 'max':
+            return pd.DataFrame(background, index=indices, columns=mnemonics)
+        if func == 'mean':
+            total = np.where(total == 0, 1, total)
+            return pd.DataFrame(background / total, index=indices, columns=mnemonics)
+        raise ValueError("Aggregation function can't be ({})".format(func))
+
     def aggregate(self, func, level=None):
         if level in (-1, -2):
             raise ValueError("Level can't be ({})".format(level))
@@ -411,8 +440,10 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             for attr in WellSegment.attrs_pixel_index:
                 setattr(seg_0, '_'+attr, well._aggregate_array(func, attr)) # pylint: disable=protected-access
 
+            step = (seg_0.logs.index[1:] - seg_0.logs.index[:-1]).min()
+            setattr(seg_0, '_logs', well._aggregate_logs(func, step=step)) # pylint: disable=protected-access
             # Reset index of all segments and merge it
-            for attr in WellSegment.attrs_depth_index+WellSegment.attrs_fdtd_index:
+            for attr in WellSegment.attrs_depth_index[1:]+WellSegment.attrs_fdtd_index:
                 attr_val_0 = getattr(seg_0, attr)
                 if not attr_val_0 is None:
                     attr_val_0.reset_index(inplace=True)
@@ -446,7 +477,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     attr_val_0.sort_index(inplace=True)
                     setattr(seg_0, '_'+attr, attr_val_0)
 
-            for attr in WellSegment.attrs_depth_index:
+            for attr in WellSegment.attrs_depth_index[1:]:
                 attr_val_0 = getattr(seg_0, '_'+attr)
 
                 if not attr_val_0 is None and not attr_val_0.empty:
@@ -468,12 +499,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 for column, duplicate in zip(columns, duplicate_columns):
                     attr_val_0[column] = getattr(attr_val_0[duplicate+[column]], func)(axis=1)
                     attr_val_0.drop(duplicate, axis=1, inplace=True)
-
-                # Add NaN values to logs
-                if attr == 'logs' and attr_val_0.shape[0] > 1:
-                    index_step = (attr_val_0.index[1:] - attr_val_0.index[:-1]).min()
-                    index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1]+index_step, index_step)
-                    attr_val_0 = attr_val_0.reindex(index_array, method='nearest', fill_value=np.nan, tolerance=1e-5)
 
                 setattr(seg_0, '_'+attr, attr_val_0)
             setattr(seg_0, 'depth_from', well.depth_from)
