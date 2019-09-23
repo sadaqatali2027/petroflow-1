@@ -419,6 +419,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         if func == 'mean':
             total = np.where(total == 0, 1, total)
             return background / total
+        raise ValueError("Aggregation function can't be ({})".format(func))
 
     def aggregate(self, func, level=None):
         if level in (-1, -2):
