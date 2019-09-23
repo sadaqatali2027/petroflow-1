@@ -370,30 +370,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [segment for segment in well if segment.length > min_length]
         return self.prune()
 
-    def assemble_crops(self, agg_segments=None):
-        """Assemble segments
-
-        Parameters
-        ----------
-        agg_segments : None
-            Assembled segments
-
-        Returns
-        -------
-        segments : list of WellSegment
-            All segments that lies inside this self.
-        """
-        agg_segments = [] if agg_segments is None else agg_segments
-
-        for well in self.iter_level(-self.tree_depth+1):
-            if well._has_segments(): # pylint: disable=protected-access
-                agg_segments.extend(well.segments)
-                well.segments.clear()
-            else:
-                return well.assemble_crops(agg_segments)
-
-        return [agg_segments.pop(0) for i in range(len(agg_segments))]
-
     def _aggregate_array(self, func, attr):
         pixels_per_m = self.segments[0].pixels_per_cm * 100
 
@@ -425,42 +401,30 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         if level in (-1, -2):
             raise ValueError("Level can't be ({})".format(level))
 
-        if level is None:
-            level = -self.tree_depth
+        level = -self.tree_depth if level is None else level
 
         wells = self.iter_level(level)
         for well in wells:
-            well.segments = well.assemble_crops()
-
-        for well in wells:
+            well.segments = well.iter_level()
             seg_0 = well.segments[0]
 
-            for attr in seg_0.attrs_pixel_index:
+            for attr in WellSegment.attrs_pixel_index:
                 setattr(seg_0, '_'+attr, well._aggregate_array(func, attr)) # pylint: disable=protected-access
 
-            # Reset index of 0 segment
-            for attr in seg_0.attrs_depth_index+seg_0.attrs_fdtd_index:
-                try:
-                    attr_val_0 = getattr(seg_0, attr)
-                except FileNotFoundError:
-                    continue
-                if attr_val_0 is None:
-                    continue
-                setattr(seg_0, '_'+attr, attr_val_0.reset_index())
-
             # Reset index of all segments and merge it
-            for i, segment in enumerate(well.segments[1:]):
-                for attr in segment.attrs_depth_index+segment.attrs_fdtd_index:
-                    try:
-                        attr_val = getattr(segment, attr)
-                    except FileNotFoundError:
-                        continue
+            for attr in WellSegment.attrs_depth_index+WellSegment.attrs_fdtd_index:
+                attr_val_0 = getattr(seg_0, attr)
+                if not attr_val_0 is None:
+                    attr_val_0.reset_index(inplace=True)
+
+                for i, segment in enumerate(well.segments[1:]):
+
+                    attr_val = getattr(segment, attr)
 
                     if attr_val is None:
                         continue
 
-                    attr_val = attr_val.reset_index()
-                    attr_val_0 = getattr(seg_0, attr)
+                    attr_val.reset_index(inplace=True)
 
                     if attr_val.dropna(how='all').empty:
                         continue
@@ -468,29 +432,26 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     if attr in segment.attrs_depth_index:
                         attr_val_0 = pd.merge_ordered(attr_val_0, attr_val, on='DEPTH',
                                                       suffixes=('_'+str(i), ''))
-                    elif attr in ['layers', 'core_lithology']: # String values
-                        attr_val_0 = pd.concat([attr_val_0, attr_val])
                     else:
-                        attr_val_0 = pd.merge_ordered(attr_val_0, attr_val, on=['DEPTH_FROM', 'DEPTH_TO'],
-                                                      suffixes=('_'+str(i), ''))
+                        attr_val_0 = pd.concat([attr_val_0, attr_val])
 
-                    setattr(seg_0, '_'+attr, attr_val_0)
+                setattr(seg_0, '_'+attr, attr_val_0)
 
-            for attr in seg_0.attrs_depth_index+seg_0.attrs_fdtd_index:
+
+            for attr in WellSegment.attrs_fdtd_index:
                 attr_val_0 = getattr(seg_0, '_'+attr)
-
-                if attr_val_0 is None:
-                    continue
-
-                if attr in seg_0.attrs_depth_index and not attr_val_0.empty:
-                    attr_val_0 = attr_val_0.set_index('DEPTH')
-                elif attr in seg_0.attrs_fdtd_index and not attr_val_0.empty:
-                    attr_val_0 = attr_val_0.set_index(['DEPTH_FROM', 'DEPTH_TO'])
-
-                if attr in ['layers', 'core_lithology']:
+                if not attr_val_0 is None and not attr_val_0.empty:
                     attr_val_0.drop_duplicates(inplace=True)
+                    attr_val_0 = attr_val_0.set_index(['DEPTH_FROM', 'DEPTH_TO'])
                     attr_val_0.sort_index(inplace=True)
                     setattr(seg_0, '_'+attr, attr_val_0)
+
+            for attr in WellSegment.attrs_depth_index:
+                attr_val_0 = getattr(seg_0, '_'+attr)
+
+                if not attr_val_0 is None and not attr_val_0.empty:
+                    attr_val_0 = attr_val_0.set_index('DEPTH')
+                else:
                     continue
 
                 columns = [column for column in attr_val_0 if not re.match(r'.*_\d*$', column)] # List of origin columns
@@ -515,7 +476,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     attr_val_0 = attr_val_0.reindex(index_array, method='nearest', fill_value=np.nan, tolerance=1e-5)
 
                 setattr(seg_0, '_'+attr, attr_val_0)
-
             setattr(seg_0, 'depth_from', well.depth_from)
             setattr(seg_0, 'depth_to', well.depth_to)
             well.segments = [seg_0]
