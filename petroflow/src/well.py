@@ -370,7 +370,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [segment for segment in well if segment.length > min_length]
         return self.prune()
 
-    def _aggregate_array(self, func, attr):
+    def _aggregate_array(self, func, attr, aggregate):
         pixels_per_m = self.segments[0].pixels_per_cm * 100
 
         agg_array_hight_pix = round((self.depth_to-self.depth_from)*pixels_per_m)
@@ -384,20 +384,24 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             segment_place = slice(round((segment.depth_from-self.depth_from)*pixels_per_m),
                                   round((segment.depth_to-self.depth_from)*pixels_per_m))
 
+            if aggregate is False:
+                background[segment_place] = attr_val
+                continue
             if func == 'max':
                 background[segment_place] = np.fmax(background[segment_place], attr_val)
+                continue
             if func == 'mean':
                 background[segment_place] = np.nansum([background[segment_place], attr_val], axis=0)
                 total[segment_place] += 1
 
-        if func == 'max':
+        if func == 'max' or aggregate is False:
             return background
         if func == 'mean':
             total = np.where(total == 0, 1, total)
             return background / total
         raise ValueError("Aggregation function can't be ({})".format(func))
 
-    def _aggregate_logs(self, func, step):
+    def _aggregate_logs(self, func, step, aggregate):
         logs_from = min(self.iter_level(), key=lambda segment: segment.logs.index[0]).logs.index[0]
         logs_to = max(self.iter_level(), key=lambda segment: segment.logs.index[-1]).logs.index[-1]
         mnemonics = self.iter_level()[0].logs.columns
@@ -409,28 +413,37 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         for segment in self.segments:
             logs = segment.logs
             logs_place = slice(round(float(logs.index[0] - logs_from) / step),
-                               round(float(logs.index[-1] - logs_from) / step)+1)
+                               round(float(logs.index[-1] - logs_from) / step) + 1)
 
+            if aggregate is False:
+                background[logs_place] = logs.values
+                continue
             if func == 'max':
                 background[logs_place] = np.fmax(background[logs_place], logs.values)
+                continue
             if func == 'mean':
                 mask = np.isnan(background[logs_place]) & np.isnan(logs.values)
                 background[logs_place] = np.nansum([background[logs_place], logs.values], axis=0)
                 background[logs_place] = np.where(mask, np.nan, background[logs_place])
                 total[logs_place] += 1
 
-        if func == 'max':
+        if func == 'max' or aggregate is False:
             return pd.DataFrame(background, index=indices, columns=mnemonics)
         if func == 'mean':
             total = np.where(total == 0, 1, total)
             return pd.DataFrame(background / total, index=indices, columns=mnemonics)
         raise ValueError("Aggregation function can't be ({})".format(func))
 
-    def aggregate(self, func, level=None):
+    def aggregate(self, func, attrs_to_aggregate=None, level=None): # pylint: disable=too-many-branches
         if level in (-1, -2):
             raise ValueError("Level can't be ({})".format(level))
 
         level = -self.tree_depth if level is None else level
+        attrs_to_aggregate = ['logs', 'core_uv', 'core_dl'] if attrs_to_aggregate is None else attrs_to_aggregate
+
+        aggregate_attrs = list(set(WellSegment.attrs_depth_index[1:]) & set(attrs_to_aggregate))
+        check_to_concat = WellSegment.attrs_depth_index[1:]+WellSegment.attrs_fdtd_index
+        concat_attrs = [attr for attr in check_to_concat if attr not in aggregate_attrs]
 
         wells = self.iter_level(level)
         for well in wells:
@@ -438,12 +451,12 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             seg_0 = well.segments[0]
 
             for attr in WellSegment.attrs_pixel_index:
-                setattr(seg_0, '_'+attr, well._aggregate_array(func, attr)) # pylint: disable=protected-access
+                setattr(seg_0, '_'+attr, well._aggregate_array(func, attr, attr in attrs_to_aggregate)) # pylint: disable=protected-access
 
             step = (seg_0.logs.index[1:] - seg_0.logs.index[:-1]).min()
-            setattr(seg_0, '_logs', well._aggregate_logs(func, step=step)) # pylint: disable=protected-access
+            setattr(seg_0, '_logs', well._aggregate_logs(func, step, 'logs' in attrs_to_aggregate)) # pylint: disable=protected-access
             # Reset index of all segments and merge it
-            for attr in WellSegment.attrs_depth_index[1:]+WellSegment.attrs_fdtd_index:
+            for attr in aggregate_attrs+concat_attrs:
                 attr_val_0 = getattr(seg_0, attr)
                 if not attr_val_0 is None:
                     attr_val_0.reset_index(inplace=True)
@@ -460,7 +473,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     if attr_val.dropna(how='all').empty:
                         continue
 
-                    if attr in segment.attrs_depth_index:
+                    if attr in aggregate_attrs:
                         attr_val_0 = pd.merge_ordered(attr_val_0, attr_val, on='DEPTH',
                                                       suffixes=('_'+str(i), ''))
                     else:
@@ -469,15 +482,18 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 setattr(seg_0, '_'+attr, attr_val_0)
 
 
-            for attr in WellSegment.attrs_fdtd_index:
+            for attr in concat_attrs:
                 attr_val_0 = getattr(seg_0, '_'+attr)
                 if not attr_val_0 is None and not attr_val_0.empty:
                     attr_val_0.drop_duplicates(inplace=True)
-                    attr_val_0 = attr_val_0.set_index(['DEPTH_FROM', 'DEPTH_TO'])
+                    if 'DEPTH' in attr_val_0.columns:
+                        attr_val_0 = attr_val_0.set_index('DEPTH')
+                    else:
+                        attr_val_0 = attr_val_0.set_index(['DEPTH_FROM', 'DEPTH_TO'])
                     attr_val_0.sort_index(inplace=True)
                     setattr(seg_0, '_'+attr, attr_val_0)
 
-            for attr in WellSegment.attrs_depth_index[1:]:
+            for attr in aggregate_attrs:
                 attr_val_0 = getattr(seg_0, '_'+attr)
 
                 if not attr_val_0 is None and not attr_val_0.empty:
