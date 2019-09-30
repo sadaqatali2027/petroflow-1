@@ -434,8 +434,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             # Processing of aggregate_attrs
             for attr in aggregate_attrs:
                 attr_val_0 = getattr(seg_0, '_'+attr)
-                attr_val_0 = attr_val_0.groupby(level=0)
-                attr_val_0 = getattr(attr_val_0, func)(axis=1)
+                attr_val_0 = attr_val_0.groupby(level=0).agg(func)
                 attr_val_0.sort_index(inplace=True)
 
                 # Add NaN values to logs
