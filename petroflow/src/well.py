@@ -5,7 +5,6 @@ from abc import ABCMeta
 from copy import copy
 from functools import wraps
 from collections import Counter
-import re
 
 import numpy as np
 import pandas as pd
@@ -401,49 +400,15 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             return background / total
         raise ValueError("Aggregation function can't be ({})".format(func))
 
-    def _aggregate_logs(self, func, step, aggregate):
-        logs_from = min(self.iter_level(), key=lambda segment: segment.logs.index[0]).logs.index[0]
-        logs_to = max(self.iter_level(), key=lambda segment: segment.logs.index[-1]).logs.index[-1]
-        mnemonics = self.iter_level()[0].logs.columns
-
-        indices = pd.Index(np.arange(logs_from, logs_to + step, step), name='DEPTH')
-        total = np.zeros((indices.shape[0], len(mnemonics)), dtype=int)
-        background = np.full_like(total, np.nan, dtype=np.double)
-
-        for segment in self.segments:
-            logs = segment.logs
-            logs_place = slice(round(float(logs.index[0] - logs_from) / step),
-                               round(float(logs.index[-1] - logs_from) / step) + 1)
-
-            if aggregate is False:
-                background[logs_place] = logs.values
-                continue
-            if func == 'max':
-                background[logs_place] = np.fmax(background[logs_place], logs.values)
-                continue
-            if func == 'mean':
-                mask = np.isnan(background[logs_place]) & np.isnan(logs.values)
-                background[logs_place] = np.nansum([background[logs_place], logs.values], axis=0)
-                background[logs_place] = np.where(mask, np.nan, background[logs_place])
-                total[logs_place] += 1
-
-        if func == 'max' or aggregate is False:
-            return pd.DataFrame(background, index=indices, columns=mnemonics)
-        if func == 'mean':
-            total = np.where(total == 0, 1, total)
-            return pd.DataFrame(background / total, index=indices, columns=mnemonics)
-        raise ValueError("Aggregation function can't be ({})".format(func))
-
-    def aggregate(self, func, attrs_to_aggregate=None, level=None): # pylint: disable=too-many-branches
+    def aggregate(self, func, attrs_to_aggregate=None, level=None):
         if level in (-1, -2):
             raise ValueError("Level can't be ({})".format(level))
 
         level = -self.tree_depth if level is None else level
         attrs_to_aggregate = ['logs', 'core_uv', 'core_dl'] if attrs_to_aggregate is None else attrs_to_aggregate
 
-        aggregate_attrs = list(set(WellSegment.attrs_depth_index[1:]) & set(attrs_to_aggregate))
-        check_to_concat = WellSegment.attrs_depth_index[1:]+WellSegment.attrs_fdtd_index
-        concat_attrs = [attr for attr in check_to_concat if attr not in aggregate_attrs]
+        aggregate_attrs = list(set(WellSegment.attrs_depth_index) & set(attrs_to_aggregate))
+        concat_attrs = list(set(WellSegment.attrs_depth_index+WellSegment.attrs_fdtd_index) - set(aggregate_attrs))
 
         wells = self.iter_level(level)
         for well in wells:
@@ -453,69 +418,31 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             for attr in WellSegment.attrs_pixel_index:
                 setattr(seg_0, '_'+attr, well._aggregate_array(func, attr, attr in attrs_to_aggregate)) # pylint: disable=protected-access
 
-            step = (seg_0.logs.index[1:] - seg_0.logs.index[:-1]).min()
-            setattr(seg_0, '_logs', well._aggregate_logs(func, step, 'logs' in attrs_to_aggregate)) # pylint: disable=protected-access
-            # Reset index of all segments and merge it
+            # Concatenate of all segments attributes
             for attr in aggregate_attrs+concat_attrs:
-                attr_val_0 = getattr(seg_0, attr)
-                if not attr_val_0 is None:
-                    attr_val_0.reset_index(inplace=True)
-
-                for i, segment in enumerate(well.segments[1:]):
-
-                    attr_val = getattr(segment, attr)
-
-                    if attr_val is None:
-                        continue
-
-                    attr_val.reset_index(inplace=True)
-
-                    if attr_val.dropna(how='all').empty:
-                        continue
-
-                    if attr in aggregate_attrs:
-                        attr_val_0 = pd.merge_ordered(attr_val_0, attr_val, on='DEPTH',
-                                                      suffixes=('_'+str(i), ''))
-                    else:
-                        attr_val_0 = pd.concat([attr_val_0, attr_val])
-
+                attr_val_0 = pd.concat([getattr(segment, attr) for segment in well.segments])
                 setattr(seg_0, '_'+attr, attr_val_0)
 
-
+            # Processing of concat_attrs
             for attr in concat_attrs:
                 attr_val_0 = getattr(seg_0, '_'+attr)
                 if not attr_val_0 is None and not attr_val_0.empty:
                     attr_val_0.drop_duplicates(inplace=True)
-                    if 'DEPTH' in attr_val_0.columns:
-                        attr_val_0 = attr_val_0.set_index('DEPTH')
-                    else:
-                        attr_val_0 = attr_val_0.set_index(['DEPTH_FROM', 'DEPTH_TO'])
                     attr_val_0.sort_index(inplace=True)
                     setattr(seg_0, '_'+attr, attr_val_0)
 
+            # Processing of aggregate_attrs
             for attr in aggregate_attrs:
                 attr_val_0 = getattr(seg_0, '_'+attr)
+                attr_val_0 = attr_val_0.groupby(level=0)
+                attr_val_0 = getattr(attr_val_0, func)(axis=1)
+                attr_val_0.sort_index(inplace=True)
 
-                if not attr_val_0 is None and not attr_val_0.empty:
-                    attr_val_0 = attr_val_0.set_index('DEPTH')
-                else:
-                    continue
-
-                columns = [column for column in attr_val_0 if not re.match(r'.*_\d*$', column)] # List of origin columns
-                duplicate_columns = [[] for i in range(len(columns))] #  List of lists duplicates of origin column
-
-                # Fill duplicate_columns
-                for column_copy in attr_val_0.columns:
-                    for i, column in enumerate(columns):
-                        pattern = re.compile(column+r'_\d*$')
-                        if re.match(pattern, column_copy):
-                            duplicate_columns[i].append(column_copy)
-
-                # Aggregate and drop duplicate_columns
-                for column, duplicate in zip(columns, duplicate_columns):
-                    attr_val_0[column] = getattr(attr_val_0[duplicate+[column]], func)(axis=1)
-                    attr_val_0.drop(duplicate, axis=1, inplace=True)
-
+                # Add NaN values to logs
+                if attr == 'logs' and attr_val_0.shape[0] > 1:
+                    index_step = (attr_val_0.index[1:] - attr_val_0.index[:-1]).min()
+                    index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1]+index_step, index_step)
+                    attr_val_0 = attr_val_0.reindex(index_array, method='nearest', fill_value=np.nan, tolerance=1e-5)
                 setattr(seg_0, '_'+attr, attr_val_0)
             setattr(seg_0, 'depth_from', well.depth_from)
             setattr(seg_0, 'depth_to', well.depth_to)
