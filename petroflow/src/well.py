@@ -370,6 +370,26 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def _aggregate_array(self, func, attr, aggregate):
+        """Aggregate or concatinate loaded values of attributes
+        from `WellSegment.attrs_pixel_index`.
+
+        Parameters
+        ----------
+        func : str
+            Name of aggregation function. Now there is only `mean`!
+
+        attr : str
+            Name of attribute.
+
+        aggregate: bool
+            If `True`, values will be aggregated.
+            If `False`, values will be concatenated.
+
+        Returns
+        -------
+        numpy.ndarray
+            Assembled array.
+        """
         if getattr(self.segments[0], '_'+attr) is None:
             return None
         pixels_per_m = self.segments[0].pixels_per_cm * 100
@@ -417,8 +437,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = well.iter_level()
             seg_0 = well.segments[0]
 
+            # TODO: different aggregation functions
             for attr in WellSegment.attrs_pixel_index:
-                setattr(seg_0, '_'+attr, well._aggregate_array(func, attr, attr in attrs_to_aggregate)) # pylint: disable=protected-access
+                setattr(seg_0, '_'+attr, well._aggregate_array('mean', attr, attr in attrs_to_aggregate)) # pylint: disable=protected-access
 
             # Concatenate of all segments attributes
             for attr in aggregate_attrs+concat_attrs:
