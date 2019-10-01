@@ -420,7 +420,15 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
             # Concatenate of all segments attributes
             for attr in aggregate_attrs+concat_attrs:
-                attr_val_0 = pd.concat([getattr(segment, attr) for segment in well.segments])
+                try:
+                    attr_values = [getattr(segment, attr) for segment in well.segments]
+                except FileNotFoundError:
+                    if attr in concat_attrs:
+                        concat_attrs.remove(attr)
+                    else:
+                        aggregate_attrs.remove(attr)
+                    continue
+                attr_val_0 = pd.concat(attr_values)
                 setattr(seg_0, '_'+attr, attr_val_0)
 
             # Processing of concat_attrs
