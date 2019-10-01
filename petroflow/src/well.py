@@ -370,16 +370,18 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def _aggregate_array(self, func, attr, aggregate):
+        if getattr(self.segments[0], '_'+attr) is None:
+            return None
         pixels_per_m = self.segments[0].pixels_per_cm * 100
 
         agg_array_hight_pix = round((self.depth_to-self.depth_from)*pixels_per_m)
-        attr_val_shape = getattr(self.segments[0], attr).shape
+        attr_val_shape = getattr(self.segments[0], '_'+attr).shape
 
         total = np.zeros((agg_array_hight_pix, *attr_val_shape[1:]), dtype=int)
         background = np.full_like(total, np.nan, dtype=np.double)
         for segment in self.segments:
 
-            attr_val = getattr(segment, attr)
+            attr_val = getattr(segment, '_'+attr)
             segment_place = slice(round((segment.depth_from-self.depth_from)*pixels_per_m),
                                   round((segment.depth_to-self.depth_from)*pixels_per_m))
 
