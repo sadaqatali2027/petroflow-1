@@ -420,9 +420,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
             # Concatenate of all segments attributes
             for attr in aggregate_attrs+concat_attrs:
-                try:
-                    attr_values = [getattr(segment, attr) for segment in well.segments]
-                except FileNotFoundError:
+                attr_values = [getattr(segment, '_'+attr) for segment in well.segments]
+                if all(value is None for value in attr_values):
                     if attr in concat_attrs:
                         concat_attrs.remove(attr)
                     else:
