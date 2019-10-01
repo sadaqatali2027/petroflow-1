@@ -370,7 +370,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def _aggregate_array(self, func, attr, aggregate):
-        """Aggregate or concatinate loaded values of attributes
+        """Aggregate or concatenate loaded values of attributes
         from `WellSegment.attrs_pixel_index`.
 
         Parameters
@@ -423,11 +423,39 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         raise ValueError("Aggregation function can't be ({})".format(func))
 
     def aggregate(self, func, attrs_to_aggregate=None, level=None):
+        """Aggregate or concatenate loaded values of attributes
+        from `WellSegment.attrs_fdtd_index`, `WellSegment.attrs_depth_index`,
+        `WellSegment.attrs_pixel_index` attributes into one segment.
+
+        Parameters
+        ----------
+        func : str, callable or list
+            Function to use for aggregating the data.
+            - `str` - short function name (e.g. ``'max'``, ``'min'``, ``'sum'``,
+               ``'count'``, ``'var'``, ``'std'``, ``'size'``, ``'sem'``).
+            - `callable` - a function which gets a `pd.Series` and returns
+               `float` or `int` value.
+            - `list` of `str` and/or `callable` described above.
+
+        attrs_to_aggregate : list of str, optional
+            Names of attributes whose values will be aggregated by the `func` function.
+            Values of other attributes will be concatenated.
+            Default is minus the depth of the tree.
+
+        level : int, optional
+            Level of the well tree defined for aggregation.
+            Default is ``['logs', 'core_uv', 'core_dl']``.
+
+        Returns
+        -------
+        self : AbstractWell
+            The well with one aggregated segment.
+        """
         if level in (-1, -2):
             raise ValueError("Level can't be ({})".format(level))
 
-        level = -self.tree_depth if level is None else level
-        attrs_to_aggregate = ['logs', 'core_uv', 'core_dl'] if attrs_to_aggregate is None else attrs_to_aggregate
+        level = level or -self.tree_depth
+        attrs_to_aggregate = attrs_to_aggregate or ['logs', 'core_uv', 'core_dl']
 
         aggregate_attrs = list(set(WellSegment.attrs_depth_index) & set(attrs_to_aggregate))
         concat_attrs = list(set(WellSegment.attrs_depth_index+WellSegment.attrs_fdtd_index) - set(aggregate_attrs))
