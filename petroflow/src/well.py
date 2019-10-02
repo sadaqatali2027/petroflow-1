@@ -486,10 +486,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             # Processing of concat_attrs
             for attr in concat_attrs:
                 attr_val_0 = getattr(seg_0, '_'+attr)
-                if not attr_val_0 is None and not attr_val_0.empty:
-                    attr_val_0.drop_duplicates(inplace=True)
-                    attr_val_0.sort_index(inplace=True)
-                    setattr(seg_0, '_'+attr, attr_val_0)
+                attr_val_0.drop_duplicates(inplace=True)
+                attr_val_0.sort_index(inplace=True)
+                setattr(seg_0, '_'+attr, attr_val_0)
 
             # Processing of aggregate_attrs
             for attr in aggregate_attrs:
