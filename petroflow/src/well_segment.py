@@ -1504,6 +1504,8 @@ class WellSegment(AbstractWellSegment):
         if len(not_nan_indices) == 0:
             return []
         borders = np.where((not_nan_indices[1:] - not_nan_indices[:-1]) != 1)[0] + 1
+        if len(borders) == 0:	
+            return [self]
         not_nan_depths = not_nan_mask.index[not_nan_indices]
         splits = np.split(not_nan_depths, borders)
         return [self[split[0]:split[-1]] for split in splits]
