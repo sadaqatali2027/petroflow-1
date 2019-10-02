@@ -265,7 +265,7 @@ class WellSegment(AbstractWellSegment):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
         df = df[self.depth_from:self.depth_to]
-        if np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
+        if len(df)>0 and np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
             df.drop(df.index[-1], inplace=True)
         return df
 
@@ -1261,7 +1261,7 @@ class WellSegment(AbstractWellSegment):
             res_segments.append(self[depth_from:depth_to])
         return res_segments
 
-    def create_segments(self, src, connected=True):
+    def create_segments(self, src, connected=True, length=None):
         """Split `self` into segments with depth ranges, specified in
         attributes in `src`.
 
@@ -1279,14 +1279,14 @@ class WellSegment(AbstractWellSegment):
         segments : list of WellSegment
             Split segments.
         """
-        if not isinstance(src, list):
-            src = [src]
+        src = to_list(src)
         if all([item in self.attrs_fdtd_index for item in src]):
             res = self._create_segments_by_fdtd(src, connected)
+        elif all([item in self.attrs_depth_index for item in src]):
+            res = self._create_segments_by_depth(src, length)
         else:
-            # TODO: create_segments from depth_index
             raise ValueError(
-                'All `src` must be in fdtd format:',
+                'All `src` must be of the same format format:',
                 [item for item in src if item not in self.attrs_fdtd_index]
             )
         return res
@@ -1298,6 +1298,13 @@ class WellSegment(AbstractWellSegment):
         if connected:
             df = self._core_chunks(df)
         segments = [self[top:bottom] for _, (top, bottom) in df[['DEPTH_FROM', 'DEPTH_TO']].iterrows()]
+        return segments
+
+    def _create_segments_by_depth(self, src, length):
+        """Get segments from depth ranges, specified in fdtd attributes."""
+        indices = [getattr(self, item).index for item in src]
+        indices = np.concatenate(indices)
+        segments = [self[depth-length/2:depth+length/2] for depth in indices]
         return segments
 
     @staticmethod

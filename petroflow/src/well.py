@@ -238,7 +238,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             ]
         return self.prune()
 
-    def create_segments(self, src, connected=True):
+    def create_segments(self, src, connected=True, length=None):
         """Split segments at the last level of the segment tree into parts
         with depth ranges, specified in attributes in `src`.
 
@@ -259,7 +259,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [
-                Well(segments=segment.create_segments(src, connected)) for segment in well
+                Well(segments=segment.create_segments(src, connected, length)) for segment in well
             ]
         return self
 
