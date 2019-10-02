@@ -3,7 +3,7 @@
 
 from abc import ABCMeta
 from copy import copy
-from functools import wraps
+from functools import wraps, reduce
 from collections import Counter
 
 import numpy as np
@@ -11,6 +11,8 @@ import numpy as np
 from .abstract_classes import AbstractWell
 from .well_segment import WellSegment
 from .exceptions import SkipWellException
+
+from .utils import to_list
 
 
 class SegmentDelegatingMeta(ABCMeta):
@@ -367,3 +369,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         for well in wells:
             well.segments = [segment for segment in well if segment.length > min_length]
         return self.prune()
+
+    def has_attr(self, attrs):
+        for attr in to_list(attrs):
+            if not self.iter_level()[0]._has_file(attr):
+                raise SkipWellException("Well hasn't file {}".format(attr))
+        return self

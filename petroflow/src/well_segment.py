@@ -173,7 +173,7 @@ class WellSegment(AbstractWellSegment):
         directory.
     """
 
-    attrs_depth_index = ("logs", "core_properties", "core_logs")
+    attrs_depth_index = ("logs", "core_properties", "core_logs", "grain")
     attrs_fdtd_index = ("layers", "boring_sequences", "boring_intervals", "core_lithology", "samples")
     attrs_no_index = ("inclination",)
 
@@ -207,6 +207,7 @@ class WellSegment(AbstractWellSegment):
         self._core_uv = None
         self._boring_intervals_deltas = None
         self._core_lithology_deltas = None
+        self._grain = None
 
     @property
     def length(self):
