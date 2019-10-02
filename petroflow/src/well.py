@@ -370,7 +370,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def _aggregate_array(self, func, attr, aggregate):
-        """Aggregate or concatenate loaded values of attributes
+        """Aggregate or concatenate loaded attributes
         from `WellSegment.attrs_pixel_index`.
 
         Parameters
@@ -382,8 +382,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             Name of attribute.
 
         aggregate: bool
-            If `True`, values will be aggregated.
-            If `False`, values will be concatenated.
+            If `True`, values will be aggregate.
+            If `False`, values will be concatenate.
 
         Returns
         -------
@@ -423,28 +423,30 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         raise ValueError("Aggregation function can't be ({})".format(func))
 
     def aggregate(self, func, attrs_to_aggregate=None, level=None):
-        """Aggregate or concatenate loaded values of attributes
-        from `WellSegment.attrs_fdtd_index`, `WellSegment.attrs_depth_index`,
-        `WellSegment.attrs_pixel_index` attributes into one segment.
+        """Aggregate or concatenate loaded segments attributes from
+        `WellSegment.attrs_fdtd_index`, `WellSegment.attrs_depth_index`,
+        `WellSegment.attrs_pixel_index` into one segment. This segment's
+        `depth_from` and `depth_to` will be minimum `depth_from`
+        and maximun `depth_to` for all aggregated segments.
 
         Parameters
         ----------
         func : str, callable or list
             Function to use for aggregating the data.
             - `str` - short function name (e.g. ``'max'``, ``'min'``, ``'sum'``,
-               ``'count'``, ``'var'``, ``'std'``, ``'size'``, ``'sem'``).
+               ``'mean'``, ``'count'``, ``'var'``, ``'std'``, ``'size'``, ``'sem'``).
             - `callable` - a function which gets a `pd.Series` and returns
                `float` or `int` value.
             - `list` of `str` and/or `callable` described above.
 
         attrs_to_aggregate : list of str, optional
-            Names of attributes whose values will be aggregated by the `func` function.
-            Values of other attributes will be concatenated.
-            Default is minus the depth of the tree.
+            Names of attributes which will be aggregate by the `func` function.
+            Other attributes will be concatenate.
+            Default is ``['logs', 'core_uv', 'core_dl']``.
 
         level : int, optional
             Level of the well tree defined for aggregation.
-            Default is ``['logs', 'core_uv', 'core_dl']``.
+            Default is minus the depth of the tree.
 
         Returns
         -------
