@@ -375,8 +375,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Parameters
         ----------
-        func : str
-            Name of aggregation function. Now there is only `mean`!
+        func : {'mean', 'max'}
+            Name of aggregation function. Now there is only `mean` and 'max'!
 
         attr : str
             Name of attribute.
@@ -390,6 +390,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         numpy.ndarray
             Assembled array.
         """
+        func = 'mean' if func != 'max' else 'max'
         if getattr(self.segments[0], '_'+attr) is None:
             return None
         pixels_per_m = self.segments[0].pixels_per_cm * 100
@@ -469,7 +470,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
             # TODO: different aggregation functions
             for attr in WellSegment.attrs_pixel_index:
-                setattr(seg_0, '_'+attr, well._aggregate_array('mean', attr, attr in attrs_to_aggregate)) # pylint: disable=protected-access
+                setattr(seg_0, '_'+attr, well._aggregate_array(func, attr, attr in attrs_to_aggregate)) # pylint: disable=protected-access
 
             # Concatenate of all segments attributes
             for attr in aggregate_attrs+concat_attrs:
