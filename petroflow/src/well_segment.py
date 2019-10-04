@@ -1497,13 +1497,14 @@ class WellSegment(AbstractWellSegment):
             not_nan_mask = (~np.isnan(self.logs)).sum(axis=1) >= logs
         else:
             not_nan_mask = np.all(~np.isnan(self.logs[logs]), axis=1)
-        not_nan_indices = np.where(not_nan_mask)[0]
-        if len(not_nan_indices) == 0:
+        
+        if not not_nan_mask.any():
             return []
-        borders = np.where((not_nan_indices[1:] - not_nan_indices[:-1]) != 1)[0] + 1
-        not_nan_depths = not_nan_mask.index[not_nan_indices]
-        splits = np.split(not_nan_depths, borders)
-        return [self[split[0]:split[-1]] for split in splits]
+
+        borders = not_nan_mask[not_nan_mask ^ not_nan_mask.shift(1)].index
+        # TODO: Specify if single-row non nan value occurrence is possible in logs
+        borders = zip(borders[0::2], borders[1::2])
+        return [self[a:b] for a, b in borders]
 
     def norm_mean_std(self, mean=None, std=None, eps=1e-10):
         """Standardize well logs by subtracting the mean and scaling to unit
