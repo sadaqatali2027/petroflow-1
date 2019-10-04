@@ -1497,7 +1497,7 @@ class WellSegment(AbstractWellSegment):
             not_nan_mask = (~np.isnan(self.logs)).sum(axis=1) >= logs
         else:
             not_nan_mask = np.all(~np.isnan(self.logs[logs]), axis=1)
-        
+
         if not not_nan_mask.any():
             return []
 
