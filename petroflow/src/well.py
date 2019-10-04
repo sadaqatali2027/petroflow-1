@@ -377,10 +377,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         ----------
         func : {'mean', 'max'}
             Name of aggregation function. Now there is only `mean` and 'max'!
-
         attr : str
             Name of attribute.
-
         aggregate: bool
             If `True`, values will be aggregate.
             If `False`, values will be concatenate.
@@ -401,7 +399,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         total = np.zeros((agg_array_hight_pix, *attr_val_shape[1:]), dtype=int)
         background = np.full_like(total, np.nan, dtype=np.double)
         for segment in self.segments:
-
             attr_val = getattr(segment, '_'+attr)
             segment_place = slice(round((segment.depth_from-self.depth_from)*pixels_per_m),
                                   round((segment.depth_to-self.depth_from)*pixels_per_m))
@@ -439,12 +436,10 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             - `callable` - a function which gets a `pd.Series` and returns
                `float` or `int` value.
             - `list` of `str` and/or `callable` described above.
-
         attrs_to_aggregate : list of str, optional
             Names of attributes which will be aggregate by the `func` function.
             Other attributes will be concatenate.
             Default is ``['logs', 'core_uv', 'core_dl']``.
-
         level : int, optional
             Level of the well tree defined for aggregation.
             Default is minus the depth of the tree.
