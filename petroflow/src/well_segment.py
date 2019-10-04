@@ -176,7 +176,7 @@ class WellSegment(AbstractWellSegment):
     attrs_depth_index = ("logs", "core_properties", "core_logs")
     attrs_fdtd_index = ("layers", "boring_sequences", "boring_intervals", "core_lithology", "samples")
     attrs_no_index = ("inclination",)
-    attrs_pixel_index = ["core_uv", 'core_dl']
+    attrs_pixel_index = ("core_uv", 'core_dl')
 
     def __init__(self, path, *args, core_width=10, pixels_per_cm=5, **kwargs):
         super().__init__()
