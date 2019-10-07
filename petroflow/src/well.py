@@ -418,9 +418,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     def aggregate(self, func, level=0):
         """Aggregate loaded segments attributes from `WellSegment.attrs_image`
         and `WellSegment.attrs_depth_index`. Concatenate loaded segments attributes
-        from `WellSegment.attrs_fdtd_index` into one segment. This segment's
-        `depth_from` and `depth_to` will be minimum `depth_from` and maximum
-        `depth_to` along all aggregated segments.
+        from `WellSegment.attrs_fdtd_index`. The result of aggregation
+        and concatenation is one segment. This segment's `depth_from` and `depth_to`
+        will be minimum `depth_from` and maximum `depth_to` along all gathered segments.
 
         Parameters
         ----------
