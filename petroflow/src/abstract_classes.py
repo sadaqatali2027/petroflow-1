@@ -109,4 +109,8 @@ class AbstractWell(AbstractWellSegment):
     
     @abstractmethod
     def has_attr(self):
-        pass   
+        pass
+
+    @abstractmethod
+    def sample_segments(self):
+        pass

@@ -261,7 +261,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [
                 Well(segments=segment.create_segments(src, connected, length)) for segment in well
             ]
-        return self
+        return self.prune()
 
     def crop(self, length, step, drop_last=True):
         """Create crops from segments at the last level. All cropped segments
@@ -371,7 +371,51 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def has_attr(self, attrs):
+        """Drop segments without specified attrs. If well hasn't some attribute,
+        `SkipWellException` will be raised.
+
+        Parameters
+        ----------
+        attrs : str or list of str
+            Attributes which segment must have.
+
+        Returns
+        -------
+        self : AbstractWell
+            The same well if well has all attributes.
+        """
         for attr in to_list(attrs):
             if not self.iter_level()[0]._has_file(attr):
                 raise SkipWellException("Well hasn't file {}".format(attr))
         return self
+
+    def sample_segments(self, n_segments, skip=False):
+        """Uniformly sample segments. If well hasn't enough segments, resulting
+        well 
+
+        Parameters
+        ----------
+        n_segments : positive int
+            Number of segments to sample
+        skip : bool
+            If True, well will be skipped if it hasn't enough segments, else
+            well will not be changed.
+
+        Returns
+        -------
+        self : AbstractWell
+            The well with dropped short segments.
+        """
+        if self.n_segments < n_segments:
+            raise SkipWellException("Well hasn't enough segments {}".format(attr))
+
+        wells = self.iter_level(-2)
+        segments = [(i, segment) for i, well in enumerate(wells) for segment in well]
+        random_segments = [segments[i] for i in np.random.choice(len(segments), n_segments, False)]
+        for well in wells:
+            well.segments = []
+        for i, segment in random_segments:
+            wells[i].segments.append(segment)
+        return self.prune()
+
+        

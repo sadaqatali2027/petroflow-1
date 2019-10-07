@@ -1261,8 +1261,8 @@ class WellSegment(AbstractWellSegment):
             res_segments.append(self[depth_from:depth_to])
         return res_segments
 
-    def create_segments(self, src, connected=True, length=None):
-        """Split `self` into segments with depth ranges, specified in
+    def create_segments(self, src, connected=True, length=0.1):
+        """Split `self` into segments with depth ranges or depths, specified in
         attributes in `src`.
 
         Parameters
@@ -1272,7 +1272,11 @@ class WellSegment(AbstractWellSegment):
             consists of attributes in fdtd format then each row will represent
             a new segment. Otherwise, an exception will be raised.
         connected : bool, optional
-            Join segments which are one after another. Defaults to `True`.
+            For `src` indexed by depth ranges: join segments which are one after another.
+            Defaults to `True`.
+        length : float, optional
+            For `src` indexed by depth: length of the segment centered by depth.
+            Defaults to `0.1` (10 cm).
 
         Returns
         -------
@@ -1301,7 +1305,7 @@ class WellSegment(AbstractWellSegment):
         return segments
 
     def _create_segments_by_depth(self, src, length):
-        """Get segments from depth ranges, specified in fdtd attributes."""
+        """Get segments from depths, specified in depth indexed attributes."""
         indices = [getattr(self, item).index for item in src]
         indices = np.concatenate(indices)
         segments = [self[depth-length/2:depth+length/2] for depth in indices]
