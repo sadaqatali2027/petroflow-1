@@ -68,7 +68,7 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
     """
 
     components = ("wells",)
-    targets = dict(create_mask='threads') # inbatch_parallel target depending on action name
+    targets = dict() # inbatch_parallel target depending on action name
 
     def __init__(self, index, *args, preloaded=None, **kwargs):
         super().__init__(index, *args, preloaded=preloaded, **kwargs)
@@ -96,9 +96,6 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
             print(errors)
             traceback.print_tb(errors[0].__traceback__)
             raise RuntimeError("Could not assemble the batch")
-        new_index = self.index.create_subset(self.indices[~skip_mask]) # pylint: disable=invalid-unary-operand-type
-        batch = WellBatch(
-            index=new_index,
-            preloaded=({k: v for k, v in zip(new_index.indices, results)}, )
-        )
-        return batch
+        self.index = self.index.create_subset(self.indices[~skip_mask]) # pylint: disable=invalid-unary-operand-type
+        self.wells = results
+        return self
