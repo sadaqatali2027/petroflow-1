@@ -3,7 +3,7 @@
 
 from abc import ABCMeta
 from copy import copy
-from functools import wraps, reduce
+from functools import wraps
 from collections import Counter
 
 import numpy as np
