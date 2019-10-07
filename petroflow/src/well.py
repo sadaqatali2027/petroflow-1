@@ -454,7 +454,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
             # TODO: different aggregation functions
             for attr in WellSegment.attrs_image:
-                setattr(seg_0, '_' + attr, well._aggregate_array(func, attr)  # pylint: disable=protected-access
+                setattr(seg_0, '_' + attr, well._aggregate_array(func, attr))  # pylint: disable=protected-access
 
             # Concatenate of all segments attributes
             for attr in aggregate_attrs + concat_attrs:
