@@ -176,7 +176,7 @@ class WellSegment(AbstractWellSegment):
     attrs_depth_index = ("logs", "core_properties", "core_logs")
     attrs_fdtd_index = ("layers", "boring_sequences", "boring_intervals", "core_lithology", "samples")
     attrs_no_index = ("inclination",)
-    attrs_pixel_index = ("core_uv", 'core_dl')
+    attrs_image = ("core_uv", "core_dl")
 
     def __init__(self, path, *args, core_width=10, pixels_per_cm=5, **kwargs):
         super().__init__()
@@ -264,7 +264,7 @@ class WellSegment(AbstractWellSegment):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
         df = df[self.depth_from:self.depth_to]
-        if df.empty:
+        if len(df) == 0:
             return df
         if np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
             df.drop(df.index[-1], inplace=True)
