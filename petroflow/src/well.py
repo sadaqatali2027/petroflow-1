@@ -370,19 +370,15 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [segment for segment in well if segment.length > min_length]
         return self.prune()
 
-    def _aggregate_array(self, func, attr, aggregate):
-        """Aggregate or concatenate loaded attributes
-        from `WellSegment.attrs_pixel_index`.
+    def _aggregate_array(self, func, attr):
+        """Aggregate loaded attributes from `WellSegment.attrs_pixel_index`.
 
         Parameters
         ----------
         func : {'mean', 'max'}
-            Name of aggregation function. Now there is only `mean` and 'max'!
+            Name of aggregation function.
         attr : str
             Name of attribute.
-        aggregate: bool
-            If `True`, values will be aggregate.
-            If `False`, values will be concatenate.
 
         Returns
         -------
@@ -393,22 +389,19 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             return None
         if func not in ['mean', 'max']:
             func = 'mean'
-            warnings.warn("Aggregation function replaced by `mean`.", Warning)
+            warnings.warn("Aggregation function replace with 'mean' when aggregate attrs_pixel.", Warning)
 
         pixels_per_m = self.segments[0].pixels_per_cm * 100
-        agg_array_hight_pix = round((self.depth_to - self.depth_from) * pixels_per_m)
+        agg_array_height_pix = round((self.depth_to - self.depth_from) * pixels_per_m)
         attr_val_shape = getattr(self.segments[0], '_' + attr).shape
 
-        total = np.zeros((agg_array_hight_pix, *attr_val_shape[1:]), dtype=int)
+        total = np.zeros((agg_array_height_pix, *attr_val_shape[1:]), dtype=int)
         background = np.full_like(total, np.nan, dtype=np.double)
         for segment in self.segments:
             attr_val = getattr(segment, '_' + attr)
             segment_place = slice(round((segment.depth_from - self.depth_from) * pixels_per_m),
                                   round((segment.depth_to - self.depth_from) * pixels_per_m))
 
-            if aggregate is False:
-                background[segment_place] = attr_val
-                continue
             if func == 'max':
                 background[segment_place] = np.fmax(background[segment_place], attr_val)
                 continue
@@ -416,51 +409,43 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 background[segment_place] = np.nansum([background[segment_place], attr_val], axis=0)
                 total[segment_place] += 1
 
-        if func == 'max' or aggregate is False:
+        if func == 'max':
             return background
 
         total = np.where(total == 0, 1, total)
         return background / total
 
-    def aggregate(self, func, attrs_to_aggregate=None, level=None):
-        """Aggregate or concatenate loaded segments attributes from
-        `WellSegment.attrs_fdtd_index`, `WellSegment.attrs_depth_index`,
-        `WellSegment.attrs_pixel_index` into one segment. This segment's
-        `depth_from` and `depth_to` will be minimum `depth_from`
-        and maximum `depth_to` along all aggregated segments.
+    def aggregate(self, func, level=0):
+        """Aggregate loaded segments attributes from `WellSegment.attrs_image`
+        and `WellSegment.attrs_depth_index`. Concatenate loaded segments attributes
+        from `WellSegment.attrs_fdtd_index` into one segment. This segment's
+        `depth_from` and `depth_to` will be minimum `depth_from` and maximum
+        `depth_to` along all aggregated segments.
 
         Parameters
         ----------
-        func : str, callable or list
+        func : str, callable
             Function to use for aggregating the data.
-            - `str` - short function name (e.g. ``'max'``, ``'min'``, ``'sum'``,
-               ``'mean'``, ``'count'``, ``'var'``, ``'std'``, ``'size'``, ``'sem'``).
+            - `str` - short function name (e.g. ``'max'``, ``'min'``).
+            See `pd.aggregate` documentation.
             - `callable` - a function which gets a `pd.Series` and returns
-               `float` or `int` value.
-            - `list` of `str` and/or `callable` described above.
-        attrs_to_aggregate : list of str, optional
-            Names of attributes that will be aggregated by the `func` function.
-            Other attributes will be concatenated.
-            Default is ``['logs', 'core_uv', 'core_dl']``.
+               one element.
+            Now there is only `mean` and 'max' for aggregation `WellSegment.attrs_image`!
         level : int, optional
             Level of the well tree defined for aggregation.
+            All segments below `level` level of tree will be gathered into one.
             Defaults to an aggregation of the whole tree.
 
         Returns
         -------
         self : AbstractWell
-            The well with one aggregated segment on `level` of the well tree .
+            The well with one gathered segment on `level` level of well tree .
         """
         if level < -self.tree_depth or level == -1 or level >= self.tree_depth - 1:
             raise ValueError("Aggregation level can't be ({})".format(level))
 
-        if level is None:
-            level = -self.tree_depth
-        if attrs_to_aggregate is None:
-            attrs_to_aggregate = ['logs', 'core_uv', 'core_dl']
-
-        aggregate_attrs = list(set(WellSegment.attrs_depth_index) & set(attrs_to_aggregate))
-        concat_attrs = list(set(WellSegment.attrs_depth_index + WellSegment.attrs_fdtd_index) - set(aggregate_attrs))
+        aggregate_attrs = list(WellSegment.attrs_depth_index)
+        concat_attrs = list(WellSegment.attrs_fdtd_index)
 
         wells = self.iter_level(level)
         for well in wells:
@@ -469,7 +454,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
             # TODO: different aggregation functions
             for attr in WellSegment.attrs_image:
-                setattr(seg_0, '_' + attr, well._aggregate_array(func, attr, attr in attrs_to_aggregate))  # pylint: disable=protected-access
+                setattr(seg_0, '_' + attr, well._aggregate_array(func, attr)  # pylint: disable=protected-access
 
             # Concatenate of all segments attributes
             for attr in aggregate_attrs + concat_attrs:
@@ -481,7 +466,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                         aggregate_attrs.remove(attr)
                     continue
                 # If attribute is still not loaded for several segments, load them explicit.
-                # It can be happen in previous manual processing of Well.
+                # It can happen in previous manual processing of Well.
                 attr_val_0 = pd.concat([getattr(segment, attr) for segment in well.segments])
                 setattr(seg_0, '_' + attr, attr_val_0)
 
@@ -493,6 +478,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
             for attr in aggregate_attrs:
                 attr_val_0 = getattr(seg_0, '_' + attr)
+                # Reindex process need to `groupby` by `int` values
+                attr_val_0.index = attr_val_0.index.map(lambda idx: round(idx * 100))
                 attr_val_0 = attr_val_0.groupby(level=0).agg(func)
 
                 # Add NaN values to logs
@@ -500,6 +487,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     index_step = (attr_val_0.index[1:] - attr_val_0.index[:-1]).min()
                     index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1] + index_step, index_step)
                     attr_val_0 = attr_val_0.reindex(index_array, method='nearest', fill_value=np.nan, tolerance=1e-5)
+                attr_val_0.index /= 100
                 setattr(seg_0, '_' + attr, attr_val_0)
             setattr(seg_0, 'depth_from', well.depth_from)
             setattr(seg_0, 'depth_to', well.depth_to)
