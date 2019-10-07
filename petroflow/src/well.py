@@ -385,13 +385,13 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             The same well if well has all attributes.
         """
         for attr in to_list(attrs):
-            if not self.iter_level()[0]._has_file(attr):
+            if not self.iter_level()[0]._has_file(attr): # pylint: disable=protected-access
                 raise SkipWellException("Well hasn't file {}".format(attr))
         return self
 
     def sample_segments(self, n_segments, skip=False):
         """Uniformly sample segments. If well hasn't enough segments, resulting
-        well 
+        well.
 
         Parameters
         ----------
@@ -407,7 +407,10 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             The well with dropped short segments.
         """
         if self.n_segments < n_segments:
-            raise SkipWellException("Well hasn't enough segments {}".format(attr))
+            if skip:
+                raise SkipWellException("Well hasn't enough segments {}".format(n_segments))
+            else:
+                n_segments = self.n_segments
 
         wells = self.iter_level(-2)
         segments = [(i, segment) for i, well in enumerate(wells) for segment in well]
@@ -417,5 +420,3 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         for i, segment in random_segments:
             wells[i].segments.append(segment)
         return self.prune()
-
-        
