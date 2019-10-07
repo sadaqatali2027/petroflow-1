@@ -396,15 +396,15 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             warnings.warn("Aggregation function replaced by `mean`.", Warning)
 
         pixels_per_m = self.segments[0].pixels_per_cm * 100
-        agg_array_hight_pix = round((self.depth_to-self.depth_from)*pixels_per_m)
+        agg_array_hight_pix = round((self.depth_to - self.depth_from) * pixels_per_m)
         attr_val_shape = getattr(self.segments[0], '_' + attr).shape
 
         total = np.zeros((agg_array_hight_pix, *attr_val_shape[1:]), dtype=int)
         background = np.full_like(total, np.nan, dtype=np.double)
         for segment in self.segments:
             attr_val = getattr(segment, '_' + attr)
-            segment_place = slice(round((segment.depth_from-self.depth_from)*pixels_per_m),
-                                  round((segment.depth_to-self.depth_from)*pixels_per_m))
+            segment_place = slice(round((segment.depth_from - self.depth_from) * pixels_per_m),
+                                  round((segment.depth_to - self.depth_from) * pixels_per_m))
 
             if aggregate is False:
                 background[segment_place] = attr_val
@@ -451,8 +451,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell
             The well with one aggregated segment on `level` of the well tree .
         """
-        if level in range(-self.tree_depth, -1) or level in range(0, self.tree_depth - 1):
-            raise ValueError("Level can't be ({})".format(level))
+        if level < -self.tree_depth or level == -1 or level >= self.tree_depth - 1:
+            raise ValueError("Aggregation level can't be ({})".format(level))
 
         if level is None:
             level = -self.tree_depth
