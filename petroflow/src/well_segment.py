@@ -1501,7 +1501,7 @@ class WellSegment(AbstractWellSegment):
         if not not_nan_mask.any():
             return []
 
-        borders = list(not_nan_mask[not_nan_mask ^ not_nan_mask.shift(1)].index)
+        borders = not_nan_mask[not_nan_mask ^ not_nan_mask.shift(1)].index.tolist()
         # If last mask element is True (segment ends with not nan value in logs)
         # then the xor trick above misses the last slicing border and therefore
         # None should be added so the last slice could be done as `self[a:None]`
