@@ -1506,7 +1506,7 @@ class WellSegment(AbstractWellSegment):
         # then the xor trick above misses the last slicing border and therefore
         # None should be added so the last slice could be done as `self[a:None]`
         if not_nan_mask.iloc[-1]:
-            border.append(None)
+            borders.append(None)
         borders = zip(borders[0::2], borders[1::2])
         return [self[a:b] for a, b in borders]
 
