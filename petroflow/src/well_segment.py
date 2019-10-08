@@ -1380,29 +1380,34 @@ class WellSegment(AbstractWellSegment):
         self : AbstractWellSegment or a child class
             Self with mask.
         """
-        if src in self.attrs_fdtd_index:
-            self._create_mask_fdtd(src, column, mapping, mode, default, dst)
-        elif src in self.attrs_depth_index:
-            self._create_mask_depth_index(src, column, mapping, mode, default, dst)
-        else:
-            ValueError('Unknown src: ', src)
-        return self
-
-    def _create_mask_fdtd(self, src, column, mapping, mode, default, dst):
-        """Create mask from fdtd data."""
         if mode not in ['core', 'logs']:
             raise ValueError('Unknown mode: ', mode)
 
         series = getattr(self, src)[column]
+        series = series.dropna()
+        bad_values = [' '] # TODO: Bad values should be filtered earlier
+        series = series[~series.isin(bad_values)]
         if not series.index.is_monotonic:
             series.sort_index(level=0, inplace=True)
 
-        depth_from = series.index.get_level_values('DEPTH_FROM').values
-        depth_to = series.index.get_level_values('DEPTH_TO').values
-        insert_value = series.values
+        src_index = series.index
+        src_values = series.values
         if mapping is not None:
-            uniques, indexes = np.unique(insert_value, return_inverse=True)
-            insert_value = np.array([mapping[x] for x in uniques])[indexes]
+            uniques, indexes = np.unique(src_values, return_inverse=True)
+            src_values = np.array([mapping[x] for x in uniques])[indexes]
+
+        if src in self.attrs_fdtd_index:
+            self._create_mask_fdtd(src_index, src_values, mode, default, dst)
+        elif src in self.attrs_depth_index:
+            self._create_mask_depth_index(src_index, src_values, src, mode, default, dst)
+        else:
+            ValueError('Unknown src: ', src)
+        return self
+
+    def _create_mask_fdtd(self, src_index, src_values, mode, default, dst):
+        """Create mask from fdtd data."""
+        depth_from = src_index.get_level_values('DEPTH_FROM').values
+        depth_to = src_index.get_level_values('DEPTH_TO').values
 
         if mode == 'core':
             mask = np.ones(len(self.core_dl)) * default
@@ -1415,45 +1420,31 @@ class WellSegment(AbstractWellSegment):
             start = np.searchsorted(self.logs.index, depth_from, side='left')
             end = np.searchsorted(self.logs.index, depth_to, side='right')
 
-        for i in range(len(series)):
-            mask[start[i]:end[i]+1] = insert_value[i]
-
+        for i in range(len(src_index)):
+            mask[start[i]:end[i]+1] = src_values[i]
         setattr(self, dst, mask)
 
-    def _create_mask_depth_index(self, src, column, mapping, mode, default, dst):
+    def _create_mask_depth_index(self, src_index, src_values, src, mode, default, dst):
         """Create mask from depth-indexed data."""
-        if mode not in ['core', 'logs']:
-            raise ValueError('Unknown mode: ', mode)
-
-        series = getattr(self, src)[column]
-        if not series.index.is_monotonic:
-            series.sort_index(inplace=True)
-
-        insert_value = series.values
-        if mapping is not None:
-            uniques, indexes = np.unique(insert_value, return_inverse=True)
-            insert_value = np.array([mapping[x] for x in uniques])[indexes]
-
         if src == 'logs' and mode == 'logs':
-            mask = insert_value
+            mask = src_values
         elif mode == 'core':
             mask = np.ones(len(self.core_dl)) * default
             factor = len(mask) / self.length
-            insert_index = np.round((series.index.values - self.depth_from) * factor).astype(int)
+            insert_index = np.round((src_index.values - self.depth_from) * factor).astype(int)
             insert_index = np.repeat(insert_index, self.pixels_per_cm)
-            index_increment = np.tile(np.arange(0, self.pixels_per_cm), len(series))
+            index_increment = np.tile(np.arange(0, self.pixels_per_cm), len(src_index))
             insert_index = insert_index + index_increment
-            insert_value = np.repeat(insert_value, self.pixels_per_cm)
-            mask[insert_index] = insert_value
+            src_values = np.repeat(src_values, self.pixels_per_cm)
+            mask[insert_index] = src_values
         elif mode == 'logs':
             mask = np.ones(len(self.logs)) * default
             mask_index = self.logs.index
-            insert_index = np.searchsorted(mask_index, series.index, side='left')
+            insert_index = np.searchsorted(mask_index, src_index, side='left')
             filter_index = list((insert_index[1:] - insert_index[:-1]) != 0) + [True]
             insert_index = insert_index[filter_index]
-            insert_value = insert_value[filter_index]
-            mask[insert_index] = insert_value
-
+            src_values = src_values[filter_index]
+            mask[insert_index] = src_values
         setattr(self, dst, mask)
 
     def reindex(self, step, attrs=None):
