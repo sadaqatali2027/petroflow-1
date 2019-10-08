@@ -351,14 +351,17 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [Well(segments=segment.drop_nans(logs=logs)) for segment in well]
         return self.prune()
 
-    def drop_short_segments(self, min_length):
+    def drop_short_segments(self, min_length, tolerance=1e-5):
         """Drop segments at the last level with length smaller than
-        `min_length`.
+        `min_length` with given `tolerance`.
 
         Parameters
         ----------
         min_length : positive float
             Segments shorter than `min_length` are dropped.
+
+        tolerance : positive float, optional
+            Tolerance for checking segments length.
 
         Returns
         -------
@@ -367,7 +370,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         """
         wells = self.iter_level(-2)
         for well in wells:
-            well.segments = [segment for segment in well if segment.length > min_length]
+            well.segments = [segment for segment in well if segment.length > min_length - tolerance]
         return self.prune()
 
     def _aggregate_array(self, func, attr):
