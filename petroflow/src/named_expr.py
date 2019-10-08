@@ -32,6 +32,9 @@ class NestedList:
     def __copy__(self):
         return NestedList([[item.copy() for item in inner_list] for inner_list in self._nested_list])
 
+    def __call__(self):
+        return NestedList([[item() for item in inner_list] for inner_list in self._nested_list])
+
     def to_list(self):
         """Return wrapped list."""
         return self._nested_list
