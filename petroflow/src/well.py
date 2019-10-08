@@ -385,19 +385,19 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         numpy.ndarray
             Assembled array.
         """
-        if getattr(self.segments[0], '_' + attr) is None:
+        if getattr(self.iter_level()[0], '_' + attr) is None:
             return None
         if func not in ['mean', 'max']:
             func = 'mean'
             warnings.warn("Aggregation function replace with 'mean' when aggregate attrs_pixel.", Warning)
 
-        pixels_per_m = self.segments[0].pixels_per_cm * 100
+        pixels_per_m = self.iter_level()[0].pixels_per_cm * 100
         agg_array_height_pix = round((self.depth_to - self.depth_from) * pixels_per_m)
-        attr_val_shape = getattr(self.segments[0], '_' + attr).shape
+        attr_val_shape = getattr(self.iter_level()[0], '_' + attr).shape
 
         total = np.zeros((agg_array_height_pix, *attr_val_shape[1:]), dtype=int)
         background = np.full_like(total, np.nan, dtype=np.double)
-        for segment in self.segments:
+        for segment in self.iter_level():
             attr_val = getattr(segment, '_' + attr)
             segment_place = slice(round((segment.depth_from - self.depth_from) * pixels_per_m),
                                   round((segment.depth_to - self.depth_from) * pixels_per_m))
