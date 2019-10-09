@@ -1,6 +1,6 @@
 """Implements WellSegment - a class, representing a contiguous part of a well.
 """
-# pylint: disable=no-member,protected-access
+# pylint: disable=no-member, protected-access, import-error
 
 import os
 import json
@@ -1393,48 +1393,71 @@ class WellSegment(AbstractWellSegment):
         self : AbstractWellSegment or a child class
             Self with mask.
         """
+        if mode not in ['core', 'logs']:
+            raise ValueError('Unknown mode: ', mode)
+
+        series = getattr(self, src)[column]
+        series = series.dropna()
+        bad_values = [' '] # TODO: Bad values should be filtered earlier
+        series = series[~series.isin(bad_values)]
+        if not series.index.is_monotonic:
+            series.sort_index(level=0, inplace=True)
+
+        src_index = series.index
+        src_values = series.values
+        if mapping is not None:
+            uniques, indexes = np.unique(src_values, return_inverse=True)
+            src_values = np.array([mapping[x] for x in uniques])[indexes]
+
         if src in self.attrs_fdtd_index:
-            self._create_mask_fdtd(src, column, mapping, mode, default, dst)
+            self._create_mask_fdtd(src_index, src_values, mode, default, dst)
         elif src in self.attrs_depth_index:
-            self._create_mask_depth_index(src, column, mapping, mode, default, dst)
+            self._create_mask_depth_index(src_index, src_values, src, mode, default, dst)
         else:
             ValueError('Unknown src: ', src)
         return self
 
-    def _create_mask_fdtd(self, src, column, mapping, mode, default, dst):
+    def _create_mask_fdtd(self, src_index, src_values, mode, default, dst):
         """Create mask from fdtd data."""
+        depth_from = src_index.get_level_values('DEPTH_FROM').values
+        depth_to = src_index.get_level_values('DEPTH_TO').values
+
         if mode == 'core':
             mask = np.ones(len(self.core_dl)) * default
+            factor = len(mask) / self.length
+            start = np.round((np.maximum(depth_from, self.depth_from) - self.depth_from) * factor).astype(int)
+            end = np.round((np.minimum(depth_to, self.depth_to) - self.depth_from) * factor).astype(int)
+            end = end + (self.pixels_per_cm - 1)
         elif mode == 'logs':
             mask = np.ones(len(self.logs)) * default
-        else:
-            raise ValueError('Unknown mode: ', mode)
+            start = np.searchsorted(self.logs.index, depth_from, side='left')
+            end = np.searchsorted(self.logs.index, depth_to, side='right')
 
-        table = getattr(self, src)
-        factor = len(mask) / self.length
-        for row in table.iterrows():
-            depth_from, depth_to = row[1].name
-            start = np.floor((max(depth_from, self.depth_from) - self.depth_from) * factor)
-            end = np.ceil((min(depth_to, self.depth_to) - self.depth_from) * factor)
-            mask[int(start):int(end)] = row[1][column] if mapping is None else mapping[row[1][column]]
+        for i in range(len(src_index)):
+            mask[start[i]:end[i]+1] = src_values[i]
         setattr(self, dst, mask)
 
-    def _create_mask_depth_index(self, src, column, mapping, mode, default, dst):
+    def _create_mask_depth_index(self, src_index, src_values, src, mode, default, dst):
         """Create mask from depth-indexed data."""
-        # TODO: fix interpolation
-        if mode == 'core':
+        if src == 'logs' and mode == 'logs':
+            mask = src_values
+        elif mode == 'core':
             mask = np.ones(len(self.core_dl)) * default
+            factor = len(mask) / self.length
+            insert_index = np.round((src_index.values - self.depth_from) * factor).astype(int)
+            insert_index = np.repeat(insert_index, self.pixels_per_cm)
+            index_increment = np.tile(np.arange(0, self.pixels_per_cm), len(src_index))
+            insert_index = insert_index + index_increment
+            src_values = np.repeat(src_values, self.pixels_per_cm)
+            mask[insert_index] = src_values
         elif mode == 'logs':
             mask = np.ones(len(self.logs)) * default
-        else:
-            raise ValueError('Unknown mode: ', mode)
-
-        table = getattr(self, src)
-        factor = len(mask) / self.length
-        for row in table.iterrows():
-            depth = row[1].name
-            pos = np.floor((depth - self.depth_from) * factor)
-            mask[int(pos)] = row[1][column] if mapping is None else mapping[row[1][column]]
+            mask_index = self.logs.index
+            insert_index = np.searchsorted(mask_index, src_index, side='left')
+            filter_index = list((insert_index[1:] - insert_index[:-1]) != 0) + [True]
+            insert_index = insert_index[filter_index]
+            src_values = src_values[filter_index]
+            mask[insert_index] = src_values
         setattr(self, dst, mask)
 
     def reindex(self, step, attrs=None):
