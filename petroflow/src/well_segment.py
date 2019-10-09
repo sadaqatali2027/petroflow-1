@@ -1435,7 +1435,11 @@ class WellSegment(AbstractWellSegment):
             insert_index = np.repeat(insert_index, self.pixels_per_cm)
             index_increment = np.tile(np.arange(0, self.pixels_per_cm), len(src_index))
             insert_index = insert_index + index_increment
-            src_values = np.repeat(src_values, self.pixels_per_cm)
+            # Tiling can create indices out of mask lower bound, if index of
+            # last value from src is close enough to the last `core_dl` index.
+            out_of_bounds = insert_index < len(mask)
+            insert_index = insert_index[out_of_bounds]
+            src_values = np.repeat(src_values, self.pixels_per_cm)[out_of_bounds]
             mask[insert_index] = src_values
         elif mode == 'logs':
             mask = np.ones(len(self.logs)) * default
