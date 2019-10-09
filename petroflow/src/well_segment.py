@@ -1500,18 +1500,20 @@ class WellSegment(AbstractWellSegment):
             setattr(self, "_" + attr, res)
         return self
 
-    def drop_nans(self, logs=None):
-        """Create segments that does not contain `nan` values in logs,
-        indicated in `logs`.
+    def drop_nans(self, mnemonics=None):
+        """Create segments that does not contain `nan` values in logs columns,
+        indicated in `mnemonics`.
 
         Parameters
         ----------
-        logs : None or int or list of str
-            - If `None`, create segments without `nan` values in all logs.
+        mnemonics : None or int or str or list of str
+            - If `None`, create segments without `nan` values for all logs.
             - If `int`, create segments so that each row of logs has at least
-              `logs` not-nan values.
-            - If `list`, create segments without `nan` values in logs with
-              mnemonics in `logs`.
+              `mnemonics` not-nan values.
+            - If `str`, create segment without `nan` values in `mnemonics`
+              column of logs.
+            - If `list`, create segments without `nan` values in columns from
+              `mnemonics` of logs.
             Defaults to `None`.
 
         Returns
@@ -1519,20 +1521,23 @@ class WellSegment(AbstractWellSegment):
         segments : list of WellSegment
             Segments with dropped `nan` values.
         """
-        logs = self.logs.columns if logs is None else logs
-        if isinstance(logs, int):
-            not_nan_mask = (~np.isnan(self.logs)).sum(axis=1) >= logs
+        mnemonics = self.logs.columns if mnemonics is None else mnemonics
+        if isinstance(mnemonics, int):
+            not_nan_mask = (~np.isnan(self.logs)).sum(axis=1) >= mnemonics
         else:
-            not_nan_mask = np.all(~np.isnan(self.logs[logs]), axis=1)
-        not_nan_indices = np.where(not_nan_mask)[0]
-        if len(not_nan_indices) == 0:
+            not_nan_mask = np.all(~np.isnan(self.logs[to_list(mnemonics)]), axis=1)
+
+        if not not_nan_mask.any():
             return []
-        borders = np.where((not_nan_indices[1:] - not_nan_indices[:-1]) != 1)[0] + 1
-        if len(borders) == 0:
-            return [self]
-        not_nan_depths = not_nan_mask.index[not_nan_indices]
-        splits = np.split(not_nan_depths, borders)
-        return [self[split[0]:split[-1]] for split in splits]
+
+        borders = not_nan_mask[not_nan_mask ^ not_nan_mask.shift(1)].index.tolist()
+        # If last mask element is True (segment ends with not nan value in logs)
+        # then the xor trick above misses the last slicing border and therefore
+        # None should be added so the last slice could be done as `self[a:None]`
+        if not_nan_mask.iloc[-1]:
+            borders.append(None)
+        borders = zip(borders[0::2], borders[1::2])
+        return [self[a:b] for a, b in borders]
 
     def norm_mean_std(self, mean=None, std=None, eps=1e-10):
         """Standardize well logs by subtracting the mean and scaling to unit
