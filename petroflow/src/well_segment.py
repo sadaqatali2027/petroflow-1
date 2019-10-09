@@ -278,6 +278,8 @@ class WellSegment(AbstractWellSegment):
     def _filter_fdtd_df(self, df):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth range."""
+        if len(df) == 0:
+            return df
         depth_from, depth_to = zip(*df.index.values)
         mask = (np.array(depth_from) < self.depth_to) & (self.depth_from < np.array(depth_to))
         return df[mask]
