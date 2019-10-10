@@ -75,6 +75,9 @@ class AbstractWellSegment(metaclass=ABCMeta):
     def equalize_histogram(self):
         pass
 
+    @abstractmethod
+    def shift_logs(self):
+        pass
 
 class AbstractWell(AbstractWellSegment):
     """Abstract class to check that all nesessary methods are implemented in
