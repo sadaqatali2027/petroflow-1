@@ -25,7 +25,7 @@ from plotly.offline import init_notebook_mode, plot
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
 from .joins import cross_join, between_join, fdtd_join
-from .utils import to_list, leq_notclose, leq_close, geq_close
+from .utils import to_list, leq_notclose, leq_close, geq_close, fill_nans_around
 from .exceptions import SkipWellException, DataRegularityError
 
 def add_attr_properties(cls):
@@ -1351,7 +1351,7 @@ class WellSegment(AbstractWellSegment):
             positions = np.concatenate((crops_in, crops_out[:1]))
         return [self[pos:pos+length] for pos in positions]
 
-    def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask'):
+    def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask', period=None):
         """Transform a column from some `WellSegment` attribute into a mask
         correponding to a well log or to a core image.
 
@@ -1362,8 +1362,9 @@ class WellSegment(AbstractWellSegment):
         column : str
             Name of the column to transform.
         mapping : dict or None
-            Mapping for column values. If `None`, original attribure values
-            will be kept in the mask. Defaults to `None`.
+            Mapping for column values. If `None`, original attribute values
+            will be kept in the mask. Defaults to `None`. If given, all src
+            values mentioned in `bad_values` are omitted.
         mode : 'logs' or 'core'
             A mode, specifying the length of computed mask. If 'logs', mask
             lenght will match the length of well logs. If 'core', mask length
@@ -1374,6 +1375,8 @@ class WellSegment(AbstractWellSegment):
             corresponding depth. Defaults to `numpy.nan`.
         dst : str, optional
             `WellSegment` attribute to save the mask to. Defaults to `mask`.
+        period : int, optional
+            Number of nan values to fill with closest not nan value.
 
         Returns
         -------
@@ -1384,14 +1387,17 @@ class WellSegment(AbstractWellSegment):
             raise ValueError('Unknown mode: ', mode)
 
         series = getattr(self, src)[column]
-        series = series.dropna()
-        bad_values = [' '] # TODO: Bad values should be filtered earlier
-        series = series[~series.isin(bad_values)]
+
         if not series.index.is_monotonic:
             series.sort_index(level=0, inplace=True)
 
+        bad_values = [np.nan, ' '] # TODO: Bad values should be filtered earlier
+        if mapping is not None:
+            series = series[~series.isin(bad_values)]
+
         src_index = series.index
         src_values = series.values
+
         if mapping is not None:
             uniques, indexes = np.unique(src_values, return_inverse=True)
             src_values = np.array([mapping[x] for x in uniques])[indexes]
@@ -1402,6 +1408,10 @@ class WellSegment(AbstractWellSegment):
             self._create_mask_depth_index(src_index, src_values, src, mode, default, dst)
         else:
             ValueError('Unknown src: ', src)
+
+        if period is not None:
+            filled_mask = fill_nans_around(getattr(self, dst), period)
+            setattr(self, dst, filled_mask)
         return self
 
     def _create_mask_fdtd(self, src_index, src_values, mode, default, dst):
