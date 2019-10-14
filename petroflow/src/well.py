@@ -391,8 +391,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         if getattr(self.iter_level()[0], '_' + attr) is None:
             return None
         if func not in ['mean', 'max']:
+            warnings.warn("Only 'mean' and 'max' aggregations are currently supported by image attributes, \
+                          but {} was given. It was replaced by 'mean'.".format(func))
             func = 'mean'
-            warnings.warn("Aggregation function replace with 'mean' when aggregate attrs_pixel.", Warning)
 
         pixels_per_m = self.iter_level()[0].pixels_per_cm * 100
         agg_array_height_pix = round((self.depth_to - self.depth_from) * pixels_per_m)
@@ -422,8 +423,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         """Aggregate loaded segments attributes from `WellSegment.attrs_image`
         and `WellSegment.attrs_depth_index`. Concatenate loaded segments attributes
         from `WellSegment.attrs_fdtd_index`. The result of aggregation
-        and concatenation is one segment. This segment's `depth_from` and `depth_to`
-        will be minimum `depth_from` and maximum `depth_to` along all gathered segments.
+        and concatenation is one segment for each subtree starting at level `level`.
+        For each of these segment's `depth_from` and `depth_to` will be minimum `depth_from`
+        and maximum `depth_to` along all gathered segments on that subtree.
 
         Parameters
         ----------
@@ -442,7 +444,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         Returns
         -------
         self : AbstractWell
-            The well with one gathered segment on `level` level of well tree .
+            The well with gathered segments on level `level`.
         """
         if level < -self.tree_depth or level == -1 or level >= self.tree_depth - 1:
             raise ValueError("Aggregation level can't be ({})".format(level))
@@ -468,8 +470,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                     else:
                         aggregate_attrs.remove(attr)
                     continue
-                # If attribute is still not loaded for several segments, load them explicit.
-                # It can happen in previous manual processing of Well.
+                # If an attribute is still not loaded for several segments, it should be loaded explicitly.
+                # It can happen in case of previous manual processing of a `Well`.
                 attr_val_0 = pd.concat([getattr(segment, attr) for segment in well.segments])
                 setattr(seg_0, '_' + attr, attr_val_0)
 
@@ -481,11 +483,11 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
             for attr in aggregate_attrs:
                 attr_val_0 = getattr(seg_0, '_' + attr)
-                # Reindex process need to `groupby` by `int` values
+                # Round depths to centimeters in order not to make `groupby` by `float` values.
                 attr_val_0.index = attr_val_0.index.map(lambda idx: round(idx * 100))
                 attr_val_0 = attr_val_0.groupby(level=0).agg(func)
 
-                # Add NaN values to logs
+                # Add NaN values to `logs`.
                 if attr == 'logs' and attr_val_0.shape[0] > 1:
                     index_step = (attr_val_0.index[1:] - attr_val_0.index[:-1]).min()
                     index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1] + index_step, index_step)

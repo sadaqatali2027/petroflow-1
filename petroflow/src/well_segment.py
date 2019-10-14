@@ -264,7 +264,7 @@ class WellSegment(AbstractWellSegment):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
         df = df[self.depth_from:self.depth_to]
-        if not df.empty and np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
+        if len(df) > 0 and np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
             df.drop(df.index[-1], inplace=True)
         return df
 
