@@ -10,7 +10,13 @@ from scipy.optimize import minimize
 from scipy.interpolate import interp1d
 
 
-Shift = namedtuple("Shift", ["depth_from", "depth_to", "sequence_delta", "interval_deltas", "loss"])
+Shift = namedtuple("Shift", ["depth_from", "depth_to", "sequence_delta", "interval_deltas", "loss",
+                             "n", "sum_well", "sum_core", "sum_well_core", "sum_well2", "sum_core2"])
+
+
+def create_zero_shift(depth_from, depth_to):
+    zero_shift = Shift(depth_from, depth_to, 0, 0, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)
+    return zero_shift
 
 
 def trunc(x, n_decimals=0):
@@ -97,7 +103,7 @@ def generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, sequence_delta_from, se
     return [np.concatenate([[d1], d2]) for d1, d2 in product(segment_delta, interval_deltas)]
 
 
-def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log, eps=1e-8):
+def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log, return_stats=False, eps=1e-8):
     """Calculate optimization loss as negative correlation between well log
     and core log.
 
@@ -132,11 +138,15 @@ def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log, eps=1e
     # TODO: find out why NaNs appear
     cov = np.mean(well_log * core_log) - well_log.mean() * core_log.mean()
     cor = np.clip(cov / ((well_log.std() + eps) * (core_log.std() + eps)), -1, 1)
-    return -cor
+    stats = (len(well_log), np.sum(well_log), np.sum(core_log), np.sum(well_log * core_log),
+             np.sum(well_log**2), np.sum(core_log**2))
+    if not return_stats:
+        return -cor
+    return -cor, stats
 
 
 def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_log, max_shift,
-                          delta_from, delta_to, delta_step, max_iter, timeout, top_shifts=25):
+                          delta_from, delta_to, delta_step, max_iter, timeout):
     """Perform core-to-log matching of a boring sequence by shifting core
     samples in order to maximize correlation between well and core logs.
 
@@ -228,8 +238,9 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
 
     # Optimization
     zero_deltas = np.zeros(np.sum(bi_n_lith_ints) + 1)
-    zero_shift_loss = loss(zero_deltas, bi_n_lith_ints, core_depths, log_interpolator, core_logs)
-    zero_shift = Shift(sequence_depth_from, sequence_depth_to, 0, zero_deltas[1:], zero_shift_loss)
+    zero_shift_loss, stats = loss(zero_deltas, bi_n_lith_ints, core_depths, log_interpolator, core_logs,
+                                  return_stats=True)
+    zero_shift = Shift(sequence_depth_from, sequence_depth_to, 0, zero_deltas[1:], zero_shift_loss, *stats)
     shifts = []
 
     futures = []
@@ -249,10 +260,11 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
             try:
                 res = future.get(timeout=timeout)
                 future_deltas = res.x
-                future_loss = res.fun
             except mp.TimeoutError:
                 future_deltas = init_delta
-                future_loss = loss(future_deltas, bi_n_lith_ints, core_depths, log_interpolator, core_logs)
+
+            future_loss, stats = loss(future_deltas, bi_n_lith_ints, core_depths, log_interpolator, core_logs,
+                                      return_stats=True)
 
             sequence_delta = trunc(future_deltas[0], 2)
             interval_deltas = np.clip(trunc(future_deltas[1:], 2), 0, None)
@@ -260,12 +272,12 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
             interval_deltas = np.concatenate(interval_deltas) + sequence_delta
 
             shift = Shift(sequence_depth_from + sequence_delta, sequence_depth_to + sequence_delta,
-                          sequence_delta, interval_deltas, future_loss)
+                          sequence_delta, interval_deltas, future_loss, *stats)
             shifts.append(shift)
     return  [zero_shift] + shifts
 
 
-def find_best_shifts(sequences_shifts, max_combinations=1e5):
+def find_best_shifts(sequences_shifts, max_combinations=1e5, eps=1e-8):
     """Choose best shift for each boring sequence so that they don't overlap
     and maximize matching R^2."""
     n_sequences = len(sequences_shifts)
@@ -280,17 +292,20 @@ def find_best_shifts(sequences_shifts, max_combinations=1e5):
             top_shifts.append(shifts[:1] + sorted(shifts[1:], key=lambda x: x.loss)[:top_n])
 
     best_shifts = None
-    best_loss = None
+    best_corr = None
     for shifts in product(*top_shifts):
         is_valid = all(int1.depth_to < int2.depth_from for int1, int2 in zip(shifts[:-1], shifts[1:]))
         if not is_valid:
             continue
-        interval_losses = [interval.loss for interval in shifts]
-        if np.isnan(interval_losses).all():  # the whole boring group cannot be matched
-            mean_loss = 1  # maximum loss
+        if np.isnan([interval.loss for interval in shifts]).all():  # the whole boring group cannot be matched
+            corr = -1  # maximum loss
         else:
-            mean_loss = np.nanmean(interval_losses)
-        if best_shifts is None or mean_loss < best_loss:
+            stats = np.nansum([interval[-6:] for interval in shifts], axis=0)
+            n, sum_well, sum_core, sum_well_core, sum_well2, sum_core2 = stats
+            nom = n * sum_well_core - sum_well * sum_core
+            denom = np.sqrt((n * sum_well2 - sum_well**2 + eps) * (n * sum_core2 - sum_core**2 + eps))
+            corr = np.clip(nom / denom, -1, 1)
+        if best_shifts is None or corr > best_corr:
             best_shifts = shifts
-            best_loss = mean_loss
+            best_corr = corr
     return best_shifts

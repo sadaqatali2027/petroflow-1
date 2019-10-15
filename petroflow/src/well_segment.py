@@ -23,7 +23,7 @@ from plotly.subplots import make_subplots
 from plotly.offline import init_notebook_mode, plot
 
 from .abstract_classes import AbstractWellSegment
-from .matching import select_contigious_intervals, match_boring_sequence, find_best_shifts, Shift
+from .matching import select_contigious_intervals, match_boring_sequence, find_best_shifts, create_zero_shift
 from .joins import cross_join, between_join, fdtd_join
 from .utils import to_list, leq_notclose, leq_close, geq_close
 from .exceptions import SkipWellException, DataRegularityError
@@ -1014,8 +1014,7 @@ class WellSegment(AbstractWellSegment):
                 sequences_modes.append(mode)
                 if mode is None:
                     # Don't shift a sequence if there's no data to perform matching
-                    zero_shift = Shift(sequence_depth_from, sequence_depth_to, 0, 0, np.nan)
-                    sequences_shifts.append([zero_shift])
+                    sequences_shifts.append([create_zero_shift(sequence_depth_from, sequence_depth_to)])
                     continue
 
                 log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(mode)
