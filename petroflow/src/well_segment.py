@@ -1618,9 +1618,9 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def shift_logs(self, mnemonics=None, max_period=3):
-        """Shift every logs column from `mnemonics` on random step sampled from
+        """Shift every `logs` column from `mnemonics` by a random step sampled from
         discrete uniform distribution in range(-max_period, +max_period). All
-        new resulting empty positions are filled with first/last columnn value
+        new resulting empty positions are filled with first/last column value
         depending on shift direction.
 
         Parameters
@@ -1639,7 +1639,7 @@ class WellSegment(AbstractWellSegment):
             Self with shifted logs columns.
         """
         mnemonics = self.logs.columns if mnemonics is None else to_list(mnemonics)
-        periods = np.random.randint(-max_period, max_period+1, len(mnemonics))
+        periods = np.random.randint(-max_period, max_period + 1, len(mnemonics))
         for index, column in enumerate(mnemonics):
             period = periods[index]
             if period >= 0:
