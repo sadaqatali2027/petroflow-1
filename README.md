@@ -52,7 +52,7 @@ Here is an example of a pipeline that loads well data, makes preprocessing and t
 a model for porosity prediction for 3000 epochs:
 ```python
 train_pipeline = (
-  ds.Pipeline()
+  bf.Pipeline()
     .add_namespace(np)
     .init_variable("loss", init_on_each_run=list)
     .init_model("dynamic", UNet, "UNet", model_config)
