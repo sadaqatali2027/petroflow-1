@@ -65,43 +65,47 @@ def get_path(batch, index, src):
 def fill_nans_around(arr, period):
     """Fill nan array values with closest not nan values on fixed period.
 
-    Usage example for period=1:
-
-    Input array:  __1___23_4___
-    Output array: _111_223344__
-
     Parameters
     ----------
-    arr : np.array
+    arr : 1-d np.array
         Input array.
     period : int
-        Number of values to fill.
+        Number of array positions to fill (counting from last not nan value).
 
     Returns
     -------
-    arr : np.array
+    arr : 1-d np.array
         Array with nans filled.
+
+    Examples
+    -----
+    Usage for period=1:
+
+        Input array:  __1___23_4___
+        Output array: _111_223344__
     """
     arr = arr.copy()
     nan_mask = np.isnan(arr)
-    lims = [False] + np.logical_xor(nan_mask[1:], nan_mask[:-1]).tolist()
-    lims = np.where(lims)[0]
-    # If initial array starts or ends with nan value, limits of nan intervals
-    # are padded with required indices, since xor trick above doesn't handle it
+    bounds = [False] + np.logical_xor(nan_mask[1:], nan_mask[:-1]).tolist()
+    bounds = np.where(bounds)[0]
+    # If initial array starts or ends with nan value, bounds of nan intervals
+    # are padded with array limits, since xor trick above doesn't handle it
     left_lim = [0] if nan_mask[0] else []
     right_lim = [arr.size] if nan_mask[-1] else []
-    lims = np.concatenate([left_lim, lims, right_lim]).astype(int)
+    bounds = np.concatenate([left_lim, bounds, right_lim]).astype(int)
+    # Create two `bounds` subarrays — `lefts` for intervals to be filled with
+    # their most right value, and `rights` — with their most left value
+    lefts = bounds.copy()
+    rights = bounds.copy()
     # As the original `period` value might be excessive for some intervals with
-    # smaller lengths, limits of intervals to fill are checked for overlapping
-    lefts = lims.copy()
-    rights = lims.copy()
-    lengths = lims[1::2] - lims[::2]
+    # smaller lengths, bounds of intervals to fill are checked for overlapping
+    lengths = bounds[1::2] - bounds[::2]
     lefts[::2] = lefts[1::2] - np.minimum(period, lengths // 2)
     rights[1::2] = rights[::2] + np.minimum(period, lengths // 2 + lengths % 2)
-    # Zip limits of nan intervals in pairs `(from, to)`
+    # Zip bounds of nan intervals in pairs `(from, to)`
     lefts = list(zip(lefts[::2], lefts[1::2]))
     rights = list(zip(rights[::2], rights[1::2]))
-    # Iterate all nan intervals and fill them in calculated limits
+    # Iterate all nan intervals and fill them in calculated bounds
     for i in range(lengths.size):
         left_slice = slice(*lefts[i])
         if left_slice.stop != arr.size:

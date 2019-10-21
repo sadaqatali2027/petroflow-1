@@ -1376,7 +1376,7 @@ class WellSegment(AbstractWellSegment):
         dst : str, optional
             `WellSegment` attribute to save the mask to. Defaults to `mask`.
         period : int, optional
-            Number of nan values to fill with closest not nan value.
+            Length of nan intervals to fill with the closest not nan value.
 
         Returns
         -------
@@ -1410,8 +1410,11 @@ class WellSegment(AbstractWellSegment):
             ValueError('Unknown src: ', src)
 
         if period is not None:
-            filled_mask = fill_nans_around(getattr(self, dst), period)
+            mask = getattr(self, dst)
+            period = int(np.floor(period * (len(mask) / self.length)))
+            filled_mask = fill_nans_around(mask, period)
             setattr(self, dst, filled_mask)
+
         return self
 
     def _create_mask_fdtd(self, src_index, src_values, mode, default, dst):
@@ -1432,6 +1435,7 @@ class WellSegment(AbstractWellSegment):
 
         for i in range(len(src_index)):
             mask[start[i]:end[i]+1] = src_values[i]
+
         setattr(self, dst, mask)
 
     def _create_mask_depth_index(self, src_index, src_values, src, mode, default, dst):
