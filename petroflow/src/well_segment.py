@@ -1617,7 +1617,7 @@ class WellSegment(AbstractWellSegment):
             setattr(self, _dst, img)
         return self
 
-    def shift_logs(self, mnemonics=None, max_period=3):
+    def shift_logs(self, max_period, mnemonics=None):
         """Shift every `logs` column from `mnemonics` by a random step sampled
         from discrete uniform distribution in [-`max_period`, `max_period`].
         All new resulting empty positions are filled with first/last
@@ -1625,13 +1625,13 @@ class WellSegment(AbstractWellSegment):
 
         Parameters
         ----------
+        max_period : float
+            Max possible shift period length.
         mnemonics : None or str or list of str
             - If `None`, shift all logs columns.
             - If `str`, shift single column from logs with `mnemonics` name.
             - If `list`, shift all logs columnns with names in `mnemonics`.
             Defaults to `None`.
-        max_period : int, optional
-            Max possible period absolute value. Default is 3.
 
         Returns
         -------
@@ -1639,6 +1639,7 @@ class WellSegment(AbstractWellSegment):
             Self with shifted logs columns.
         """
         mnemonics = self.logs.columns if mnemonics is None else to_list(mnemonics)
+        max_period = int(np.floor(max_period * (len(self.logs) / self.length)))
         periods = np.random.randint(-max_period, max_period + 1, len(mnemonics))
         for mnemonic, period in zip(mnemonics, periods):
             fill_index = 0 if period > 0 else -1
