@@ -1,7 +1,7 @@
 """Named expression for wells."""
 
 from ..batchflow import NamedExpression
-from ..batchflow.batchflow.named_expr import _DummyBatch
+from ..batchflow.batchflow.named_expr import _DummyBatch  # pylint: disable=import-error
 
 
 class NestedList:
@@ -69,7 +69,7 @@ class WS(NamedExpression):
         name = super()._get_name(batch=batch, pipeline=pipeline, model=model)
         if isinstance(batch, _DummyBatch):
             raise ValueError("WS expressions are not allowed in static models: WS('%s')" % name)
-        nested_list = NestedList([[segment for segment in well.iter_level()] for well in batch.wells])
+        nested_list = NestedList([[segment for segment in well.iter_level()] for well in batch.wells])  # pylint: disable=unnecessary-comprehension, line-too-long
         if name is None:
             return nested_list.copy() if self.copy else nested_list
         return getattr(nested_list, name)
@@ -79,6 +79,6 @@ class WS(NamedExpression):
         if self.params:
             batch, pipeline, model = self.params
         name = super()._get_name(batch=batch, pipeline=pipeline, model=model)
-        nested_list = NestedList([[segment for segment in well.iter_level()] for well in batch.wells])
+        nested_list = NestedList([[segment for segment in well.iter_level()] for well in batch.wells])  # pylint: disable=unnecessary-comprehension, line-too-long
         if name is not None:
             setattr(nested_list, name, value)
