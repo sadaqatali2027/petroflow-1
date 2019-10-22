@@ -1626,7 +1626,7 @@ class WellSegment(AbstractWellSegment):
         Parameters
         ----------
         max_period : float
-            Max possible shift period length.
+            Max possible shift period in meters.
         mnemonics : None or str or list of str
             - If `None`, shift all logs columns.
             - If `str`, shift single column from logs with `mnemonics` name.
