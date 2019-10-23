@@ -190,6 +190,7 @@ class WellSegment(AbstractWellSegment):
         self.field = meta["field"]
         self.depth_from = float(meta["depth_from"])
         self.depth_to = float(meta["depth_to"])
+        self.pad_depth = None
 
         self.has_samples = self._has_file("samples")
 
@@ -1321,7 +1322,7 @@ class WellSegment(AbstractWellSegment):
         positions = np.sort(np.random.uniform(*bounds, size=n_crops))
         return [self[pos:pos+length] for pos in positions]
 
-    def crop(self, length, step, drop_last=True):
+    def crop(self, length, step, drop_last=True, fill_value=0):
         """Create crops from the segment. All cropped segments have the same
         length and are cropped with some fixed step.
 
@@ -1345,12 +1346,18 @@ class WellSegment(AbstractWellSegment):
         """
         positions = np.arange(self.depth_from, self.depth_to, step)
         crops_in = positions[positions + length <= self.depth_to]
-        last_crop = self.depth_to - length
+        crops_out = positions[positions + length > self.depth_to]
+        segments_in = [self[pos:pos+length] for pos in crops_in]
+
         if drop_last:
-            positions = crops_in
-        else:
-            positions = np.append(crops_in, last_crop)
-        return [self[pos:pos+length] for pos in positions]
+            return segments_in
+
+        segments_out = [self[pos:pos+length] for pos in crops_out]
+        for segment in segments_out:
+            segment.pad_depth = segment.depth_to
+            segment.depth_to = segment.depth_from + length
+
+        return segments_in + segments_out
 
     def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask'):
         """Transform a column from some `WellSegment` attribute into a mask
