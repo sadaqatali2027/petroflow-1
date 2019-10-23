@@ -1351,7 +1351,8 @@ class WellSegment(AbstractWellSegment):
             positions = np.concatenate((crops_in, crops_out[:1]))
         return [self[pos:pos+length] for pos in positions]
 
-    def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask', period=None):
+    def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask',
+                    period=None, create_index=False):
         """Transform a column from some `WellSegment` attribute into a mask
         correponding to a well log or to a core image.
 
@@ -1377,6 +1378,9 @@ class WellSegment(AbstractWellSegment):
             `WellSegment` attribute to save the mask to. Defaults to `mask`.
         period : int, optional
             Length of nan intervals to fill with the closest not nan value.
+        create_index : bool, optional, defaults to False
+            If True, create index in meters according to `mode` and set it
+            to the attr with `dst` name postfixed with '_index'.
 
         Returns
         -------
@@ -1399,8 +1403,8 @@ class WellSegment(AbstractWellSegment):
         src_values = series.values
 
         if mapping is not None:
-            uniques, indexes = np.unique(src_values, return_inverse=True)
-            src_values = np.array([mapping[x] for x in uniques])[indexes]
+            uniques, indices = np.unique(src_values, return_inverse=True)
+            src_values = np.array([mapping[x] for x in uniques])[indices]
 
         if src in self.attrs_fdtd_index:
             self._create_mask_fdtd(src_index, src_values, mode, default, dst)
@@ -1408,6 +1412,11 @@ class WellSegment(AbstractWellSegment):
             self._create_mask_depth_index(src_index, src_values, src, mode, default, dst)
         else:
             ValueError('Unknown src: ', src)
+
+        if create_index:
+            mask = getattr(self, dst)
+            index = np.linspace(self.depth_from, self.depth_to, len(mask))
+            setattr(self, dst + '_index', index)
 
         if period is not None:
             mask = getattr(self, dst)
