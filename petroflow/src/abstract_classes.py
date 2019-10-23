@@ -106,3 +106,7 @@ class AbstractWell(AbstractWellSegment):
     @abstractmethod
     def create_mask(self):
         pass
+
+    @abstractmethod
+    def aggregate(self):
+        pass

@@ -176,6 +176,7 @@ class WellSegment(AbstractWellSegment):
     attrs_depth_index = ("logs", "core_properties", "core_logs")
     attrs_fdtd_index = ("layers", "boring_sequences", "boring_intervals", "core_lithology", "samples")
     attrs_no_index = ("inclination",)
+    attrs_image = ("core_uv", "core_dl")
 
     def __init__(self, path, *args, core_width=10, pixels_per_cm=5, **kwargs):
         super().__init__()
@@ -263,7 +264,7 @@ class WellSegment(AbstractWellSegment):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
         df = df[self.depth_from:self.depth_to]
-        if np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
+        if len(df) > 0 and np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
             df.drop(df.index[-1], inplace=True)
         return df
 
@@ -277,6 +278,8 @@ class WellSegment(AbstractWellSegment):
     def _filter_fdtd_df(self, df):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth range."""
+        if len(df) == 0:
+            return df
         depth_from, depth_to = zip(*df.index.values)
         mask = (np.array(depth_from) < self.depth_to) & (self.depth_from < np.array(depth_to))
         return df[mask]
