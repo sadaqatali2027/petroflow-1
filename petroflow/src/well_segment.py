@@ -56,6 +56,8 @@ def add_attr_loaders(cls):
             def load(self, *args, **kwargs):
                 data = loader(self, self._get_full_name(self.path, attr), *args, **kwargs)
                 setattr(self, "_" + attr, data)
+                if attr == 'logs':
+                    self.logs_step = round((data.index[1:] - data.index[:-1]).min(), 2)
                 return self
             return load
         setattr(cls, "load_" + attr, load_factory(attr, loader))
@@ -191,6 +193,7 @@ class WellSegment(AbstractWellSegment):
         self.depth_from = float(meta["depth_from"])
         self.depth_to = float(meta["depth_to"])
         self.pad_depth = None
+        self.logs_step = None
 
         self.has_samples = self._has_file("samples")
 
@@ -1455,6 +1458,8 @@ class WellSegment(AbstractWellSegment):
         new_index = np.arange(self.depth_from, self.depth_to, step)
         for attr in np.intersect1d(attrs, self.attrs_depth_index):
             res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=1e-4)
+            if attr == 'logs':
+                self.logs_step = step
             setattr(self, "_" + attr, res)
         return self
 
