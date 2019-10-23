@@ -1335,9 +1335,9 @@ class WellSegment(AbstractWellSegment):
         step : positive float
             Step of cropping in meters.
         drop_last : bool, optional
-            If `True`, only crops that lie within the segment will be kept. 
-            If `False`, an extra segment, starting from `depth_to` - `length` 
-            will be added to cover the whole segment with crops. 
+            If `True`, only crops that lie within the segment will be kept.
+            If `False`, an extra segment, starting from `depth_to` - `length`
+            will be added to cover the whole segment with crops.
             Defaults to `True`.
 
         Returns
