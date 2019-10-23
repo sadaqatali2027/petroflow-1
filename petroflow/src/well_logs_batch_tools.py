@@ -25,7 +25,7 @@ def crop(logs, length, positions):
     """
     shape = (len(positions), *logs.shape[:-1], length)
     res = np.empty(shape, dtype=logs.dtype)
-    for i in range(res.shape[0]):
+    for i in range(res.shape[0]):  # pylint: disable=unsubscriptable-object
         res[i] = logs[..., positions[i] : positions[i] + length]
     return res
 

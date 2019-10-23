@@ -1,12 +1,14 @@
 """Implements Well class."""
 # pylint: disable=abstract-method
 
+import warnings
 from abc import ABCMeta
 from copy import copy
 from functools import wraps
 from collections import Counter
 
 import numpy as np
+import pandas as pd
 
 from .abstract_classes import AbstractWell
 from .well_segment import WellSegment
@@ -349,14 +351,17 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [Well(segments=segment.drop_nans(logs=logs)) for segment in well]
         return self.prune()
 
-    def drop_short_segments(self, min_length):
+    def drop_short_segments(self, min_length, tolerance=1e-5):
         """Drop segments at the last level with length smaller than
-        `min_length`.
+        `min_length` with given `tolerance`.
 
         Parameters
         ----------
         min_length : positive float
             Segments shorter than `min_length` are dropped.
+
+        tolerance : positive float, optional
+            Tolerance for checking segments length.
 
         Returns
         -------
@@ -365,5 +370,132 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         """
         wells = self.iter_level(-2)
         for well in wells:
-            well.segments = [segment for segment in well if segment.length > min_length]
+            well.segments = [segment for segment in well if segment.length > min_length - tolerance]
+        return self.prune()
+
+    def _aggregate_array(self, func, attr):
+        """Aggregate loaded attributes from `WellSegment.attrs_pixel_index`.
+
+        Parameters
+        ----------
+        func : {'mean', 'max'}
+            Name of aggregation function.
+        attr : str
+            Name of attribute.
+
+        Returns
+        -------
+        numpy.ndarray
+            Assembled array.
+        """
+        if getattr(self.iter_level()[0], '_' + attr) is None:
+            return None
+        if func not in ['mean', 'max']:
+            warnings.warn("Only 'mean' and 'max' aggregations are currently supported for image attributes, \
+                          but {} was given. It was replaced by 'mean'.".format(func))
+            func = 'mean'
+
+        pixels_per_m = self.iter_level()[0].pixels_per_cm * 100
+        agg_array_height_pix = round((self.depth_to - self.depth_from) * pixels_per_m)
+        attr_val_shape = getattr(self.iter_level()[0], '_' + attr).shape
+
+        total = np.zeros((agg_array_height_pix, *attr_val_shape[1:]), dtype=int)
+        background = np.full_like(total, np.nan, dtype=np.double)
+        for segment in self.iter_level():
+            attr_val = getattr(segment, '_' + attr)
+            segment_place = slice(round((segment.depth_from - self.depth_from) * pixels_per_m),
+                                  round((segment.depth_to - self.depth_from) * pixels_per_m))
+
+            if func == 'max':
+                background[segment_place] = np.fmax(background[segment_place], attr_val)
+                continue
+            if func == 'mean':
+                background[segment_place] = np.nansum([background[segment_place], attr_val], axis=0)
+                total[segment_place] += 1
+
+        if func == 'max':
+            return background
+
+        total = np.where(total == 0, 1, total)
+        return background / total
+
+    def aggregate(self, func, level=0):
+        """Aggregate loaded segments' attributes from `WellSegment.attrs_image`
+        and `WellSegment.attrs_depth_index`. Concatenate loaded segments' attributes
+        from `WellSegment.attrs_fdtd_index`. The result of aggregation and concatenation
+        is a single segment for each subtree starting at level `level`. `depth_from` and
+        `depth_to` for each of these segments will be minimum `depth_from` and
+        maximum `depth_to` along all gathered segments of that subtree.
+
+        Parameters
+        ----------
+        func : str, callable
+            Function to use for aggregating the data.
+            - `str` - short function name (e.g. ``'max'``, ``'min'``).
+            See `pd.aggregate` documentation.
+            - `callable` - a function which gets a `pd.Series` and returns
+               one element.
+            Only 'mean' and 'max' aggregations are currently supported for attributes
+            from `WellSegment.attrs_image`!
+        level : int, optional
+            Level of the well tree defined for aggregation.
+            All segments below `level` level of tree will be gathered into one.
+            Defaults to an aggregation of the whole tree.
+
+        Returns
+        -------
+        self : AbstractWell
+            The well with gathered segments on level `level`.
+        """
+        if level < -self.tree_depth or level == -1 or level >= self.tree_depth - 1:
+            raise ValueError("Aggregation level can't be ({})".format(level))
+
+        aggregate_attrs = list(WellSegment.attrs_depth_index)
+        concat_attrs = list(WellSegment.attrs_fdtd_index)
+
+        wells = self.iter_level(level)
+        for well in wells:
+            well.segments = well.iter_level()
+            seg_0 = well.segments[0]
+
+            # TODO: different aggregation functions
+            for attr in WellSegment.attrs_image:
+                setattr(seg_0, '_' + attr, well._aggregate_array(func, attr))  # pylint: disable=protected-access
+
+            # Concatenate of all segments attributes
+            for attr in aggregate_attrs + concat_attrs:
+                attr_values = [getattr(segment, '_' + attr) for segment in well.segments]
+                if all(value is None for value in attr_values):
+                    if attr in concat_attrs:
+                        concat_attrs.remove(attr)
+                    else:
+                        aggregate_attrs.remove(attr)
+                    continue
+                # If an attribute is still not loaded for several segments, it should be loaded explicitly.
+                # It can happen in case of previous manual processing of a `Well`.
+                attr_val_0 = pd.concat([getattr(segment, attr) for segment in well.segments])
+                setattr(seg_0, '_' + attr, attr_val_0)
+
+            for attr in concat_attrs:
+                attr_val_0 = getattr(seg_0, '_' + attr)
+                attr_val_0.drop_duplicates(inplace=True)
+                attr_val_0.sort_index(inplace=True)
+                setattr(seg_0, '_' + attr, attr_val_0)
+
+            for attr in aggregate_attrs:
+                attr_val_0 = getattr(seg_0, '_' + attr)
+                # Round depths to centimeters in order not to make `groupby` by `float` values.
+                attr_val_0.index = attr_val_0.index.map(lambda idx: round(idx * 100))
+                attr_val_0 = attr_val_0.groupby(level=0).agg(func)
+
+                # Add NaN values to `logs`.
+                if attr == 'logs' and attr_val_0.shape[0] > 1:
+                    index_step = (attr_val_0.index[1:] - attr_val_0.index[:-1]).min()
+                    index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1] + index_step, index_step)
+                    attr_val_0 = attr_val_0.reindex(index_array, method='nearest', fill_value=np.nan, tolerance=1e-5)
+                attr_val_0.index /= 100
+                setattr(seg_0, '_' + attr, attr_val_0)
+            setattr(seg_0, 'depth_from', well.depth_from)
+            setattr(seg_0, 'depth_to', well.depth_to)
+            well.segments = [seg_0]
         return self.prune()
