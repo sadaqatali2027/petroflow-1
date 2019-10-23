@@ -1335,10 +1335,10 @@ class WellSegment(AbstractWellSegment):
         step : positive float
             Step of cropping in meters.
         drop_last : bool, optional
-            If `True`, all segment that are out of segment bounds will be
-            dropped. If `False`, the whole segment will be covered by crops.
-            The first crop which comes out of segment bounds will be kept, the
-            following crops will be dropped. Defaults to `True`.
+            If `True`, only crops that lie within the segment will be kept.
+            If `False`, an extra segment, starting from `depth_to` - `length`
+            will be added to cover the whole segment with crops.
+            Defaults to `True`.
 
         Returns
         -------
@@ -1347,11 +1347,11 @@ class WellSegment(AbstractWellSegment):
         """
         positions = np.arange(self.depth_from, self.depth_to, step)
         crops_in = positions[positions + length <= self.depth_to]
-        crops_out = positions[positions + length > self.depth_to]
+        last_crop = self.depth_to - length
         if drop_last:
             positions = crops_in
         else:
-            positions = np.concatenate((crops_in, crops_out[:1]))
+            positions = np.append(crops_in, last_crop)
         return [self[pos:pos+length] for pos in positions]
 
     def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask'):
