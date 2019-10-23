@@ -16,7 +16,8 @@ good-names = _, i, j, k, m, n, p, t, x, y, z, ax, ix, x1, x2, df, X
 [MESSAGE CONTROL]
 disable = no-value-for-parameter, keyword-arg-before-vararg, len-as-condition,
           arguments-differ, superfluous-parens, bad-mcs-classmethod-argument,
-          fixme, too-many-public-methods, too-many-lines, no-member
+          fixme, too-many-public-methods, too-few-public-methods, too-many-lines,
+          no-member, no-name-in-module
 
 [TYPECHECK]
 ignored-modules = numpy,cv2,plotly
