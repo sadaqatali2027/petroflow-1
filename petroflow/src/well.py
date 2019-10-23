@@ -391,7 +391,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         if getattr(self.iter_level()[0], '_' + attr) is None:
             return None
         if func not in ['mean', 'max']:
-            warnings.warn("Only 'mean' and 'max' aggregations are currently supported by image attributes, \
+            warnings.warn("Only 'mean' and 'max' aggregations are currently supported for image attributes, \
                           but {} was given. It was replaced by 'mean'.".format(func))
             func = 'mean'
 
@@ -420,12 +420,12 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return background / total
 
     def aggregate(self, func, level=0):
-        """Aggregate loaded segments attributes from `WellSegment.attrs_image`
-        and `WellSegment.attrs_depth_index`. Concatenate loaded segments attributes
-        from `WellSegment.attrs_fdtd_index`. The result of aggregation
-        and concatenation is one segment for each subtree starting at level `level`.
-        For each of these segment's `depth_from` and `depth_to` will be minimum `depth_from`
-        and maximum `depth_to` along all gathered segments on that subtree.
+        """Aggregate loaded segments' attributes from `WellSegment.attrs_image`
+        and `WellSegment.attrs_depth_index`. Concatenate loaded segments' attributes
+        from `WellSegment.attrs_fdtd_index`. The result of aggregation and concatenation
+        is a single segment for each subtree starting at level `level`. `depth_from` and
+        `depth_to` for each of these segments will be minimum `depth_from` and
+        maximum `depth_to` along all gathered segments of that subtree.
 
         Parameters
         ----------
@@ -435,7 +435,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             See `pd.aggregate` documentation.
             - `callable` - a function which gets a `pd.Series` and returns
                one element.
-            Now there is only `mean` and 'max' for aggregation `WellSegment.attrs_image`!
+            Only 'mean' and 'max' aggregations are currently supported for attributes
+            from `WellSegment.attrs_image`!
         level : int, optional
             Level of the well tree defined for aggregation.
             All segments below `level` level of tree will be gathered into one.
