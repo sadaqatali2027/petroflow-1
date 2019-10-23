@@ -2,7 +2,6 @@
 [![Python](https://img.shields.io/badge/python-3.5-blue.svg)](https://python.org)
 [![TensorFlow](https://img.shields.io/badge/TensorFlow-1.12-orange.svg)](https://tensorflow.org)
 [![PyTorch](https://img.shields.io/badge/torch-1.1-orange.svg)](https://pytorch.org)
-[![Run Status](https://api.shippable.com/projects/5d5fd94288fdbd00078b3924/badge?branch=master)](https://app.shippable.com/github/gazprom-neft/petroflow)
 
 # PetroFlow
 
