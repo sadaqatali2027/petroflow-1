@@ -455,7 +455,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         wells = self.iter_level(level)
         for well in wells:
-            well.segments = well.iter_level()
+            well.segments = [seg[:seg.pad_depth] for seg in well.iter_level()]
             seg_0 = well.segments[0]
 
             # TODO: different aggregation functions
