@@ -178,6 +178,7 @@ class WellSegment(AbstractWellSegment):
     attrs_depth_index = ("logs", "core_properties", "core_logs")
     attrs_fdtd_index = ("layers", "boring_sequences", "boring_intervals", "core_lithology", "samples")
     attrs_no_index = ("inclination",)
+    attrs_image = ("core_uv", "core_dl")
 
     def __init__(self, path, *args, core_width=10, pixels_per_cm=5, **kwargs):
         super().__init__()
@@ -267,7 +268,7 @@ class WellSegment(AbstractWellSegment):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
         df = df[self.depth_from:self.depth_to]
-        if np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
+        if len(df) > 0 and np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
             df.drop(df.index[-1], inplace=True)
         return df
 
@@ -281,6 +282,8 @@ class WellSegment(AbstractWellSegment):
     def _filter_fdtd_df(self, df):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth range."""
+        if len(df) == 0:
+            return df
         depth_from, depth_to = zip(*df.index.values)
         mask = (np.array(depth_from) < self.depth_to) & (self.depth_from < np.array(depth_to))
         return df[mask]
@@ -1336,10 +1339,9 @@ class WellSegment(AbstractWellSegment):
         step : positive float
             Step of cropping in meters.
         drop_last : bool, optional
-            If `True`, all segment that are out of segment bounds will be
-            dropped. If `False`, all segment that are out of segment bounds
-            will be dropped and last segment starts from `depth_to` - `length`
-            of current segment and ends with `depth_to` of current segment.
+            If `True`, only crops that lie within the segment will be kept.
+            If `False`, an extra segment, starting from `depth_to` - `length`
+            will be added to cover the whole segment with crops.
             Defaults to `True`.
 
         Returns
@@ -1628,4 +1630,34 @@ class WellSegment(AbstractWellSegment):
             else:
                 img = cv2.equalizeHist(img)
             setattr(self, _dst, img)
+        return self
+
+    def shift_logs(self, max_period, mnemonics=None):
+        """Shift every `logs` column from `mnemonics` by a random step sampled
+        from discrete uniform distribution in [-`max_period`, `max_period`].
+        All new resulting empty positions are filled with first/last
+        column value depending on shift direction.
+
+        Parameters
+        ----------
+        max_period : float
+            Max possible shift period in meters.
+        mnemonics : None or str or list of str
+            - If `None`, shift all logs columns.
+            - If `str`, shift single column from logs with `mnemonics` name.
+            - If `list`, shift all logs columnns with names in `mnemonics`.
+            Defaults to `None`.
+
+        Returns
+        -------
+        self : AbstractWellSegment or a child class
+            Self with shifted logs columns.
+        """
+        mnemonics = self.logs.columns if mnemonics is None else to_list(mnemonics)
+        max_period = int(np.floor(max_period * (len(self.logs) / self.length)))
+        periods = np.random.randint(-max_period, max_period + 1, len(mnemonics))
+        for mnemonic, period in zip(mnemonics, periods):
+            fill_index = 0 if period > 0 else -1
+            fill_value = self.logs[mnemonic].iloc[fill_index]
+            self.logs[mnemonic] = self.logs[mnemonic].shift(periods=period, fill_value=fill_value)
         return self
