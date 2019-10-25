@@ -120,6 +120,10 @@ class WellSegment(AbstractWellSegment):
         Minimum depth entry in the well logs, loaded from `meta.json`.
     depth_to : float
         Maximum depth entry in the well logs, loaded from `meta.json`.
+    pad_depth : float
+        Depth with which segment padded.
+    logs_step : float
+        Step in meters between measurements in `logs`.
     logs : pandas.DataFrame
         Well logs, indexed by depth. Depth log in a source file must have
         `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
