@@ -263,7 +263,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             ]
         return self
 
-    def crop(self, length, step, drop_last=True):
+    def crop(self, length, step, drop_last=True, fill_value=0):
         """Create crops from segments at the last level. All cropped segments
         have the same length and are cropped with some fixed step. The tree depth
         will be increased.
@@ -279,6 +279,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             dropped. If `False`, the whole segment will be covered by crops.
             The first crop which comes out of segment bounds will be kept, the
             following crops will be dropped. Defaults to `True`.
+        fill_value : bool, optional
+            Value to fill padded part of logs.
 
         Returns
         -------
@@ -288,7 +290,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [
-                Well(segments=segment.crop(length, step, drop_last))
+                Well(segments=segment.crop(length, step, drop_last, fill_value))
                 for segment in well
             ]
         return self

@@ -1343,6 +1343,8 @@ class WellSegment(AbstractWellSegment):
             If `False`, an extra segment, starting from `depth_to` - `length`
             will be added to cover the whole segment with crops.
             Defaults to `True`.
+        fill_value : bool, optional
+            Value to fill padded part of logs.
 
         Returns
         -------
