@@ -1348,7 +1348,7 @@ class WellSegment(AbstractWellSegment):
             All crops which comes out of segment bounds will be kept, and
             their `logs` will be padded from depth `depth_to` of initial segment
             by `fill_value`. Defaults to `True`.
-        fill_value : bool, optional
+        fill_value : float, optional
             Value to fill padded part of logs.
 
         Returns
