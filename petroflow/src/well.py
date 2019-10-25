@@ -277,8 +277,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         drop_last : bool, optional
             If `True`, all segment that are out of segment bounds will be
             dropped. If `False`, the whole segment will be covered by crops.
-            The first crop which comes out of segment bounds will be kept, the
-            following crops will be dropped. Defaults to `True`.
+            All crops which comes out of segment bounds will be kept, and
+            their `logs` will be padded from depth `depth_to` of initial segment
+            by `fill_value`. Defaults to `True`.
         fill_value : bool, optional
             Value to fill padded part of logs.
 
