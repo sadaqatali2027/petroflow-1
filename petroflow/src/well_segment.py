@@ -1358,13 +1358,13 @@ class WellSegment(AbstractWellSegment):
         """
         positions = np.arange(self.depth_from, self.depth_to, step)
         crops_in = positions[positions + length <= self.depth_to]
-        crop_out = positions[positions + length > self.depth_to][0]
+        crops_out = positions[positions + length > self.depth_to]
         segments_in = [self[pos:pos+length] for pos in crops_in]
-        segment_out = self[crop_out:crop_out+length]
 
-        if drop_last:
+        if drop_last or len(crops_out) == 0:
             return segments_in
 
+        segment_out = self[crops_out[0]:crops_out[0]+length]
         segment_out.pad_depth = segment_out.depth_to
         segment_out.depth_to = segment_out.depth_from + length
         pad_index = np.arange(segment_out.depth_from, segment_out.depth_to, segment_out.logs_step)
