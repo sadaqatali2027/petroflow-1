@@ -1,19 +1,19 @@
+"""PetroFlow is a library that allows to process well data (logs, core photo
+etc.) and conveniently train machine learning models.
 """
-PetroFlow is a library that allows to process well data (logs, core photo etc.) and conveniently train
-machine learning models.
-"""
+
 import re
 from setuptools import setup, find_packages
 
 
 with open('petroflow/__init__.py', 'r') as f:
-    version = re.search(r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', f.read(), re.MULTILINE).group(1)
+    VERSION = re.search(r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', f.read(), re.MULTILINE).group(1)
 
 
 setup(
     name='petroflow',
     packages=find_packages(exclude=['examples']),
-    version=version,
+    version=VERSION,
     url='https://github.com/gazprom-neft/petroflow',
     license='CC BY-NC-SA 4.0',
     author='Gazprom Neft DS team',
@@ -22,35 +22,28 @@ setup(
     zip_safe=False,
     platforms='any',
     install_requires=[
-        'tqdm==4.28.1',
-        'numba==0.41.0',
-        'matplotlib==3.0.2',
-        'seaborn==0.9.0',
-        'nbconvert==5.4.0',
-        'lasio==0.23',
-        'psutil==5.4.8',
-        'numpy==1.15.4',
-        'pytest==4.0.2',
-        'feather_format==0.4.0',
-        'multiprocess==0.70.7',
-        'dill==0.2.9',
-        'pandas==0.24.0',
-        'setuptools==40.6.3',
-        'scipy==1.1.0',
-        'plotly==4.1.0',
-        'scikit_image==0.14.1',
-        'dask==1.0.0',
-        'Pillow==6.1.0',
-        'blosc==1.8.1',
-        'feather-format==0.4.0',
-        'scikit-image==0.14.1',
-        'Scikit-learn==0.20.1',
-        'opencv-python==3.4.2.17'
+        'numpy>=1.17.2',
+        'scipy>=1.3.1',
+        'pandas>=0.25.2',
+        'numba>=0.46.0',
+        'scikit-image>=0.15.0',
+        'scikit-learn>=0.21.3',
+        'opencv-python>=4.1.1',
+        'matplotlib>=3.1.1',
+        'seaborn>=0.9.0',
+        'plotly>=4.1.1',
+        'pillow>=6.2.0',
+        'blosc==1.17.0',
+        'feather_format>=0.4.0',
+        'lasio>=0.23',
+        'dill>=0.3.0',
+        'multiprocess>=0.70.9',
+        'tqdm>=4.36.1',
     ],
     extras_require={
         'tensorflow': ['tensorflow>=1.12.0'],
         'tensorflow-gpu': ['tensorflow-gpu>=1.12.0'],
-        'torch': ['torch>=1.1.0']
+        'torch': ['torch>=1.3.0']
     },
     classifiers=[
         'Development Status :: 4 - Beta',
