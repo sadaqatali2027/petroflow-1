@@ -1345,8 +1345,8 @@ class WellSegment(AbstractWellSegment):
         drop_last : bool, optional
             If `True`, all segment that are out of segment bounds will be
             dropped. If `False`, the whole segment will be covered by crops.
-            All crops which comes out of segment bounds will be kept, and
-            their `logs` will be padded from depth `depth_to` of initial segment
+            First crop which comes out of segment bounds will be kept, and
+            its `logs` will be padded from depth `depth_to` of initial segment
             by `fill_value`. Defaults to `True`.
         fill_value : float, optional
             Value to fill padded part of logs.
@@ -1358,21 +1358,19 @@ class WellSegment(AbstractWellSegment):
         """
         positions = np.arange(self.depth_from, self.depth_to, step)
         crops_in = positions[positions + length <= self.depth_to]
-        crops_out = positions[positions + length > self.depth_to]
+        crop_out = positions[positions + length > self.depth_to][0]
         segments_in = [self[pos:pos+length] for pos in crops_in]
-        segments_out = [self[pos:pos+length] for pos in crops_out]
+        segment_out = self[crop_out:crop_out+length]
 
         if drop_last:
             return segments_in
 
-        for segment in segments_out:
-            segment.pad_depth = segment.depth_to
-            segment.depth_to = segment.depth_from + length
-            pad_index = np.arange(segment.depth_from, segment.depth_to, segment.logs_step)
-            pad_logs = segment.logs.reindex(index=pad_index, method="nearest", tolerance=1e-3, fill_value=fill_value)
-            setattr(segment, '_logs', pad_logs)
-
-        return segments_in + segments_out
+        segment_out.pad_depth = segment_out.depth_to
+        segment_out.depth_to = segment_out.depth_from + length
+        pad_index = np.arange(segment_out.depth_from, segment_out.depth_to, segment_out.logs_step)
+        pad_logs = segment_out.logs.reindex(index=pad_index, method="nearest", tolerance=1e-3, fill_value=fill_value)
+        setattr(segment_out, '_logs', pad_logs)
+        return segments_in + [segment_out]
 
     def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask'):
         """Transform a column from some `WellSegment` attribute into a mask
