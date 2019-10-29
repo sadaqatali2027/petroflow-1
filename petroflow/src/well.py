@@ -419,7 +419,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         total = np.where(total == 0, 1, total)
         return background / total
 
-    def aggregate(self, func, level=0):
+    def aggregate(self, func="mean", level=0):
         """Aggregate loaded segments' attributes from `WellSegment.attrs_image`
         and `WellSegment.attrs_depth_index`. Concatenate loaded segments' attributes
         from `WellSegment.attrs_fdtd_index`. The result of aggregation and concatenation
@@ -437,6 +437,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                one element.
             Only 'mean' and 'max' aggregations are currently supported for attributes
             from `WellSegment.attrs_image`!
+            Defaults to "mean".
         level : int, optional
             Level of the well tree defined for aggregation.
             All segments below `level` level of tree will be gathered into one.
