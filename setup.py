@@ -33,7 +33,7 @@ setup(
         'seaborn>=0.9.0',
         'plotly>=4.1.1',
         'pillow>=6.2.0',
-        'blosc==1.17.0',
+        'blosc==1.8.1',
         'feather_format>=0.4.0',
         'lasio>=0.23',
         'dill>=0.3.0',
