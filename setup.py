@@ -24,7 +24,7 @@ setup(
     install_requires=[
         'numpy>=1.17.2',
         'scipy>=1.3.1',
-        'pandas>=0.25.2',
+        'pandas>=0.24.2',
         'numba>=0.46.0',
         'scikit-image>=0.15.0',
         'scikit-learn>=0.21.3',
