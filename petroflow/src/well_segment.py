@@ -20,7 +20,7 @@ from sklearn.linear_model import LinearRegression
 import cv2
 from plotly import graph_objs as go
 from plotly.subplots import make_subplots
-from plotly.offline import init_notebook_mode, plot
+from plotly.offline import init_notebook_mode, plot, iplot
 
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
@@ -495,7 +495,7 @@ class WellSegment(AbstractWellSegment):
         encoded_img = "data:image/png;base64," + encoded_img
         return encoded_img
 
-    def plot(self, plot_core=True, subplot_height=750, subplot_width=200):
+    def plot(self, plot_core=True, interactive=True, subplot_height=750, subplot_width=200):
         """Plot well logs and core images.
 
         All well logs and core images in daylight and ultraviolet are plotted
@@ -575,7 +575,8 @@ class WellSegment(AbstractWellSegment):
         for ann in layout["annotations"]:
             ann["font"]["size"] = 12
 
-        plot(fig)
+        plot_fn = iplot if interactive else plot
+        plot_fn(fig)
         return self
 
     def __getitem__(self, key):
@@ -1064,7 +1065,7 @@ class WellSegment(AbstractWellSegment):
         well_log = interpolator(core_log.index)
         return np.corrcoef(core_log, well_log)[0, 1]**2
 
-    def plot_matching(self, mode=None, scale=False, subplot_height=750, subplot_width=200):
+    def plot_matching(self, mode=None, scale=False, interactive=True, subplot_height=750, subplot_width=200):
         """Plot well log and corresponding core log for each boring sequence.
 
         This method can be used to illustrate results of core-to-log matching.
@@ -1164,7 +1165,8 @@ class WellSegment(AbstractWellSegment):
             axis_name = "yaxis" + axis_ix
             layout[axis_name]["autorange"] = "reversed"
 
-        plot(fig)
+        plot_fn = iplot if interactive else plot
+        plot_fn(fig)
         return self
 
     def add_depth_log(self):
