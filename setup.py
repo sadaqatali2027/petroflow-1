@@ -29,7 +29,7 @@ setup(
         'scikit-image>=0.15.0',
         'scikit-learn>=0.21.3',
         'opencv-python>=4.1.1',
-        'matplotlib>=3.1.1',
+        'matplotlib>=3.0.1',
         'seaborn>=0.9.0',
         'plotly>=4.1.1',
         'pillow>=6.2.0',
