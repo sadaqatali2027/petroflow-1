@@ -6,7 +6,7 @@ import os
 import json
 import base64
 import shutil
-from copy import copy
+from copy import copy, deepcopy
 from glob import glob
 from functools import reduce
 from itertools import chain, repeat, product
@@ -504,13 +504,16 @@ class WellSegment(AbstractWellSegment):
         Parameters
         ----------
         plot_core : bool
-            Specifies whether to plot core images or not.
+            Specifies whether to plot core images or not. Defaults to `True`.
+        interactive : bool
+            Specifies whether to draw a plot directly inside a Jupyter
+            notebook. Defaults to `True`.
         subplot_height : positive int
             Height of each subplot with well log or core samples images in
-            pixels.
+            pixels. Defaults to 750.
         subplot_width : positive int
             Width of each subplot with well log or core samples images in
-            pixels.
+            pixels. Defaults to 200.
 
         Returns
         -------
@@ -629,14 +632,24 @@ class WellSegment(AbstractWellSegment):
         return res
 
     def copy(self):
-        """Perform shallow copy of an object.
+        """Perform a shallow copy of an object.
 
         Returns
         -------
-        self : AbstractWellSegment or a child class
+        self : AbstractWellSegment
             Shallow copy.
         """
         return copy(self)
+
+    def deepcopy(self):
+        """Perform a deep copy of an object.
+
+        Returns
+        -------
+        self : AbstractWellSegment
+            Deep copy.
+        """
+        return deepcopy(self)
 
     def check_regularity(self):
         """Checks intervals data regularity.
@@ -1086,13 +1099,17 @@ class WellSegment(AbstractWellSegment):
             Each mode has the same structure as `mode` in `match_core_logs`.
             If `None` and core-to-log matching was performed beforehand,
             chosen matching modes are used.
+            Defaults to `None`.
         scale : bool
             Specifies whether to lineary scale core log values to well log
-            values.
+            values. Defaults to `False`.
+        interactive : bool
+            Specifies whether to draw a plot directly inside a Jupyter
+            notebook. Defaults to `True`.
         subplot_height : positive int
-            Height of each subplot with well and core logs.
+            Height of each subplot with well and core logs. Defaults to 750.
         subplot_width : positive int
-            Width of each subplot with well and core logs.
+            Width of each subplot with well and core logs. Defaults to 200.
 
         Returns
         -------
