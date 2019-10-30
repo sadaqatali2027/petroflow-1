@@ -56,6 +56,10 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def apply(self):
+        pass
+
+    @abstractmethod
     def reindex(self):
         pass
 

@@ -1455,6 +1455,14 @@ class WellSegment(AbstractWellSegment):
             mask[int(pos)] = row[1][column] if mapping is None else mapping[row[1][column]]
         setattr(self, dst, mask)
 
+    def apply(self, fn, *args, attr="logs", src_cols=None, dst_col, **kwargs):
+        df = getattr(self, attr)
+        if src_cols is None:
+            src_cols = df.columnns
+        res = df[src_cols].apply(fn, axis=1, raw=True, args=args, **kwargs)
+        getattr(self, attr)[dst_col] = res
+        return self
+
     def reindex(self, step, attrs=None):
         """Conform depth-indexed `attrs` of the segment to a new index,
         starting from `self.depth_from` to `self.depth_to` with a step `step`,
