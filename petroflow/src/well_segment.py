@@ -519,6 +519,10 @@ class WellSegment(AbstractWellSegment):
         """
         init_notebook_mode(connected=True)
 
+        # Approximate size of the left margin of a plot, that will be added to the calculated
+        # figsize in order to prevent figure shrinkage in case of small number of subplots
+        margin = 120
+
         n_cols = len(self.logs.columns)
         subplot_titles = list(self.logs.columns)
         if plot_core and self.has_samples:
@@ -556,9 +560,9 @@ class WellSegment(AbstractWellSegment):
                 images.append(sample_uv)
 
         layout = fig.layout
-        fig_layout = go.Layout(title="Скважина {}".format(self.name), showlegend=False, width=n_cols*subplot_width,
-                               height=subplot_height, yaxis=dict(range=[self.depth_to, self.depth_from]),
-                               images=images)
+        fig_layout = go.Layout(title="Скважина {}".format(self.name), showlegend=False,
+                               width=n_cols*subplot_width + margin, height=subplot_height,
+                               yaxis=dict(range=[self.depth_to, self.depth_from]), images=images)
         layout.update(fig_layout)
 
         for key in layout:
@@ -1097,6 +1101,10 @@ class WellSegment(AbstractWellSegment):
         """
         init_notebook_mode(connected=True)
 
+        # Approximate size of the left margin of a plot, that will be added to the calculated
+        # figsize in order to prevent figure shrinkage in case of small number of subplots
+        margin = 120
+
         boring_sequences = self.boring_sequences.reset_index()
         if mode is None and "MODE" not in boring_sequences.columns:
             raise ValueError("Core-to-log matching has to be performed beforehand if mode is not specified")
@@ -1150,7 +1158,7 @@ class WellSegment(AbstractWellSegment):
 
         layout = fig.layout
         fig_layout = go.Layout(title="Скважина {}".format(self.name), legend=dict(orientation="h"),
-                               width=n_cols*subplot_width, height=subplot_height)
+                               width=n_cols*subplot_width + margin, height=subplot_height)
         layout.update(fig_layout)
 
         for key in layout:
