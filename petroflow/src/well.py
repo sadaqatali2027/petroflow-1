@@ -244,7 +244,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             `True`.
         subplot_height : positive int
             Height of each subplot with well log or core samples images in
-            pixels. Defaults to 750.
+            pixels. Defaults to 700.
         subplot_width : positive int
             Width of each subplot with well log or core samples images in
             pixels. Defaults to 200.
@@ -290,7 +290,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             plot or create a separate plot for each segment. Defaults to
             `True`.
         subplot_height : positive int
-            Height of each subplot with well and core logs. Defaults to 750.
+            Height of each subplot with well and core logs. Defaults to 700.
         subplot_width : positive int
             Width of each subplot with well and core logs. Defaults to 200.
 

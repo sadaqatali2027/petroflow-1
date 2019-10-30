@@ -495,7 +495,7 @@ class WellSegment(AbstractWellSegment):
         encoded_img = "data:image/png;base64," + encoded_img
         return encoded_img
 
-    def plot(self, plot_core=True, interactive=True, subplot_height=750, subplot_width=200):
+    def plot(self, plot_core=True, interactive=True, subplot_height=700, subplot_width=200):
         """Plot well logs and core images.
 
         All well logs and core images in daylight and ultraviolet are plotted
@@ -510,7 +510,7 @@ class WellSegment(AbstractWellSegment):
             notebook. Defaults to `True`.
         subplot_height : positive int
             Height of each subplot with well log or core samples images in
-            pixels. Defaults to 750.
+            pixels. Defaults to 700.
         subplot_width : positive int
             Width of each subplot with well log or core samples images in
             pixels. Defaults to 200.
@@ -563,7 +563,7 @@ class WellSegment(AbstractWellSegment):
                 images.append(sample_uv)
 
         layout = fig.layout
-        fig_layout = go.Layout(title="Скважина {}".format(self.name), showlegend=False,
+        fig_layout = go.Layout(title="Field: {}<br>Well: {}".format(self.field, self.name), showlegend=False,
                                width=n_cols*subplot_width + margin, height=subplot_height,
                                yaxis=dict(range=[self.depth_to, self.depth_from]), images=images)
         layout.update(fig_layout)
@@ -1082,7 +1082,7 @@ class WellSegment(AbstractWellSegment):
         well_log = interpolator(core_log.index)
         return np.corrcoef(core_log, well_log)[0, 1]**2
 
-    def plot_matching(self, mode=None, scale=False, interactive=True, subplot_height=750, subplot_width=200):
+    def plot_matching(self, mode=None, scale=False, interactive=True, subplot_height=700, subplot_width=200):
         """Plot well log and corresponding core log for each boring sequence.
 
         This method can be used to illustrate results of core-to-log matching.
@@ -1107,7 +1107,7 @@ class WellSegment(AbstractWellSegment):
             Specifies whether to draw a plot directly inside a Jupyter
             notebook. Defaults to `True`.
         subplot_height : positive int
-            Height of each subplot with well and core logs. Defaults to 750.
+            Height of each subplot with well and core logs. Defaults to 700.
         subplot_width : positive int
             Width of each subplot with well and core logs. Defaults to 200.
 
@@ -1174,8 +1174,9 @@ class WellSegment(AbstractWellSegment):
             fig.append_trace(core_log_trace, 1, i)
 
         layout = fig.layout
-        fig_layout = go.Layout(title="Скважина {}".format(self.name), legend=dict(orientation="h"),
-                               width=n_cols*subplot_width + margin, height=subplot_height)
+        fig_layout = go.Layout(title="Field: {}<br>Well: {}".format(self.field, self.name),
+                               legend=dict(orientation="h"), width=n_cols*subplot_width + margin,
+                               height=subplot_height)
         layout.update(fig_layout)
 
         for key in layout:
