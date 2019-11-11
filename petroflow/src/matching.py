@@ -1,6 +1,7 @@
 """Implements core-to-log matching algorithm."""
 
 from math import ceil
+from warnings import warn
 from itertools import product
 from collections import namedtuple
 
@@ -15,7 +16,7 @@ Shift = namedtuple("Shift", ["depth_from", "depth_to", "sequence_delta", "interv
 
 
 def create_zero_shift(depth_from, depth_to):
-    zero_shift = Shift(depth_from, depth_to, 0, 0, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)
+    zero_shift = Shift(depth_from, depth_to, 0, 0, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)
     return zero_shift
 
 
@@ -277,9 +278,11 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
     return  [zero_shift] + shifts
 
 
-def find_best_shifts(sequences_shifts, max_combinations=1e5, eps=1e-8):
+def find_best_shifts(sequences_shifts, well_name, well_field, margin=0.05, max_combinations=1e5, eps=1e-8):
     """Choose best shift for each boring sequence so that they don't overlap
     and maximize matching R^2."""
+    best_independent_shifts = [min(shifts, key=lambda x: x.loss) for shifts in sequences_shifts]
+
     n_sequences = len(sequences_shifts)
     top_n = ceil(max_combinations ** (1 / n_sequences))
 
@@ -308,4 +311,14 @@ def find_best_shifts(sequences_shifts, max_combinations=1e5, eps=1e-8):
         if best_shifts is None or corr > best_corr:
             best_shifts = shifts
             best_corr = corr
+
+    for bs, bis in zip(best_shifts, best_independent_shifts):
+        bs_r2 = bs.loss**2
+        bis_r2 = bis.loss**2
+        depth_from = bs.depth_from - bs.sequence_delta
+        depth_to = bs.depth_to - bs.sequence_delta
+        if bis_r2 > bs_r2 + margin:
+            warn_msg = ("Matching R^2 can be increased from {:.2f} to {:.2f} for a boring sequence " +
+                        "[{:.2f}, {:.2f}] of a well {} {} if sequence overlapping is allowed.")
+            warn(warn_msg.format(bs_r2, bis_r2, depth_from, depth_to, well_name, well_field))
     return best_shifts

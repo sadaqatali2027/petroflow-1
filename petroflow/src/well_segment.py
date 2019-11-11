@@ -264,11 +264,7 @@ class WellSegment(AbstractWellSegment):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
         df = df[self.depth_from:self.depth_to]
-<<<<<<< HEAD
-        if not df.empty and np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
-=======
         if len(df) > 0 and np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
->>>>>>> master
             df.drop(df.index[-1], inplace=True)
         return df
 
@@ -853,7 +849,7 @@ class WellSegment(AbstractWellSegment):
 
         core_logs_list = []
         for _, (depth_from, depth_to, mode) in boring_sequences.iterrows():
-            _, core_mnemonic, core_attr = self._parse_matching_mode(mode)
+            _, core_mnemonic, core_attr, _ = self._parse_matching_mode(mode)
             core_log_segment = getattr(self, core_attr)[core_mnemonic].dropna()[depth_from:depth_to]
             core_logs_list.append(core_log_segment.to_frame(name=mode))
         core_logs = pd.concat(core_logs_list)
@@ -892,7 +888,8 @@ class WellSegment(AbstractWellSegment):
     @staticmethod
     def _parse_matching_mode(mode):
         """Split matching mode string into well log mnemonic, core log or
-        property mnemonic and class attribute to get core data from."""
+        property mnemonic, class attribute to get core data from and a sign of
+        the theoretical correlation between well and core data."""
         split_mode = mode.split("~")
         if len(split_mode) != 2:
             raise ValueError("Incorrect mode format")
@@ -901,7 +898,13 @@ class WellSegment(AbstractWellSegment):
         if len(split_core_mode) != 2:
             raise ValueError("Incorrect mode format")
         core_attr, core_mnemonic = split_core_mode
-        return log_mnemonic, core_mnemonic, core_attr
+
+        sign = "+"
+        if core_attr[0] in {"+", "-"}:
+            sign = core_attr[0]
+            core_attr = core_attr[1:]
+        sign = 1 if sign == "+" else -1
+        return log_mnemonic, core_mnemonic, core_attr, sign
 
     def _select_matching_mode(self, segment, mode_list, min_points, min_points_per_meter):
         """Select appropriate matching mode based on data, availible for given
@@ -910,7 +913,7 @@ class WellSegment(AbstractWellSegment):
         segment_depth_to = segment["DEPTH_TO"].max()
         core_len = segment["CORE_RECOVERY"].sum()
         for mode in mode_list:
-            log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(mode)
+            log_mnemonic, core_mnemonic, core_attr, _ = self._parse_matching_mode(mode)
             if log_mnemonic in self.logs and self._has_file(core_attr) and core_mnemonic in getattr(self, core_attr):
                 well_log = self.logs[log_mnemonic].dropna()
                 core_log = getattr(self, core_attr)[core_mnemonic].dropna()
@@ -939,7 +942,7 @@ class WellSegment(AbstractWellSegment):
         return log
 
     def match_core_logs(self, mode="GK ~ core_logs.GK", split_lithology_intervals=True, gaussian_win_size=None,
-                        min_points=3, min_points_per_meter=1, max_shift=10, delta_from=-8, delta_to=8,
+                        min_points=3, min_points_per_meter=1, min_gap=0.5, max_shift=10, delta_from=-8, delta_to=8,
                         delta_step=0.1, max_iter=50, max_iter_time=0.25, save_report=False):
         """Perform core-to-log matching by shifting core samples in order to
         maximize correlation between well and core logs.
@@ -992,6 +995,16 @@ class WellSegment(AbstractWellSegment):
 
         mode_list = self._unify_matching_mode(mode)
 
+        # If a gap between any two boring intervals is less than `min_gap`, treat it as inaccuracies in depth
+        # measurements and set the bottom depth of the upper interval equal to the top depth of the lower one.
+        boring_intervals = self.boring_intervals.reset_index()
+        bi_depth_from = boring_intervals["DEPTH_FROM"]
+        bi_depth_to = boring_intervals["DEPTH_TO"]
+        boring_intervals["DEPTH_TO"] = np.where((bi_depth_from.shift(-1) - bi_depth_to) < min_gap,
+                                                bi_depth_from.shift(-1), bi_depth_to)
+        self._boring_intervals = boring_intervals.set_index(["DEPTH_FROM", "DEPTH_TO"])
+        self._calc_boring_sequences()
+
         split_lithology_intervals = split_lithology_intervals and self._has_file("core_lithology")
         lithology_df = self.core_lithology if split_lithology_intervals else self.boring_intervals
         lithology_intervals = lithology_df.reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
@@ -1024,11 +1037,11 @@ class WellSegment(AbstractWellSegment):
                     sequences_shifts.append([create_zero_shift(sequence_depth_from, sequence_depth_to)])
                     continue
 
-                log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(mode)
+                log_mnemonic, core_mnemonic, core_attr, sign = self._parse_matching_mode(mode)
                 well_log = self.logs[log_mnemonic].dropna()
                 well_log = well_log[sequence_depth_from - max_shift : sequence_depth_to + max_shift]
                 well_log = self._blur_log(well_log, gaussian_win_size)
-                core_log = getattr(self, core_attr)[core_mnemonic].dropna()
+                core_log = sign * getattr(self, core_attr)[core_mnemonic].dropna()
                 core_log = core_log[sequence_depth_from:sequence_depth_to]
                 core_log = self._blur_log(core_log, gaussian_win_size)
 
@@ -1037,7 +1050,7 @@ class WellSegment(AbstractWellSegment):
                                                max_iter, timeout=max_iter*max_iter_time)
                 sequences_shifts.append(shifts)
 
-            best_shifts = find_best_shifts(sequences_shifts)
+            best_shifts = find_best_shifts(sequences_shifts, self.name, self.field)
 
             # Store shift deltas, mode and R^2
             for sequence, shift in zip(boring_sequences, best_shifts):
@@ -1126,9 +1139,9 @@ class WellSegment(AbstractWellSegment):
             boring_sequences["MODE"] = mode_list
             r2_list = []
             for _, (depth_from, depth_to, _mode) in boring_sequences[["DEPTH_FROM", "DEPTH_TO", "MODE"]].iterrows():
-                log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(_mode)
+                log_mnemonic, core_mnemonic, core_attr, sign = self._parse_matching_mode(_mode)
                 well_log = self.logs[log_mnemonic].dropna()
-                core_log_segment = getattr(self, core_attr)[core_mnemonic].dropna()[depth_from:depth_to]
+                core_log_segment = sign * getattr(self, core_attr)[core_mnemonic].dropna()[depth_from:depth_to]
                 r2_list.append(self._calc_matching_r2(well_log, core_log_segment))
             boring_sequences["R2"] = r2_list
         boring_sequences = boring_sequences[["DEPTH_FROM", "DEPTH_TO", "MODE", "R2"]]
@@ -1145,9 +1158,9 @@ class WellSegment(AbstractWellSegment):
         fig = make_subplots(rows=1, cols=n_cols, subplot_titles=subplot_titles)
 
         for i, (depth_from, depth_to, _mode) in enumerate(zip(depth_from_list, depth_to_list, mode_list), 1):
-            log_mnemonic, core_mnemonic, core_attr = self._parse_matching_mode(_mode)
+            log_mnemonic, core_mnemonic, core_attr, sign = self._parse_matching_mode(_mode)
             well_log_segment = self.logs[log_mnemonic].dropna()[depth_from - 3 : depth_to + 3]
-            core_log_segment = getattr(self, core_attr)[core_mnemonic].dropna()[depth_from:depth_to]
+            core_log_segment = sign * getattr(self, core_attr)[core_mnemonic].dropna()[depth_from:depth_to]
 
             if scale and min(len(well_log_segment), len(core_log_segment)) > 1:
                 log_interpolator = interp1d(well_log_segment.index, well_log_segment, kind="linear",
