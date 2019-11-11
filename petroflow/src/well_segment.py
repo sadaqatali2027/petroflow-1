@@ -1456,6 +1456,36 @@ class WellSegment(AbstractWellSegment):
         setattr(self, dst, mask)
 
     def apply(self, fn, *args, attr="logs", src=None, dst=None, drop_src=False, **kwargs):
+        """Apply a function to each row of a segment attribute.
+
+        Parameters
+        ----------
+        fn : callable
+            A function to be applied.
+        attr : str
+            A segment attribute to apply `fn` to.
+        src : str or list of str
+            Columns of `attr`, whose values will be passed to `fn` as an
+            `np.ndarray` as the first positional argument.
+        dst : str or list of str
+            Columns of `attr`, where function results will be written. If
+            list, its length must match the number of returned results of
+            `fn`.
+        drop_src : bool
+            Specifies whether to drop `src` columns from `attr` after function
+            application. Defaults to `False`.
+        args : misc
+            Any additional positional arguments to pass to `fn` after data
+            from `attr`.
+        kwargs : misc
+            Any additional keyword arguments to pass as keyword arguments to
+            `fn`.
+
+        Returns
+        -------
+        well : AbstractWellSegment
+            The segment with applied function.
+        """
         df = getattr(self, attr)
         src = df.columnns if src is None else to_list(src)
         dst = src if dst is None else to_list(dst)
