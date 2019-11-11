@@ -1455,12 +1455,13 @@ class WellSegment(AbstractWellSegment):
             mask[int(pos)] = row[1][column] if mapping is None else mapping[row[1][column]]
         setattr(self, dst, mask)
 
-    def apply(self, fn, *args, attr="logs", src_cols=None, dst_col, **kwargs):
+    def apply(self, fn, *args, attr="logs", src=None, dst=None, drop_src=False, **kwargs):
         df = getattr(self, attr)
-        if src_cols is None:
-            src_cols = df.columnns
-        res = df[src_cols].apply(fn, axis=1, raw=True, args=args, **kwargs)
-        getattr(self, attr)[dst_col] = res
+        src = df.columnns if src is None else to_list(src)
+        dst = src if dst is None else to_list(dst)
+        df[dst] = df[src].apply(fn, axis=1, raw=True, result_type="expand", args=args, **kwargs)
+        if drop_src:
+            df.drop(set(src) - set(dst), axis=1, inplace=True)
         return self
 
     def reindex(self, step, attrs=None):
