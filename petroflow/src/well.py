@@ -3,7 +3,7 @@
 
 import warnings
 from abc import ABCMeta
-from copy import copy
+from copy import copy, deepcopy
 from functools import wraps
 from collections import Counter
 
@@ -182,14 +182,24 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self
 
     def copy(self):
-        """Perform shallow copy of an object.
+        """Perform a shallow copy of an object.
 
         Returns
         -------
-        self : AbstractWell or a child class
+        self : AbstractWell
             Shallow copy.
         """
         return copy(self)
+
+    def deepcopy(self):
+        """Perform a deep copy of an object.
+
+        Returns
+        -------
+        self : AbstractWell
+            Deep copy.
+        """
+        return deepcopy(self)
 
     def dump(self, path):
         """Dump well data. The well will be aggregated and the resulting
@@ -213,6 +223,87 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         """
         # TODO: aggregate before dumping
         self.segments[0].dump(path)
+        return self
+
+    def plot(self, *args, aggregate=True, **kwargs):
+        """Plot well logs and core images.
+
+        All well logs and core images in daylight and ultraviolet are plotted
+        on separate subplots.
+
+        Parameters
+        ----------
+        plot_core : bool
+            Specifies whether to plot core images or not. Defaults to `True`.
+        interactive : bool
+            Specifies whether to draw a plot directly inside a Jupyter
+            notebook. Defaults to `True`.
+        aggregate : bool
+            Specifies whether to plot all segments of the well on the same
+            plot or create a separate plot for each segment. Defaults to
+            `True`.
+        subplot_height : positive int
+            Height of each subplot with well log or core samples images in
+            pixels. Defaults to 700.
+        subplot_width : positive int
+            Width of each subplot with well log or core samples images in
+            pixels. Defaults to 200.
+
+        Returns
+        -------
+        self : AbstractWell
+            Self unchanged.
+        """
+        if aggregate:
+            self.deepcopy().aggregate().segments[0].plot(*args, **kwargs)
+        else:
+            for segment in self.iter_level():
+                segment.plot(*args, **kwargs)
+        return self
+
+    def plot_matching(self, *args, aggregate=True, **kwargs):
+        """Plot well log and corresponding core log for each boring sequence.
+
+        This method can be used to illustrate results of core-to-log matching.
+
+        Parameters
+        ----------
+        mode : str or list of str
+            Specify type of well log and core log or property to plot. If
+            `str`, the same mode will be used for all boring sequences. If
+            `list` of `str`, than each boring sequence will have its own mode.
+            In this case length of the `list` should match the number of
+            boring sequences.
+
+            Each mode has the same structure as `mode` in `match_core_logs`.
+            If `None` and core-to-log matching was performed beforehand,
+            chosen matching modes are used.
+            Defaults to `None`.
+        scale : bool
+            Specifies whether to lineary scale core log values to well log
+            values. Defaults to `False`.
+        interactive : bool
+            Specifies whether to draw a plot directly inside a Jupyter
+            notebook. Defaults to `True`.
+        aggregate : bool
+            Specifies whether to plot all segments of the well on the same
+            plot or create a separate plot for each segment. Defaults to
+            `True`.
+        subplot_height : positive int
+            Height of each subplot with well and core logs. Defaults to 700.
+        subplot_width : positive int
+            Width of each subplot with well and core logs. Defaults to 200.
+
+        Returns
+        -------
+        self : AbstractWell
+            Self unchanged.
+        """
+        if aggregate:
+            self.deepcopy().aggregate().segments[0].plot_matching(*args, **kwargs)
+        else:
+            for segment in self.iter_level():
+                segment.plot_matching(*args, **kwargs)
         return self
 
     def keep_matched_sequences(self, mode=None, threshold=0.6):
@@ -419,7 +510,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         total = np.where(total == 0, 1, total)
         return background / total
 
-    def aggregate(self, func, level=0):
+    def aggregate(self, func="mean", level=0):
         """Aggregate loaded segments' attributes from `WellSegment.attrs_image`
         and `WellSegment.attrs_depth_index`. Concatenate loaded segments' attributes
         from `WellSegment.attrs_fdtd_index`. The result of aggregation and concatenation
@@ -437,6 +528,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                one element.
             Only 'mean' and 'max' aggregations are currently supported for attributes
             from `WellSegment.attrs_image`!
+            Defaults to "mean".
         level : int, optional
             Level of the well tree defined for aggregation.
             All segments below `level` level of tree will be gathered into one.
