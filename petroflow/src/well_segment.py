@@ -1455,6 +1455,45 @@ class WellSegment(AbstractWellSegment):
             mask[int(pos)] = row[1][column] if mapping is None else mapping[row[1][column]]
         setattr(self, dst, mask)
 
+    def apply(self, fn, *args, attr="logs", src=None, dst=None, drop_src=False, **kwargs):
+        """Apply a function to each row of a segment attribute.
+
+        Parameters
+        ----------
+        fn : callable
+            A function to be applied.
+        attr : str
+            A segment attribute, whose rows will be transformed by `fn`.
+        src : str or list of str
+            Columns of `attr`, whose values will be passed to `fn` as an
+            `np.ndarray` as the first positional argument.
+        dst : str or list of str
+            Columns of `attr`, where function results will be written. If
+            list, its length must match the number of returned results of
+            `fn`.
+        drop_src : bool
+            Specifies whether to drop `src` columns from `attr` after function
+            application. Defaults to `False`.
+        args : misc
+            Any additional positional arguments to pass to `fn` after data
+            from `attr`.
+        kwargs : misc
+            Any additional keyword arguments to pass as keyword arguments to
+            `fn`.
+
+        Returns
+        -------
+        well : AbstractWellSegment
+            The segment with applied function.
+        """
+        df = getattr(self, attr)
+        src = df.columnns if src is None else to_list(src)
+        dst = src if dst is None else to_list(dst)
+        df[dst] = df[src].apply(fn, axis=1, raw=True, result_type="expand", args=args, **kwargs)
+        if drop_src:
+            df.drop(set(src) - set(dst), axis=1, inplace=True)
+        return self
+
     def reindex(self, step, attrs=None):
         """Conform depth-indexed `attrs` of the segment to a new index,
         starting from `self.depth_from` to `self.depth_to` with a step `step`,
