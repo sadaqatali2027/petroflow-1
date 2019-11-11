@@ -563,7 +563,7 @@ class WellSegment(AbstractWellSegment):
                 images.append(sample_uv)
 
         layout = fig.layout
-        fig_layout = go.Layout(title="Field: {}<br>Well: {}".format(self.field, self.name), showlegend=False,
+        fig_layout = go.Layout(title="{} {}".format(self.field.capitalize(), self.name), showlegend=False,
                                width=n_cols*subplot_width + margin, height=subplot_height,
                                yaxis=dict(range=[self.depth_to, self.depth_from]), images=images)
         layout.update(fig_layout)
@@ -1205,7 +1205,7 @@ class WellSegment(AbstractWellSegment):
             fig.append_trace(core_log_trace, 1, i)
 
         layout = fig.layout
-        fig_layout = go.Layout(title="Field: {}<br>Well: {}".format(self.field, self.name),
+        fig_layout = go.Layout(title="{} {}".format(self.field.capitalize(), self.name),
                                legend=dict(orientation="h"), width=n_cols*subplot_width + margin,
                                height=subplot_height)
         layout.update(fig_layout)
