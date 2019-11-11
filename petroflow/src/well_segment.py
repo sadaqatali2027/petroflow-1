@@ -1463,7 +1463,7 @@ class WellSegment(AbstractWellSegment):
         fn : callable
             A function to be applied.
         attr : str
-            A segment attribute to apply `fn` to.
+            A segment attribute, whose rows will be transformed by `fn`.
         src : str or list of str
             Columns of `attr`, whose values will be passed to `fn` as an
             `np.ndarray` as the first positional argument.
