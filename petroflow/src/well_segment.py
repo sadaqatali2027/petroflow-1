@@ -1462,16 +1462,18 @@ class WellSegment(AbstractWellSegment):
         ----------
         fn : callable
             A function to be applied.
-        attr : str
+        attr : str, optional
             A segment attribute, whose rows will be transformed by `fn`.
-        src : str or list of str
+            Defaults to `"logs"`.
+        src : str or list of str, optional
             Columns of `attr`, whose values will be passed to `fn` as an
-            `np.ndarray` as the first positional argument.
-        dst : str or list of str
+            `np.ndarray` as the first positional argument. By default, the
+            entire row will be passed.
+        dst : str or list of str, optional
             Columns of `attr`, where function results will be written. If
             list, its length must match the number of returned results of
-            `fn`.
-        drop_src : bool
+            `fn`. Equals `src` by default.
+        drop_src : bool, optional
             Specifies whether to drop `src` columns from `attr` after function
             application. Defaults to `False`.
         args : misc
