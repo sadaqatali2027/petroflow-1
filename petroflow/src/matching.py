@@ -16,6 +16,8 @@ Shift = namedtuple("Shift", ["depth_from", "depth_to", "sequence_delta", "interv
 
 
 def create_zero_shift(depth_from, depth_to):
+    """Return a `Shift` object, that preserves depths of an interval from
+    `depth_from` to `depth_to`."""
     zero_shift = Shift(depth_from, depth_to, 0, 0, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)
     return zero_shift
 
