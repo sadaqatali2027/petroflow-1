@@ -1377,7 +1377,7 @@ class WellSegment(AbstractWellSegment):
             its `logs` will be padded from depth `depth_to` of initial segment
             by `fill_value`. Defaults to `True`.
         fill_value : float, optional
-            Value to fill padded part of logs.
+            Value to fill padded part of `logs`.
 
         Returns
         -------
