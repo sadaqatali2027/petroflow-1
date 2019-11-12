@@ -6,7 +6,7 @@ import os
 import json
 import base64
 import shutil
-from copy import copy
+from copy import copy, deepcopy
 from glob import glob
 from functools import reduce
 from itertools import chain, repeat, product
@@ -20,7 +20,7 @@ from sklearn.linear_model import LinearRegression
 import cv2
 from plotly import graph_objs as go
 from plotly.subplots import make_subplots
-from plotly.offline import init_notebook_mode, plot
+from plotly.offline import init_notebook_mode, plot, iplot
 
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, Shift
@@ -503,7 +503,7 @@ class WellSegment(AbstractWellSegment):
         encoded_img = "data:image/png;base64," + encoded_img
         return encoded_img
 
-    def plot(self, plot_core=True, subplot_height=750, subplot_width=200):
+    def plot(self, plot_core=True, interactive=True, subplot_height=700, subplot_width=200):
         """Plot well logs and core images.
 
         All well logs and core images in daylight and ultraviolet are plotted
@@ -512,13 +512,16 @@ class WellSegment(AbstractWellSegment):
         Parameters
         ----------
         plot_core : bool
-            Specifies whether to plot core images or not.
+            Specifies whether to plot core images or not. Defaults to `True`.
+        interactive : bool
+            Specifies whether to draw a plot directly inside a Jupyter
+            notebook. Defaults to `True`.
         subplot_height : positive int
             Height of each subplot with well log or core samples images in
-            pixels.
+            pixels. Defaults to 700.
         subplot_width : positive int
             Width of each subplot with well log or core samples images in
-            pixels.
+            pixels. Defaults to 200.
 
         Returns
         -------
@@ -526,6 +529,10 @@ class WellSegment(AbstractWellSegment):
             Self unchanged.
         """
         init_notebook_mode(connected=True)
+
+        # Approximate size of the left margin of a plot, that will be added to the calculated
+        # figsize in order to prevent figure shrinkage in case of small number of subplots
+        margin = 120
 
         n_cols = len(self.logs.columns)
         subplot_titles = list(self.logs.columns)
@@ -564,9 +571,9 @@ class WellSegment(AbstractWellSegment):
                 images.append(sample_uv)
 
         layout = fig.layout
-        fig_layout = go.Layout(title="Скважина {}".format(self.name), showlegend=False, width=n_cols*subplot_width,
-                               height=subplot_height, yaxis=dict(range=[self.depth_to, self.depth_from]),
-                               images=images)
+        fig_layout = go.Layout(title="Field: {}<br>Well: {}".format(self.field, self.name), showlegend=False,
+                               width=n_cols*subplot_width + margin, height=subplot_height,
+                               yaxis=dict(range=[self.depth_to, self.depth_from]), images=images)
         layout.update(fig_layout)
 
         for key in layout:
@@ -583,7 +590,8 @@ class WellSegment(AbstractWellSegment):
         for ann in layout["annotations"]:
             ann["font"]["size"] = 12
 
-        plot(fig)
+        plot_fn = iplot if interactive else plot
+        plot_fn(fig)
         return self
 
     def __getitem__(self, key):
@@ -632,14 +640,24 @@ class WellSegment(AbstractWellSegment):
         return res
 
     def copy(self):
-        """Perform shallow copy of an object.
+        """Perform a shallow copy of an object.
 
         Returns
         -------
-        self : AbstractWellSegment or a child class
+        self : AbstractWellSegment
             Shallow copy.
         """
         return copy(self)
+
+    def deepcopy(self):
+        """Perform a deep copy of an object.
+
+        Returns
+        -------
+        self : AbstractWellSegment
+            Deep copy.
+        """
+        return deepcopy(self)
 
     def check_regularity(self):
         """Checks intervals data regularity.
@@ -1072,7 +1090,7 @@ class WellSegment(AbstractWellSegment):
         well_log = interpolator(core_log.index)
         return np.corrcoef(core_log, well_log)[0, 1]**2
 
-    def plot_matching(self, mode=None, scale=False, subplot_height=750, subplot_width=200):
+    def plot_matching(self, mode=None, scale=False, interactive=True, subplot_height=700, subplot_width=200):
         """Plot well log and corresponding core log for each boring sequence.
 
         This method can be used to illustrate results of core-to-log matching.
@@ -1089,13 +1107,17 @@ class WellSegment(AbstractWellSegment):
             Each mode has the same structure as `mode` in `match_core_logs`.
             If `None` and core-to-log matching was performed beforehand,
             chosen matching modes are used.
+            Defaults to `None`.
         scale : bool
             Specifies whether to lineary scale core log values to well log
-            values.
+            values. Defaults to `False`.
+        interactive : bool
+            Specifies whether to draw a plot directly inside a Jupyter
+            notebook. Defaults to `True`.
         subplot_height : positive int
-            Height of each subplot with well and core logs.
+            Height of each subplot with well and core logs. Defaults to 700.
         subplot_width : positive int
-            Width of each subplot with well and core logs.
+            Width of each subplot with well and core logs. Defaults to 200.
 
         Returns
         -------
@@ -1103,6 +1125,10 @@ class WellSegment(AbstractWellSegment):
             Self unchanged.
         """
         init_notebook_mode(connected=True)
+
+        # Approximate size of the left margin of a plot, that will be added to the calculated
+        # figsize in order to prevent figure shrinkage in case of small number of subplots
+        margin = 120
 
         boring_sequences = self.boring_sequences.reset_index()
         if mode is None and "MODE" not in boring_sequences.columns:
@@ -1156,8 +1182,9 @@ class WellSegment(AbstractWellSegment):
             fig.append_trace(core_log_trace, 1, i)
 
         layout = fig.layout
-        fig_layout = go.Layout(title="Скважина {}".format(self.name), legend=dict(orientation="h"),
-                               width=n_cols*subplot_width, height=subplot_height)
+        fig_layout = go.Layout(title="Field: {}<br>Well: {}".format(self.field, self.name),
+                               legend=dict(orientation="h"), width=n_cols*subplot_width + margin,
+                               height=subplot_height)
         layout.update(fig_layout)
 
         for key in layout:
@@ -1172,7 +1199,8 @@ class WellSegment(AbstractWellSegment):
             axis_name = "yaxis" + axis_ix
             layout[axis_name]["autorange"] = "reversed"
 
-        plot(fig)
+        plot_fn = iplot if interactive else plot
+        plot_fn(fig)
         return self
 
     def add_depth_log(self):
@@ -1444,6 +1472,47 @@ class WellSegment(AbstractWellSegment):
             pos = np.floor((depth - self.depth_from) * factor)
             mask[int(pos)] = row[1][column] if mapping is None else mapping[row[1][column]]
         setattr(self, dst, mask)
+
+    def apply(self, fn, *args, attr="logs", src=None, dst=None, drop_src=False, **kwargs):
+        """Apply a function to each row of a segment attribute.
+
+        Parameters
+        ----------
+        fn : callable
+            A function to be applied.
+        attr : str, optional
+            A segment attribute, whose rows will be transformed by `fn`.
+            Defaults to `"logs"`.
+        src : str or list of str, optional
+            Columns of `attr`, whose values will be passed to `fn` as an
+            `np.ndarray` as the first positional argument. By default, the
+            entire row will be passed.
+        dst : str or list of str, optional
+            Columns of `attr`, where function results will be written. If
+            list, its length must match the number of returned results of
+            `fn`. Equals `src` by default.
+        drop_src : bool, optional
+            Specifies whether to drop `src` columns from `attr` after function
+            application. Defaults to `False`.
+        args : misc
+            Any additional positional arguments to pass to `fn` after data
+            from `attr`.
+        kwargs : misc
+            Any additional keyword arguments to pass as keyword arguments to
+            `fn`.
+
+        Returns
+        -------
+        well : AbstractWellSegment
+            The segment with applied function.
+        """
+        df = getattr(self, attr)
+        src = df.columnns if src is None else to_list(src)
+        dst = src if dst is None else to_list(dst)
+        df[dst] = df[src].apply(fn, axis=1, raw=True, result_type="expand", args=args, **kwargs)
+        if drop_src:
+            df.drop(set(src) - set(dst), axis=1, inplace=True)
+        return self
 
     def reindex(self, step, attrs=None):
         """Conform depth-indexed `attrs` of the segment to a new index,
