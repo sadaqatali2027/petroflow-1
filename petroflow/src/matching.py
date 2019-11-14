@@ -294,12 +294,13 @@ def find_best_shifts(sequences_shifts, well_name, well_field, margin=0.05, max_c
     n_sequences = len(sequences_shifts)
     top_n = ceil(max_combinations ** (1 / n_sequences))
 
+    # Select only top_n best shifts for each boring sequence to reduce the search space for further grid search
     top_shifts = []
     for shifts in sequences_shifts:
         if len(shifts) - 1 <= top_n:
             top_shifts.append(shifts)
         else:
-            # shifts[0] is a zero shift of a sequence and should be considered separately
+            # shifts[0] is a zero shift of a sequence and should be kept
             top_shifts.append(shifts[:1] + sorted(shifts[1:], key=lambda x: x.loss)[:top_n])
 
     best_shifts = None
@@ -320,6 +321,7 @@ def find_best_shifts(sequences_shifts, well_name, well_field, margin=0.05, max_c
             best_shifts = shifts
             best_corr = corr
 
+    # Check if R^2 can be increased significantly if overlap of sequences is allowed
     for bs, bis in zip(best_shifts, best_independent_shifts):
         bs_r2 = bs.loss**2
         bis_r2 = bis.loss**2
