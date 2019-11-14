@@ -126,10 +126,10 @@ def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log, return
         Core log values at corresponding `core_depths`.
     return_stats : bool, optional
         Additionally, return log and core arrays' statistics to further
-        aggregate correlation over multiple intervals.
+        aggregate correlation over multiple intervals. Defaults to `False`.
     eps : float, optional
         A small float to be added to the denominator to avoid division by
-        zero.
+        zero. Defaults to 1e-8.
 
     Returns
     -------
@@ -182,7 +182,7 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
     delta_step : float
         Step of the grid of initial shifts in meters.
     max_iter : positive int
-        Maximum number of SLSQP iterations.
+        Maximum number of `SLSQP` iterations.
     timeout : positive float
         Maximum time for an optimization run from each initial guess in
         seconds.
@@ -190,7 +190,8 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
     Returns
     -------
     shifts : list of Shift
-        Shift object for each initial guess, containing final loss and deltas.
+        `Shift` object for each initial guess, containing final loss and
+        deltas.
     """
     well_depth_from = well_log.index.min()
     well_depth_to = well_log.index.max()
@@ -288,7 +289,34 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
 
 def find_best_shifts(sequences_shifts, well_name, well_field, margin=0.05, max_combinations=1e5, eps=1e-8):
     """Choose best shift for each boring sequence so that they don't overlap
-    and maximize matching R^2."""
+    and maximize matching `R^2`.
+
+    Parameters
+    ----------
+    sequences_shifts : list of list of Shift
+        `Shift` objects for each boring sequence in a group, containing final
+        loss and deltas for each initial guess.
+    well_name : str
+        Well name.
+    well_field : str
+        Field name.
+    margin : float, optional
+        A minimum difference between `R^2`, calculated with and without a
+        constraint on sequences non-overlapping to raise a warning. Defaults
+        to 0.05.
+    max_combinations : int, optional
+        An approximate size of the search space to perform a grid search of
+        the best shift. Defaults to 1e5.
+    eps : float, optional
+        A small float to be added to the denominator to avoid division by
+        zero. Defaults to 1e-8.
+
+    Returns
+    -------
+    best_shifts : list of Shift
+        `Shift` objects for each boring sequence in a group, that maximize
+        matching `R^2`.
+    """
     best_independent_shifts = [min(shifts, key=lambda x: x.loss) for shifts in sequences_shifts]
 
     n_sequences = len(sequences_shifts)
