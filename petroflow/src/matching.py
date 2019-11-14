@@ -124,6 +124,12 @@ def loss(deltas, bi_n_lith_ints, core_depths, log_interpolator, core_log, return
         Well log interpolator.
     core_log : numpy.ndarray
         Core log values at corresponding `core_depths`.
+    return_stats : bool, optional
+        Additionally, return log and core arrays' statistics to further
+        aggregate correlation over multiple intervals.
+    eps : float, optional
+        A small float to be added to the denominator to avoid division by
+        zero.
 
     Returns
     -------
