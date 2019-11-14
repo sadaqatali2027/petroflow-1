@@ -968,37 +968,54 @@ class WellSegment(AbstractWellSegment):
 
         Parameters
         ----------
-        mode : str or list of str
+        mode : str or list of str, optional
             Matching mode precedence from highest to lowest. The mode is
             independently selected for each boring sequence. Each mode has the
-            following structure: <well_log> ~ <core_attr>.<core_log>, where:
+            following structure: <well_log> ~ <sign><core_attr>.<core_log>,
+            where:
             - well_log - mnemonic of a well log to use
+            - sign - a sign of the theoretical correlation between well and
+              core data, defaults to `+` if not given
             - core_attr - an attribute of `self` to get core data from
             - core_log - mnemonic of a core log or property to use
             Defaults to gamma ray matching.
-        split_lithology_intervals : bool
+        split_lithology_intervals : bool, optional
             Specifies whether to independently shift lithology intervals
             inside a boring interval. Defaults to `True`.
-        max_shift : positive float
-            Maximum shift of a boring sequence in meters. Defaults to 5.
-        delta_from : float
-            Start of the grid of initial shifts in meters. Defaults to -4.
-        delta_to : float
-            End of the grid of initial shifts in meters. Defaults to 4.
-        delta_step : float
+        gaussian_win_size : int, optional
+            A Gaussian filter size in samples to perform log blurring before
+            matching. No blurring is performed by default.
+        min_points : int, optional
+            A minimum number of samples in logs to perform matching. Defaults
+            to 3.
+        min_points_per_meter : int, optional
+            A minimum number of samples per meter in logs to perform matching.
+            Defaults to 1.
+        min_gap : float, optional
+            A minimum gap between two boring intervals in meters to set the
+            bottom depth of the upper interval equal to the top depth of the
+            lower one due to inaccuracies in depth measurements. Defaults to
+            0.5.
+        max_shift : positive float, optional
+            Maximum shift of a boring sequence in meters. Defaults to 10.
+        delta_from : float, optional
+            Start of the grid of initial shifts in meters. Defaults to -8.
+        delta_to : float, optional
+            End of the grid of initial shifts in meters. Defaults to 8.
+        delta_step : float, optional
             Step of the grid of initial shifts in meters. Defaults to 0.1.
-        max_iter : positive int
-            Maximum number of SLSQP iterations. Defaults to 50.
-        max_iter_time
+        max_iter : positive int, optional
+            Maximum number of `SLSQP` iterations. Defaults to 50.
+        max_iter_time, optional
             Maximum time for an optimization iteration in seconds. Defaults to
             0.25.
-        save_report : bool
+        save_report : bool, optional
             Specifies whether to save matching report in a well directory.
             Defaults to `False`.
 
         Returns
         -------
-        well : AbstractWellSegment or a child class
+        well : AbstractWellSegment
             Matched well segment with updated core depths. Changes all
             core-related depths inplace.
         """
