@@ -948,6 +948,7 @@ class WellSegment(AbstractWellSegment):
 
     @staticmethod
     def _blur_log(log, win_size):
+        """Blur a log with a Gaussian filter of size `win_size`."""
         if win_size is None:
             return log
         old_index = log.index
