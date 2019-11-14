@@ -9,7 +9,7 @@ import shutil
 from copy import copy, deepcopy
 from glob import glob
 from functools import reduce
-from itertools import chain, repeat, product
+from itertools import chain, repeat
 
 import numpy as np
 import pandas as pd
