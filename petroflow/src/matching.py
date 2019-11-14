@@ -255,7 +255,7 @@ def match_boring_sequence(boring_sequence, lithology_intervals, well_log, core_l
 
     futures = []
     init_deltas = generate_init_deltas(bi_n_lith_ints, bi_gap_lengths, delta_from, delta_to, delta_step)
-    with mp.Pool() as pool: #pylint: disable=not-callable
+    with mp.Pool() as pool:  # pylint: disable=not-callable
         for init_delta in init_deltas:
             args = (loss, init_delta)
             kwargs = {
@@ -350,7 +350,7 @@ def find_best_shifts(sequences_shifts, well_name, well_field, margin=0.05, max_c
             best_corr = corr
 
     # Check if R^2 can be increased significantly if overlap of sequences is allowed
-    for bs, bis in zip(best_shifts, best_independent_shifts):
+    for bs, bis in zip(best_shifts, best_independent_shifts):  # pylint: disable=invalid-name
         bs_r2 = bs.loss**2
         bis_r2 = bis.loss**2
         depth_from = bs.depth_from - bs.sequence_delta
