@@ -349,7 +349,7 @@ def find_best_shifts(sequences_shifts, well_name, well_field, margin=0.05, max_c
             best_shifts = shifts
             best_corr = corr
 
-    # Check if R^2 can be increased significantly if overlap of sequences is allowed
+    # Check if R^2 can be increased significantly if overlap of boring sequences is allowed
     for bs, bis in zip(best_shifts, best_independent_shifts):  # pylint: disable=invalid-name
         bs_r2 = bs.loss**2
         bis_r2 = bis.loss**2

@@ -1595,6 +1595,23 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def gaussian_blur(self, win_size, std=None, attrs=None):
+        """Blur columns of `attrs` with a Gaussian filter.
+
+        Parameters
+        ----------
+        win_size : int
+            Size of the kernel.
+        std : float, optional
+            The standard deviation of the normal distribution. Equals
+            `win_size / 6' by default.
+        attrs : str or list of str
+            Depth-indexed attributes of the segment to be blurred.
+
+        Returns
+        -------
+        well : AbstractWellSegment
+            The segment with blurred logs in `attrs`.
+        """
         if std is None:
             std = win_size / 6  # three-sigma rule
         attrs = self.attrs_depth_index if attrs is None else attrs
