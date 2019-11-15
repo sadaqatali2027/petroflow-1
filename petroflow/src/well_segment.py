@@ -1555,6 +1555,11 @@ class WellSegment(AbstractWellSegment):
             df.drop(set(src) - set(dst), axis=1, inplace=True)
         return self
 
+    def _filter_depth_attrs(self, attrs=None):
+        """Return intersection of `attrs` and `self.attrs_depth_index`."""
+        attrs = self.attrs_depth_index if attrs is None else attrs
+        return np.intersect1d(attrs, self.attrs_depth_index)
+
     def reindex(self, step, attrs=None):
         """Conform depth-indexed `attrs` of the segment to a new index,
         starting from `self.depth_from` to `self.depth_to` with a step `step`,
@@ -1574,9 +1579,8 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             The segment with reindexed `attrs`.
         """
-        attrs = self.attrs_depth_index if attrs is None else attrs
         new_index = np.arange(self.depth_from, self.depth_to, step)
-        for attr in np.intersect1d(attrs, self.attrs_depth_index):
+        for attr in self._filter_depth_attrs(attrs):
             res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=1e-4)
             setattr(self, "_" + attr, res)
         return self
@@ -1598,8 +1602,7 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             The segment with interpolated values in `attrs`.
         """
-        attrs = self.attrs_depth_index if attrs is None else attrs
-        for attr in np.intersect1d(attrs, self.attrs_depth_index):
+        for attr in self._filter_depth_attrs(attrs):
             res = getattr(self, attr).interpolate(*args, **kwargs)
             setattr(self, "_" + attr, res)
         return self
@@ -1624,8 +1627,7 @@ class WellSegment(AbstractWellSegment):
         """
         if std is None:
             std = win_size / 6  # three-sigma rule
-        attrs = self.attrs_depth_index if attrs is None else attrs
-        for attr in np.intersect1d(attrs, self.attrs_depth_index):
+        for attr in self._filter_depth_attrs(attrs):
             val = getattr(self, attr)
             nan_mask = val.isna()
             val = val.rolling(window=win_size, min_periods=1, win_type="gaussian", center=True).mean(std=std)
