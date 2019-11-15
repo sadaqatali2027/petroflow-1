@@ -68,6 +68,10 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def gaussian_blur(self):
+        pass
+
+    @abstractmethod
     def norm_mean_std(self):
         pass
 
