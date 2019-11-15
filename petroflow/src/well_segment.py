@@ -908,6 +908,7 @@ class WellSegment(AbstractWellSegment):
         """Split matching mode string into well log mnemonic, core log or
         property mnemonic, class attribute to get core data from and a sign of
         the theoretical correlation between well and core data."""
+        mode = mode.replace(" ", "")
         split_mode = mode.split("~")
         if len(split_mode) != 2:
             raise ValueError("Incorrect mode format")
@@ -941,10 +942,19 @@ class WellSegment(AbstractWellSegment):
                     return mode
         return None
 
-    @staticmethod
-    def _unify_matching_mode(mode):
-        """Delete all spaces from a matching mode string."""
-        return [mode.replace(" ", "") for mode in to_list(mode)]
+    @classmethod
+    def _unify_matching_mode(cls, mode):
+        """Delete all spaces and add `+` sign if omitted to a matching mode
+        string."""
+        log_mnemonic, core_mnemonic, core_attr, sign = cls._parse_matching_mode(mode)
+        mode = "{}~{}{}.{}".format(log_mnemonic, "+" if sign == 1 else "-", core_attr, core_mnemonic)
+        return mode
+
+    @classmethod
+    def _unify_matching_modes(cls, modes):
+        """Delete all spaces and add `+` sign if omitted to each matching mode
+        string in a `modes` list."""
+        return [cls._unify_matching_mode(mode) for mode in to_list(modes)]
 
     @staticmethod
     def _blur_log(log, win_size):
@@ -1029,7 +1039,7 @@ class WellSegment(AbstractWellSegment):
         # TODO: extra checks for min_points
         min_points = max(min_points, 2)
 
-        mode_list = self._unify_matching_mode(mode)
+        mode_list = self._unify_matching_modes(mode)
 
         # If a gap between any two boring intervals is less than `min_gap`, treat it as inaccuracies in depth
         # measurements and set the bottom depth of the upper interval equal to the top depth of the lower one.
@@ -1175,7 +1185,7 @@ class WellSegment(AbstractWellSegment):
         if mode is None and "MODE" not in boring_sequences.columns:
             raise ValueError("Core-to-log matching has to be performed beforehand if mode is not specified")
         if mode is not None:
-            mode_list = self._unify_matching_mode(mode)
+            mode_list = self._unify_matching_modes(mode)
             if len(mode_list) == 1:
                 mode_list = mode_list * len(boring_sequences)
             if len(mode_list) != len(boring_sequences):
@@ -1326,7 +1336,7 @@ class WellSegment(AbstractWellSegment):
         """
         mask = self.boring_sequences["R2"] > threshold
         if mode is not None:
-            mode_list = self._unify_matching_mode(mode)
+            mode_list = self._unify_matching_modes(mode)
             mask &= self.boring_sequences["MODE"].isin(mode_list)
         sequences = self.boring_sequences[mask].reset_index()[["DEPTH_FROM", "DEPTH_TO"]]
         res_segments = []
