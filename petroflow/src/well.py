@@ -130,6 +130,11 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         the segment tree."""
         return len(self.iter_level())
 
+    @property
+    def aggregated_segment(self):
+        """WellSegment: the only segment of an aggregated copy of the well."""
+        return self.deepcopy().aggregate().segments[0]
+
     def _has_segments(self):
         return all(isinstance(item, WellSegment) for item in self)
 
@@ -221,8 +226,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell or a child class
             Self unchanged.
         """
-        # TODO: aggregate before dumping
-        self.segments[0].dump(path)
+        self.aggregated_segment.dump(path)
         return self
 
     def plot(self, *args, aggregate=True, **kwargs):
@@ -254,11 +258,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell
             Self unchanged.
         """
-        if aggregate:
-            self.deepcopy().aggregate().segments[0].plot(*args, **kwargs)
-        else:
-            for segment in self.iter_level():
-                segment.plot(*args, **kwargs)
+        segments = [self.aggregated_segment] if aggregate else self.iter_level()
+        for segment in segments:
+            segment.plot(*args, **kwargs)
         return self
 
     def plot_matching(self, *args, aggregate=True, **kwargs):
@@ -299,11 +301,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell
             Self unchanged.
         """
-        if aggregate:
-            self.deepcopy().aggregate().segments[0].plot_matching(*args, **kwargs)
-        else:
-            for segment in self.iter_level():
-                segment.plot_matching(*args, **kwargs)
+        segments = [self.aggregated_segment] if aggregate else self.iter_level()
+        for segment in segments:
+            segment.plot_matching(*args, **kwargs)
         return self
 
     def keep_matched_sequences(self, mode=None, threshold=0.6):
