@@ -3,7 +3,6 @@
 
 import traceback
 from abc import ABCMeta
-from copy import deepcopy
 from functools import wraps
 
 import numpy as np
