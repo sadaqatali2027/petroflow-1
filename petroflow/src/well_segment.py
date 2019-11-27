@@ -1550,7 +1550,10 @@ class WellSegment(AbstractWellSegment):
         df = getattr(self, attr)
         src = df.columnns if src is None else to_list(src)
         dst = src if dst is None else to_list(dst)
-        df[dst] = df[src].apply(fn, axis=1, raw=True, result_type="expand", args=args, **kwargs)
+        res = df[src].apply(fn, axis=1, raw=True, result_type="expand", args=args, **kwargs)
+        if isinstance(res, pd.Series):
+            res = res.to_frame()
+        df[dst] = res
         if drop_src:
             df.drop(set(src) - set(dst), axis=1, inplace=True)
         return self
