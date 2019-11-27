@@ -24,6 +24,10 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def deepcopy(self):
+        pass
+
+    @abstractmethod
     def check_regularity(self):
         pass
 

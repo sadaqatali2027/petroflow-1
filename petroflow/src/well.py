@@ -229,6 +229,41 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self.aggregated_segment.dump(path)
         return self
 
+    def __getitem__(self, key):
+        """Select well logs by mnemonics or slice the well along the wellbore.
+
+        Parameters
+        ----------
+        key : str, list of str or slice
+            - If `key` is `str` or `list` of `str`, preserve only those logs
+              in `logs` of each segment, that are in `key`.
+            - If `key` is `slice` - perform well slicing along the wellbore.
+              The call will be delegated to each segment of the well an only
+              those segments, who overlap with slicing range will be kept. If
+              both `start` and `stop` are in `logs.index` of a segment, then
+              only `start` is kept to ensure, that such methods as `crop`
+              always return the same number of samples regardless of cropping
+              position if crop size is given in meters. If only one of the
+              ends of the slice present in the index, it is kept in the result
+              contrary to usual python slices.
+
+        Returns
+        -------
+        well : AbstractWell
+            A well with filtered logs or depths.
+        """
+        results = []
+        for segment in self:
+            try:
+                results.append(segment[key])
+            except SkipWellException as err:
+                err_msg = str(err)
+        if len(results) == 0:
+            raise SkipWellException(err_msg)
+        res_well = self.copy()
+        res_well.segments = results
+        return res_well
+
     def plot(self, *args, aggregate=True, **kwargs):
         """Plot well logs and core images.
 

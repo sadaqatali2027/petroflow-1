@@ -604,16 +604,22 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment or a child class
-            A segment with filtered logs.
+        well : AbstractWellSegment
+            A segment with filtered logs or depths.
         """
         if not isinstance(key, slice):
             return self.keep_logs(key)
         res = self.copy()
-        if key.start is not None:
-            res.depth_from = float(max(res.depth_from, key.start))
-        if key.stop is not None:
-            res.depth_to = float(min(res.depth_to, key.stop))
+        if key.step is not None:
+            raise ValueError("A well does not support slicing with a specified step")
+        start = float(key.start) if key.start is not None else res.depth_from
+        overlap_start = max(res.depth_from, start)
+        stop = float(key.stop) if key.stop is not None else res.depth_to
+        overlap_stop = min(res.depth_to, stop)
+        if overlap_start > overlap_stop:
+            raise SkipWellException("Slicing interval is out of segment bounds")
+        res.depth_from = overlap_start
+        res.depth_to = overlap_stop
 
         attr_iter = chain(
             zip(res.attrs_depth_index, repeat(res._filter_depth_df)),
@@ -1295,8 +1301,10 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             A segment with filtered logs.
         """
-        if len(np.setdiff1d(mnemonics, self.logs.columns)) > 0:
-            raise SkipWellException
+        missing_mnemonics = np.setdiff1d(mnemonics, self.logs.columns)
+        if len(missing_mnemonics) > 0:
+            err_msg = "The following logs were not recorded for the well: {}".format(", ".join(missing_mnemonics))
+            raise SkipWellException(err_msg)
         res = self.copy()
         res._logs = res.logs[to_list(mnemonics)]
         return res
