@@ -1295,8 +1295,10 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             A segment with filtered logs.
         """
-        if len(np.setdiff1d(mnemonics, self.logs.columns)) > 0:
-            raise SkipWellException
+        missing_mnemonics = np.setdiff1d(mnemonics, self.logs.columns)
+        if len(missing_mnemonics) > 0:
+            err_msg = "The following logs were not recorded for the well: {}".format(", ".join(missing_mnemonics))
+            raise SkipWellException(err_msg)
         res = self.copy()
         res._logs = res.logs[to_list(mnemonics)]
         return res
