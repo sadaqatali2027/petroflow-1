@@ -604,16 +604,24 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment or a child class
+        well : AbstractWellSegment
             A segment with filtered logs.
         """
         if not isinstance(key, slice):
             return self.keep_logs(key)
         res = self.copy()
-        if key.start is not None:
-            res.depth_from = float(max(res.depth_from, key.start))
-        if key.stop is not None:
-            res.depth_to = float(min(res.depth_to, key.stop))
+        if key.step is not None:
+            raise ValueError("A well does not support slicing with a specified step")
+        start = float(key.start) if key.start is not None else res.depth_from
+        stop = float(key.stop) if key.stop is not None else res.depth_to
+        if start > stop:
+            raise ValueError("Start depth is greater than stop depth")
+        overlap_start = max(res.depth_from, start)
+        overlap_stop = min(res.depth_to, stop)
+        if overlap_start > overlap_stop:
+            raise SkipWellException("Slicing interval is out of segment bounds")
+        res.depth_from = overlap_start
+        res.depth_to = overlap_stop
 
         attr_iter = chain(
             zip(res.attrs_depth_index, repeat(res._filter_depth_df)),
