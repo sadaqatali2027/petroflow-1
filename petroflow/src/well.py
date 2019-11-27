@@ -252,16 +252,14 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         well : AbstractWell
             A well with filtered logs or depths.
         """
-        if not isinstance(key, slice):
-            return self.keep_logs(key)
         results = []
         for segment in self:
             try:
                 results.append(segment[key])
-            except SkipWellException:
-                continue
+            except SkipWellException as err:
+                err_msg = str(err)
         if len(results) == 0:
-            raise SkipWellException("Slicing interval is out of well bounds")
+            raise SkipWellException(err_msg)
         res_well = self.copy()
         res_well.segments = results
         return res_well
