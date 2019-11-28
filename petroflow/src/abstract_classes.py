@@ -95,6 +95,14 @@ class AbstractWell(AbstractWellSegment):
     """Abstract class to check that all nesessary methods are implemented in
     `Well` and `WellBatch` classes."""
     @abstractmethod
+    def drop_layers(self):
+        pass
+
+    @abstractmethod
+    def keep_layers(self):
+        pass
+
+    @abstractmethod
     def keep_matched_sequences(self):
         pass
 
