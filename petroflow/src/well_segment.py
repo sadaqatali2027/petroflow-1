@@ -1340,10 +1340,25 @@ class WellSegment(AbstractWellSegment):
         return segments
 
     def drop_layers(self, layers, connected=True):
+        """Drop layers, whose names match any pattern from `layers`.
+
+        Parameters
+        ----------
+        layers : str or list of str
+            Regular expressions, specifying layer names to drop.
+        connected : bool, optional
+            Specifies whether to join segments with kept layers, that go one
+            after another. Defaults to `True`.
+
+        Returns
+        -------
+        well : list of WellSegment
+            Segments, representing kept layers.
+        """
         return self._filter_layers(layers, connected, invert_mask=True)
 
     def keep_layers(self, layers, connected=True):
-        """Keep layers, whose names match any pattern from `layers`.
+        """Drop layers, whose names don't match any pattern from `layers`.
 
         Parameters
         ----------
