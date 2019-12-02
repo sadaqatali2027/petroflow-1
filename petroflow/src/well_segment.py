@@ -1327,6 +1327,25 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def _filter_layers(self, layers, connected, invert_mask):
+        """Keep or drop layers whose names match any pattern from `layers`
+        depending on an `invert_mask` flag.
+
+        Parameters
+        ----------
+        layers : str or list of str
+            Regular expressions, specifying layer names to keep or drop.
+        connected : bool
+            Specifies whether to join segments with kept layers, that go one
+            after another.
+        invert_mask : bool
+            If `False`, drop layers, whose names don't match any pattern from
+            `layers`. If `True`, drop layers, whose names match any of them.
+
+        Returns
+        -------
+        well : list of WellSegment
+            Segments, representing kept layers.
+        """
         if not self._has_file("layers"):
             raise SkipWellException("Layers are not defined for a well {}".format(self.name))
         reg_list = [re.compile(layer, re.IGNORECASE) for layer in to_list(layers)]
