@@ -1343,6 +1343,21 @@ class WellSegment(AbstractWellSegment):
         return self._filter_layers(layers, connected, invert_mask=True)
 
     def keep_layers(self, layers, connected=True):
+        """Keep layers, whose names match any pattern from `layers`.
+
+        Parameters
+        ----------
+        layers : str or list of str
+            Regular expressions, specifying layer names to keep.
+        connected : bool, optional
+            Specifies whether to join segments with kept layers, that go one
+            after another. Defaults to `True`.
+
+        Returns
+        -------
+        well : list of WellSegment
+            Segments, representing kept layers.
+        """
         return self._filter_layers(layers, connected, invert_mask=False)
 
     def keep_matched_sequences(self, mode=None, threshold=0.6):
