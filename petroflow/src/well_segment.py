@@ -1352,6 +1352,7 @@ class WellSegment(AbstractWellSegment):
         mask = np.array([any(regex.fullmatch(layer) for regex in reg_list) for layer in self.layers["LAYER"]])
         if invert_mask:
             mask = ~mask
+        # TODO: unify with _create_segments_by_fdtd
         depth_df = self.layers.reset_index()[mask]
         if connected:
             depth_df = self._core_chunks(depth_df)
