@@ -1598,7 +1598,7 @@ class WellSegment(AbstractWellSegment):
         Parameters
         ----------
         fn : callable
-            A function to be applied.
+            A function to be applied. See Notes section for caveats.
         attr : str, optional
             A segment attribute, whose rows will be transformed by `fn`.
             Defaults to `"logs"`.
@@ -1619,6 +1619,14 @@ class WellSegment(AbstractWellSegment):
         kwargs : misc
             Any additional keyword arguments to pass as keyword arguments to
             `fn`.
+
+        Notes
+        -----
+        Currently, callables from `numpy` without pure Python implementation
+        can't be passed as `fn` if they get more than one non-keyword argument.
+
+        E.g. `apply(np.divide, 1000, src='DEPTH')` will fail.
+        Use `apply(lambda x: x / 1000, src='DEPTH')` instead.
 
         Returns
         -------
