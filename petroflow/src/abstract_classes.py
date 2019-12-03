@@ -24,6 +24,10 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def deepcopy(self):
+        pass
+
+    @abstractmethod
     def check_regularity(self):
         pass
 
@@ -68,6 +72,10 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def gaussian_blur(self):
+        pass
+
+    @abstractmethod
     def norm_mean_std(self):
         pass
 
@@ -86,6 +94,14 @@ class AbstractWellSegment(metaclass=ABCMeta):
 class AbstractWell(AbstractWellSegment):
     """Abstract class to check that all nesessary methods are implemented in
     `Well` and `WellBatch` classes."""
+    @abstractmethod
+    def drop_layers(self):
+        pass
+
+    @abstractmethod
+    def keep_layers(self):
+        pass
+
     @abstractmethod
     def keep_matched_sequences(self):
         pass

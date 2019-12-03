@@ -130,6 +130,11 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         the segment tree."""
         return len(self.iter_level())
 
+    @property
+    def aggregated_segment(self):
+        """WellSegment: the only segment of an aggregated copy of the well."""
+        return self.deepcopy().aggregate().segments[0]
+
     def _has_segments(self):
         return all(isinstance(item, WellSegment) for item in self)
 
@@ -221,9 +226,43 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell or a child class
             Self unchanged.
         """
-        # TODO: aggregate before dumping
-        self.segments[0].dump(path)
+        self.aggregated_segment.dump(path)
         return self
+
+    def __getitem__(self, key):
+        """Select well logs by mnemonics or slice the well along the wellbore.
+
+        Parameters
+        ----------
+        key : str, list of str or slice
+            - If `key` is `str` or `list` of `str`, preserve only those logs
+              in `logs` of each segment, that are in `key`.
+            - If `key` is `slice` - perform well slicing along the wellbore.
+              The call will be delegated to each segment of the well an only
+              those segments, who overlap with slicing range will be kept. If
+              both `start` and `stop` are in `logs.index` of a segment, then
+              only `start` is kept to ensure, that such methods as `crop`
+              always return the same number of samples regardless of cropping
+              position if crop size is given in meters. If only one of the
+              ends of the slice present in the index, it is kept in the result
+              contrary to usual python slices.
+
+        Returns
+        -------
+        well : AbstractWell
+            A well with filtered logs or depths.
+        """
+        results = []
+        for segment in self:
+            try:
+                results.append(segment[key])
+            except SkipWellException as err:
+                err_msg = str(err)
+        if len(results) == 0:
+            raise SkipWellException(err_msg)
+        res_well = self.copy()
+        res_well.segments = results
+        return res_well
 
     def plot(self, *args, aggregate=True, **kwargs):
         """Plot well logs and core images.
@@ -254,11 +293,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell
             Self unchanged.
         """
-        if aggregate:
-            self.deepcopy().aggregate().segments[0].plot(*args, **kwargs)
-        else:
-            for segment in self.iter_level():
-                segment.plot(*args, **kwargs)
+        segments = [self.aggregated_segment] if aggregate else self.iter_level()
+        for segment in segments:
+            segment.plot(*args, **kwargs)
         return self
 
     def plot_matching(self, *args, aggregate=True, **kwargs):
@@ -299,12 +336,50 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell
             Self unchanged.
         """
-        if aggregate:
-            self.deepcopy().aggregate().segments[0].plot_matching(*args, **kwargs)
-        else:
-            for segment in self.iter_level():
-                segment.plot_matching(*args, **kwargs)
+        segments = [self.aggregated_segment] if aggregate else self.iter_level()
+        for segment in segments:
+            segment.plot_matching(*args, **kwargs)
         return self
+
+    def drop_layers(self, layers, connected=True):
+        """Drop layers, whose names match any pattern from `layers`.
+
+        Parameters
+        ----------
+        layers : str or list of str
+            Regular expressions, specifying layer names to drop.
+        connected : bool, optional
+            Specifies whether to join segments with kept layers, that go one
+            after another. Defaults to `True`.
+
+        Returns
+        -------
+        well : Well
+            The well, whose segments represent kept layers.
+        """
+        for well in self.iter_level(-2):
+            well.segments = [Well(segments=segment.drop_layers(layers, connected)) for segment in well]
+        return self.prune()
+
+    def keep_layers(self, layers, connected=True):
+        """Drop layers, whose names don't match any pattern from `layers`.
+
+        Parameters
+        ----------
+        layers : str or list of str
+            Regular expressions, specifying layer names to keep.
+        connected : bool, optional
+            Specifies whether to join segments with kept layers, that go one
+            after another. Defaults to `True`.
+
+        Returns
+        -------
+        well : Well
+            The well, whose segments represent kept layers.
+        """
+        for well in self.iter_level(-2):
+            well.segments = [Well(segments=segment.keep_layers(layers, connected)) for segment in well]
+        return self.prune()
 
     def keep_matched_sequences(self, mode=None, threshold=0.6):
         """Keep boring sequences, matched using given `mode` with `R^2`
