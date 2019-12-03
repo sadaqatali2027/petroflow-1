@@ -3,6 +3,7 @@
 # pylint: disable=no-member,protected-access
 
 import os
+import re
 import json
 import base64
 import shutil
@@ -1324,6 +1325,75 @@ class WellSegment(AbstractWellSegment):
         """
         self.logs.rename(columns=rename_dict, inplace=True)
         return self
+
+    def _filter_layers(self, layers, connected, invert_mask):
+        """Keep or drop layers whose names match any pattern from `layers`
+        depending on an `invert_mask` flag.
+
+        Parameters
+        ----------
+        layers : str or list of str
+            Regular expressions, specifying layer names to keep or drop.
+        connected : bool
+            Specifies whether to join segments with kept layers, that go one
+            after another.
+        invert_mask : bool
+            If `False`, drop layers, whose names don't match any pattern from
+            `layers`. If `True`, drop layers, whose names match any of them.
+
+        Returns
+        -------
+        well : list of WellSegment
+            Segments, representing kept layers.
+        """
+        if not self._has_file("layers"):
+            raise SkipWellException("Layers are not defined for a well {}".format(self.name))
+        reg_list = [re.compile(layer, re.IGNORECASE) for layer in to_list(layers)]
+        mask = np.array([any(regex.fullmatch(layer) for regex in reg_list) for layer in self.layers["LAYER"]])
+        if invert_mask:
+            mask = ~mask
+        # TODO: unify with _create_segments_by_fdtd
+        depth_df = self.layers.reset_index()[mask]
+        if connected:
+            depth_df = self._core_chunks(depth_df)
+        segments = [self[top:bottom] for _, (top, bottom) in depth_df[['DEPTH_FROM', 'DEPTH_TO']].iterrows()]
+        return segments
+
+    def drop_layers(self, layers, connected=True):
+        """Drop layers, whose names match any pattern from `layers`.
+
+        Parameters
+        ----------
+        layers : str or list of str
+            Regular expressions, specifying layer names to drop.
+        connected : bool, optional
+            Specifies whether to join segments with kept layers, that go one
+            after another. Defaults to `True`.
+
+        Returns
+        -------
+        well : list of WellSegment
+            Segments, representing kept layers.
+        """
+        return self._filter_layers(layers, connected, invert_mask=True)
+
+    def keep_layers(self, layers, connected=True):
+        """Drop layers, whose names don't match any pattern from `layers`.
+
+        Parameters
+        ----------
+        layers : str or list of str
+            Regular expressions, specifying layer names to keep.
+        connected : bool, optional
+            Specifies whether to join segments with kept layers, that go one
+            after another. Defaults to `True`.
+
+        Returns
+        -------
+        well : list of WellSegment
+            Segments, representing kept layers.
+        """
+        return self._filter_layers(layers, connected, invert_mask=False)
 
     def keep_matched_sequences(self, mode=None, threshold=0.6):
         """Keep boring sequences, matched using given `mode` with `R^2`

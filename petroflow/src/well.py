@@ -341,6 +341,46 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             segment.plot_matching(*args, **kwargs)
         return self
 
+    def drop_layers(self, layers, connected=True):
+        """Drop layers, whose names match any pattern from `layers`.
+
+        Parameters
+        ----------
+        layers : str or list of str
+            Regular expressions, specifying layer names to drop.
+        connected : bool, optional
+            Specifies whether to join segments with kept layers, that go one
+            after another. Defaults to `True`.
+
+        Returns
+        -------
+        well : Well
+            The well, whose segments represent kept layers.
+        """
+        for well in self.iter_level(-2):
+            well.segments = [Well(segments=segment.drop_layers(layers, connected)) for segment in well]
+        return self.prune()
+
+    def keep_layers(self, layers, connected=True):
+        """Drop layers, whose names don't match any pattern from `layers`.
+
+        Parameters
+        ----------
+        layers : str or list of str
+            Regular expressions, specifying layer names to keep.
+        connected : bool, optional
+            Specifies whether to join segments with kept layers, that go one
+            after another. Defaults to `True`.
+
+        Returns
+        -------
+        well : Well
+            The well, whose segments represent kept layers.
+        """
+        for well in self.iter_level(-2):
+            well.segments = [Well(segments=segment.keep_layers(layers, connected)) for segment in well]
+        return self.prune()
+
     def keep_matched_sequences(self, mode=None, threshold=0.6):
         """Keep boring sequences, matched using given `mode` with `R^2`
         greater than `threshold`.
