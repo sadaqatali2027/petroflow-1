@@ -1548,7 +1548,7 @@ class WellSegment(AbstractWellSegment):
         passed as `fn` if they get more than one non-keyworded argument.
 
         E.g. `apply(np.divide, 1000, src='DEPTH')` will fail.
-        Use `apply(lambda x: x / 1000, src='DEPTH)` instead.
+        Use `apply(lambda x: x / 1000, src='DEPTH')` instead.
 
         Returns
         -------
