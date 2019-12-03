@@ -1544,8 +1544,8 @@ class WellSegment(AbstractWellSegment):
 
         Notes
         -----
-        Currently, callables from numpy without Python implementation cannot be
-        passed as `fn` if they get more than one non-keyworded argument.
+        Currently, callables from `numpy` without pure Python implementation
+        can't be passed as `fn` if they get more than one non-keyword argument.
 
         E.g. `apply(np.divide, 1000, src='DEPTH')` will fail.
         Use `apply(lambda x: x / 1000, src='DEPTH')` instead.
