@@ -1,12 +1,14 @@
 """Implements Well class."""
 # pylint: disable=abstract-method
 
+import warnings
 from abc import ABCMeta
-from copy import copy
+from copy import copy, deepcopy
 from functools import wraps
 from collections import Counter
 
 import numpy as np
+import pandas as pd
 
 from .abstract_classes import AbstractWell
 from .well_segment import WellSegment
@@ -130,6 +132,11 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         the segment tree."""
         return len(self.iter_level())
 
+    @property
+    def aggregated_segment(self):
+        """WellSegment: the only segment of an aggregated copy of the well."""
+        return self.deepcopy().aggregate().segments[0]
+
     def _has_segments(self):
         return all(isinstance(item, WellSegment) for item in self)
 
@@ -182,14 +189,24 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self
 
     def copy(self):
-        """Perform shallow copy of an object.
+        """Perform a shallow copy of an object.
 
         Returns
         -------
-        self : AbstractWell or a child class
+        self : AbstractWell
             Shallow copy.
         """
         return copy(self)
+
+    def deepcopy(self):
+        """Perform a deep copy of an object.
+
+        Returns
+        -------
+        self : AbstractWell
+            Deep copy.
+        """
+        return deepcopy(self)
 
     def dump(self, path):
         """Dump well data. The well will be aggregated and the resulting
@@ -211,9 +228,160 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell or a child class
             Self unchanged.
         """
-        # TODO: aggregate before dumping
-        self.segments[0].dump(path)
+        self.aggregated_segment.dump(path)
         return self
+
+    def __getitem__(self, key):
+        """Select well logs by mnemonics or slice the well along the wellbore.
+
+        Parameters
+        ----------
+        key : str, list of str or slice
+            - If `key` is `str` or `list` of `str`, preserve only those logs
+              in `logs` of each segment, that are in `key`.
+            - If `key` is `slice` - perform well slicing along the wellbore.
+              The call will be delegated to each segment of the well an only
+              those segments, who overlap with slicing range will be kept. If
+              both `start` and `stop` are in `logs.index` of a segment, then
+              only `start` is kept to ensure, that such methods as `crop`
+              always return the same number of samples regardless of cropping
+              position if crop size is given in meters. If only one of the
+              ends of the slice present in the index, it is kept in the result
+              contrary to usual python slices.
+
+        Returns
+        -------
+        well : AbstractWell
+            A well with filtered logs or depths.
+        """
+        results = []
+        for segment in self:
+            try:
+                results.append(segment[key])
+            except SkipWellException as err:
+                err_msg = str(err)
+        if len(results) == 0:
+            raise SkipWellException(err_msg)
+        res_well = self.copy()
+        res_well.segments = results
+        return res_well
+
+    def plot(self, *args, aggregate=True, **kwargs):
+        """Plot well logs and core images.
+
+        All well logs and core images in daylight and ultraviolet are plotted
+        on separate subplots.
+
+        Parameters
+        ----------
+        plot_core : bool
+            Specifies whether to plot core images or not. Defaults to `True`.
+        interactive : bool
+            Specifies whether to draw a plot directly inside a Jupyter
+            notebook. Defaults to `True`.
+        aggregate : bool
+            Specifies whether to plot all segments of the well on the same
+            plot or create a separate plot for each segment. Defaults to
+            `True`.
+        subplot_height : positive int
+            Height of each subplot with well log or core samples images in
+            pixels. Defaults to 700.
+        subplot_width : positive int
+            Width of each subplot with well log or core samples images in
+            pixels. Defaults to 200.
+
+        Returns
+        -------
+        self : AbstractWell
+            Self unchanged.
+        """
+        segments = [self.aggregated_segment] if aggregate else self.iter_level()
+        for segment in segments:
+            segment.plot(*args, **kwargs)
+        return self
+
+    def plot_matching(self, *args, aggregate=True, **kwargs):
+        """Plot well log and corresponding core log for each boring sequence.
+
+        This method can be used to illustrate results of core-to-log matching.
+
+        Parameters
+        ----------
+        mode : str or list of str
+            Specify type of well log and core log or property to plot. If
+            `str`, the same mode will be used for all boring sequences. If
+            `list` of `str`, than each boring sequence will have its own mode.
+            In this case length of the `list` should match the number of
+            boring sequences.
+
+            Each mode has the same structure as `mode` in `match_core_logs`.
+            If `None` and core-to-log matching was performed beforehand,
+            chosen matching modes are used.
+            Defaults to `None`.
+        scale : bool
+            Specifies whether to lineary scale core log values to well log
+            values. Defaults to `False`.
+        interactive : bool
+            Specifies whether to draw a plot directly inside a Jupyter
+            notebook. Defaults to `True`.
+        aggregate : bool
+            Specifies whether to plot all segments of the well on the same
+            plot or create a separate plot for each segment. Defaults to
+            `True`.
+        subplot_height : positive int
+            Height of each subplot with well and core logs. Defaults to 700.
+        subplot_width : positive int
+            Width of each subplot with well and core logs. Defaults to 200.
+
+        Returns
+        -------
+        self : AbstractWell
+            Self unchanged.
+        """
+        segments = [self.aggregated_segment] if aggregate else self.iter_level()
+        for segment in segments:
+            segment.plot_matching(*args, **kwargs)
+        return self
+
+    def drop_layers(self, layers, connected=True):
+        """Drop layers, whose names match any pattern from `layers`.
+
+        Parameters
+        ----------
+        layers : str or list of str
+            Regular expressions, specifying layer names to drop.
+        connected : bool, optional
+            Specifies whether to join segments with kept layers, that go one
+            after another. Defaults to `True`.
+
+        Returns
+        -------
+        well : Well
+            The well, whose segments represent kept layers.
+        """
+        for well in self.iter_level(-2):
+            well.segments = [Well(segments=segment.drop_layers(layers, connected)) for segment in well]
+        return self.prune()
+
+    def keep_layers(self, layers, connected=True):
+        """Drop layers, whose names don't match any pattern from `layers`.
+
+        Parameters
+        ----------
+        layers : str or list of str
+            Regular expressions, specifying layer names to keep.
+        connected : bool, optional
+            Specifies whether to join segments with kept layers, that go one
+            after another. Defaults to `True`.
+
+        Returns
+        -------
+        well : Well
+            The well, whose segments represent kept layers.
+        """
+        for well in self.iter_level(-2):
+            well.segments = [Well(segments=segment.keep_layers(layers, connected)) for segment in well]
+        return self.prune()
 
     def keep_matched_sequences(self, mode=None, threshold=0.6):
         """Keep boring sequences, matched using given `mode` with `R^2`
@@ -265,8 +433,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     def crop(self, length, step, drop_last=True):
         """Create crops from segments at the last level. All cropped segments
-        have the same length and are cropped with some fixed step. The tree depth
-        will be increased.
+        have the same length and are cropped with some fixed step.
+        The tree depth will be increased.
 
         Parameters
         ----------
@@ -275,10 +443,10 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         step : positive float
             Step of cropping in meters.
         drop_last : bool, optional
-            If `True`, all segment that are out of segment bounds will be
-            dropped. If `False`, the whole segment will be covered by crops.
-            The first crop which comes out of segment bounds will be kept, the
-            following crops will be dropped. Defaults to `True`.
+            If `True`, only crops that lie within the segment will be kept.
+            If `False`, an extra segment, starting from `depth_to` - `length`
+            will be added to cover the whole segment with crops.
+            Defaults to `True`.
 
         Returns
         -------
@@ -351,14 +519,17 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [Well(segments=segment.drop_nans(logs=logs)) for segment in well]
         return self.prune()
 
-    def drop_short_segments(self, min_length):
+    def drop_short_segments(self, min_length, tolerance=1e-5):
         """Drop segments at the last level with length smaller than
-        `min_length`.
+        `min_length` with given `tolerance`.
 
         Parameters
         ----------
         min_length : positive float
             Segments shorter than `min_length` are dropped.
+
+        tolerance : positive float, optional
+            Tolerance for checking segments length.
 
         Returns
         -------
@@ -367,7 +538,135 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         """
         wells = self.iter_level(-2)
         for well in wells:
-            well.segments = [segment for segment in well if segment.length > min_length]
+            well.segments = [segment for segment in well if segment.length > min_length - tolerance]
+        return self.prune()
+
+    def _aggregate_array(self, func, attr):
+        """Aggregate loaded attributes from `WellSegment.attrs_pixel_index`.
+
+        Parameters
+        ----------
+        func : {'mean', 'max'}
+            Name of aggregation function.
+        attr : str
+            Name of attribute.
+
+        Returns
+        -------
+        numpy.ndarray
+            Assembled array.
+        """
+        if getattr(self.iter_level()[0], '_' + attr) is None:
+            return None
+        if func not in ['mean', 'max']:
+            warnings.warn("Only 'mean' and 'max' aggregations are currently supported for image attributes, \
+                          but {} was given. It was replaced by 'mean'.".format(func))
+            func = 'mean'
+
+        pixels_per_m = self.iter_level()[0].pixels_per_cm * 100
+        agg_array_height_pix = round((self.depth_to - self.depth_from) * pixels_per_m)
+        attr_val_shape = getattr(self.iter_level()[0], '_' + attr).shape
+
+        total = np.zeros((agg_array_height_pix, *attr_val_shape[1:]), dtype=int)
+        background = np.full_like(total, np.nan, dtype=np.double)
+        for segment in self.iter_level():
+            attr_val = getattr(segment, '_' + attr)
+            segment_place = slice(round((segment.depth_from - self.depth_from) * pixels_per_m),
+                                  round((segment.depth_to - self.depth_from) * pixels_per_m))
+
+            if func == 'max':
+                background[segment_place] = np.fmax(background[segment_place], attr_val)
+                continue
+            if func == 'mean':
+                background[segment_place] = np.nansum([background[segment_place], attr_val], axis=0)
+                total[segment_place] += 1
+
+        if func == 'max':
+            return background
+
+        total = np.where(total == 0, 1, total)
+        return background / total
+
+    def aggregate(self, func="mean", level=0):
+        """Aggregate loaded segments' attributes from `WellSegment.attrs_image`
+        and `WellSegment.attrs_depth_index`. Concatenate loaded segments' attributes
+        from `WellSegment.attrs_fdtd_index`. The result of aggregation and concatenation
+        is a single segment for each subtree starting at level `level`. `depth_from` and
+        `depth_to` for each of these segments will be minimum `depth_from` and
+        maximum `depth_to` along all gathered segments of that subtree.
+
+        Parameters
+        ----------
+        func : str, callable
+            Function to use for aggregating the data.
+            - `str` - short function name (e.g. ``'max'``, ``'min'``).
+            See `pd.aggregate` documentation.
+            - `callable` - a function which gets a `pd.Series` and returns
+               one element.
+            Only 'mean' and 'max' aggregations are currently supported for attributes
+            from `WellSegment.attrs_image`!
+            Defaults to "mean".
+        level : int, optional
+            Level of the well tree defined for aggregation.
+            All segments below `level` level of tree will be gathered into one.
+            Defaults to an aggregation of the whole tree.
+
+        Returns
+        -------
+        self : AbstractWell
+            The well with gathered segments on level `level`.
+        """
+        if level < -self.tree_depth or level == -1 or level >= self.tree_depth - 1:
+            raise ValueError("Aggregation level can't be ({})".format(level))
+
+        aggregate_attrs = list(WellSegment.attrs_depth_index)
+        concat_attrs = list(WellSegment.attrs_fdtd_index)
+
+        wells = self.iter_level(level)
+        for well in wells:
+            well.segments = well.iter_level()
+            seg_0 = well.segments[0]
+
+            # TODO: different aggregation functions
+            for attr in WellSegment.attrs_image:
+                setattr(seg_0, '_' + attr, well._aggregate_array(func, attr))  # pylint: disable=protected-access
+
+            # Concatenate of all segments attributes
+            for attr in aggregate_attrs + concat_attrs:
+                attr_values = [getattr(segment, '_' + attr) for segment in well.segments]
+                if all(value is None for value in attr_values):
+                    if attr in concat_attrs:
+                        concat_attrs.remove(attr)
+                    else:
+                        aggregate_attrs.remove(attr)
+                    continue
+                # If an attribute is still not loaded for several segments, it should be loaded explicitly.
+                # It can happen in case of previous manual processing of a `Well`.
+                attr_val_0 = pd.concat([getattr(segment, attr) for segment in well.segments])
+                setattr(seg_0, '_' + attr, attr_val_0)
+
+            for attr in concat_attrs:
+                attr_val_0 = getattr(seg_0, '_' + attr)
+                attr_val_0.drop_duplicates(inplace=True)
+                attr_val_0.sort_index(inplace=True)
+                setattr(seg_0, '_' + attr, attr_val_0)
+
+            for attr in aggregate_attrs:
+                attr_val_0 = getattr(seg_0, '_' + attr)
+                # Round depths to centimeters in order not to make `groupby` by `float` values.
+                attr_val_0.index = attr_val_0.index.map(lambda idx: round(idx * 100))
+                attr_val_0 = attr_val_0.groupby(level=0).agg(func)
+
+                # Add NaN values to `logs`.
+                if attr == 'logs' and attr_val_0.shape[0] > 1:
+                    index_step = (attr_val_0.index[1:] - attr_val_0.index[:-1]).min()
+                    index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1] + index_step, index_step)
+                    attr_val_0 = attr_val_0.reindex(index_array, method='nearest', fill_value=np.nan, tolerance=1e-5)
+                attr_val_0.index /= 100
+                setattr(seg_0, '_' + attr, attr_val_0)
+            setattr(seg_0, 'depth_from', well.depth_from)
+            setattr(seg_0, 'depth_to', well.depth_to)
+            well.segments = [seg_0]
         return self.prune()
 
     def has_attr(self, attrs):

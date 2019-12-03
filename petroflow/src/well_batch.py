@@ -3,7 +3,6 @@
 
 import traceback
 from abc import ABCMeta
-from copy import deepcopy
 from functools import wraps
 
 import numpy as np
@@ -68,15 +67,13 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
     """
 
     components = ("wells",)
-    targets = dict() # inbatch_parallel target depending on action name
+    targets = dict()  # inbatch_parallel target depending on action name
 
     def __init__(self, index, *args, preloaded=None, **kwargs):
         super().__init__(index, *args, preloaded=preloaded, **kwargs)
         if preloaded is None:
             self.wells = np.array([None] * len(self.index))
             self._init_wells(**kwargs)
-        else:  # Remove when batch.as_dataset is fixed
-            self.wells = np.array([deepcopy(preloaded[0][k]) for k in index.indices] + [None])[:-1]
 
     @inbatch_parallel(init="indices", target="threads")
     def _init_wells(self, index, src=None, **kwargs):
@@ -90,12 +87,12 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
         skip_mask = np.array([isinstance(res, SkipWellException) for res in results])
         if sum(skip_mask) == len(self):
             raise SkipBatchException
-        results = np.array(results)[~skip_mask] # pylint: disable=invalid-unary-operand-type
+        results = np.array(results)[~skip_mask]  # pylint: disable=invalid-unary-operand-type
         if any_action_failed(results):
             errors = self.get_errors(results)
             print(errors)
             traceback.print_tb(errors[0].__traceback__)
             raise RuntimeError("Could not assemble the batch")
-        self.index = self.index.create_subset(self.indices[~skip_mask]) # pylint: disable=invalid-unary-operand-type
+        self.index = self.index.create_subset(self.indices[~skip_mask])  # pylint: disable=invalid-unary-operand-type, attribute-defined-outside-init, line-too-long
         self.wells = results
         return self

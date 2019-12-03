@@ -20,8 +20,10 @@ class WellDataset(Dataset):
     preloaded : tuple, optional
         Data to put in created batches. Defaults to `None`.
     copy : bool
-        Specifies whether to deepcopy preloaded data for each batch. Defaults
-        to `False`.
+        Specifies whether to deepcopy preloaded data for each batch. If
+        `False`, preloaded data will be updated each time an inplace method of
+        a `Well` is called which is usually an undesirable behavior. Defaults
+        to `True`.
     index_class : type, optional
         A class to build an index if `index` is not given. Must be inherited
         from `DatasetIndex`.
@@ -29,7 +31,7 @@ class WellDataset(Dataset):
         Additional keyword arguments to `index_class.__init__`.
     """
 
-    def __init__(self, index=None, batch_class=WellBatch, preloaded=None, copy=False, index_class=FilesIndex,
+    def __init__(self, index=None, batch_class=WellBatch, preloaded=None, copy=True, index_class=FilesIndex,
                  **kwargs):
         if index is None:
             index = index_class(**kwargs)
