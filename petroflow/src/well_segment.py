@@ -10,6 +10,7 @@ from copy import copy, deepcopy
 from glob import glob
 from functools import reduce
 from itertools import chain, repeat, product
+from math import ceil
 
 import numpy as np
 import pandas as pd
@@ -56,8 +57,6 @@ def add_attr_loaders(cls):
             def load(self, *args, **kwargs):
                 data = loader(self, self._get_full_name(self.path, attr), *args, **kwargs)
                 setattr(self, "_" + attr, data)
-                if attr == 'logs':
-                    self.logs_step = round((data.index[1:] - data.index[:-1]).min(), 2)
                 return self
             return load
         setattr(cls, "load_" + attr, load_factory(attr, loader))
@@ -122,8 +121,6 @@ class WellSegment(AbstractWellSegment):
         Maximum depth entry in the well logs, loaded from `meta.json`.
     pad_depth : float
         Depth with which segment padded.
-    logs_step : float
-        Step in meters between measurements in `logs`.
     logs : pandas.DataFrame
         Well logs, indexed by depth. Depth log in a source file must have
         `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
@@ -198,7 +195,6 @@ class WellSegment(AbstractWellSegment):
         self.depth_from = float(meta["depth_from"])
         self.depth_to = float(meta["depth_to"])
         self.pad_depth = None
-        self.logs_step = None
 
         self.has_samples = self._has_file("samples")
 
@@ -220,6 +216,11 @@ class WellSegment(AbstractWellSegment):
     def length(self):
         """float: Length of the segment in meters."""
         return self.depth_to - self.depth_from
+
+    @property
+    def logs_step(self):
+        """float: Step between measurements in `logs` in meters."""
+        return round((self.logs.index[1:] - self.logs.index[:-1]).min(), 2)
 
     @property
     def boring_sequences(self):
@@ -1384,21 +1385,20 @@ class WellSegment(AbstractWellSegment):
         segments : list of WellSegment
             Cropped segments.
         """
-        positions = np.arange(self.depth_from, self.depth_to, step)
-        crops_in = positions[positions + length <= self.depth_to]
-        crops_out = positions[positions + length > self.depth_to]
+        n_crops_in = ceil((self.depth_to - self.depth_from - length) / step)
+        crops_in = np.arange(n_crops_in) * step + self.depth_from
         segments_in = [self[pos:pos+length] for pos in crops_in]
-
-        if drop_last or len(crops_out) == 0:
+        if drop_last or np.allclose(crops_in[-1] + length, self.depth_to):
             return segments_in
 
-        segment_out = self[crops_out[0]:crops_out[0]+length]
-        segment_out.pad_depth = segment_out.depth_to
-        segment_out.depth_to = segment_out.depth_from + length
-        pad_index = np.arange(segment_out.depth_from, segment_out.depth_to, segment_out.logs_step)
-        pad_logs = segment_out.logs.reindex(index=pad_index, method="nearest", tolerance=1e-3, fill_value=fill_value)
-        setattr(segment_out, '_logs', pad_logs)
-        return segments_in + [segment_out]
+        crop_out = crops_in[-1] + step
+        self.pad_depth = self.depth_to
+        self.depth_to = crop_out + length
+        n_pads = ceil((self.depth_to - self.depth_from) / self.logs_step) + 1
+        pad_index = np.arange(n_pads) * self.logs_step + self.depth_from
+        pad_logs = self.logs.reindex(index=pad_index, method="nearest", tolerance=1e-3, fill_value=fill_value)
+        setattr(self, '_logs', pad_logs)
+        return segments_in + [self[crop_out:crop_out+length]]
 
     def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask'):
         """Transform a column from some `WellSegment` attribute into a mask
@@ -1537,8 +1537,6 @@ class WellSegment(AbstractWellSegment):
         new_index = np.arange(self.depth_from, self.depth_to, step)
         for attr in np.intersect1d(attrs, self.attrs_depth_index):
             res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=1e-4)
-            if attr == 'logs':
-                self.logs_step = step
             setattr(self, "_" + attr, res)
         return self
 
