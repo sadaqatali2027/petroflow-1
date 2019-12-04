@@ -214,6 +214,7 @@ class WellSegment(AbstractWellSegment):
         self._core_uv = None
         self._boring_intervals_deltas = None
         self._core_lithology_deltas = None
+        self._tolerance = 1e-3  # A tolerance to compare float-valued depths for equality.
 
     @property
     def length(self):
@@ -276,7 +277,11 @@ class WellSegment(AbstractWellSegment):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
         df = df[self.depth_from:self.depth_to]
-        if len(df) > 0 and np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
+        if len(df) == 0:
+            return df
+        both_bounds_in_df = np.allclose([self.depth_from, self.depth_to],
+                                        [df.index[0], df.index[-1]], rtol=0, atol=self._tolerance)
+        if both_bounds_in_df:  # See __getitem__ docstring for an explanation.
             df.drop(df.index[-1], inplace=True)
         return df
 
@@ -974,14 +979,13 @@ class WellSegment(AbstractWellSegment):
         string in a `modes` list."""
         return [cls._unify_matching_mode(mode) for mode in to_list(modes)]
 
-    @staticmethod
-    def _blur_log(log, win_size):
+    def _blur_log(self, log, win_size):
         """Blur a log with a Gaussian filter of size `win_size`."""
         if win_size is None:
             return log
         old_index = log.index
         new_index = np.arange(old_index.min(), old_index.max(), 0.01)
-        log = log.reindex(index=new_index, method="nearest", tolerance=1e-4)
+        log = log.reindex(index=new_index, method="nearest", tolerance=self._tolerance)
         log = log.interpolate(limit_direction="both")
         std = win_size / 6  # three-sigma rule
         log = log.rolling(window=win_size, min_periods=1, win_type="gaussian", center=True).mean(std=std)
@@ -1511,13 +1515,13 @@ class WellSegment(AbstractWellSegment):
         step : positive float
             Step of cropping in meters.
         drop_last : bool, optional
-            If `True`, all segment that are out of segment bounds will be
-            dropped. If `False`, the whole segment will be covered by crops.
-            First crop which comes out of segment bounds will be kept, and
-            its `logs` will be padded from depth `depth_to` of initial segment
-            by `fill_value`. Defaults to `True`.
+            If `True`, only crops that lie within the segment will be kept.
+            If `False`, the first crop which comes out of segment bounds will
+            also be kept to cover the whole segment with crops. Its `logs`
+            will be padded by `fill_value` at the end to have given `length`.
+            Defaults to `True`.
         fill_value : float, optional
-            Value to fill padded part of `logs`.
+            Value to fill padded part of `logs`. Defaults to 0.
 
         Returns
         -------
@@ -1527,7 +1531,7 @@ class WellSegment(AbstractWellSegment):
         n_crops_in = ceil((self.depth_to - self.depth_from - length) / step)
         crops_in = np.arange(n_crops_in) * step + self.depth_from
         segments_in = [self[pos:pos+length] for pos in crops_in]
-        if drop_last or np.allclose(crops_in[-1] + length, self.depth_to):
+        if drop_last or np.allclose(crops_in[-1] + length, self.depth_to, rtol=0, atol=self._tolerance):
             return segments_in
 
         crop_out = crops_in[-1] + step
@@ -1535,7 +1539,8 @@ class WellSegment(AbstractWellSegment):
         self.depth_to = crop_out + length
         n_pads = ceil((self.depth_to - self.depth_from) / self.logs_step) + 1
         pad_index = np.arange(n_pads) * self.logs_step + self.depth_from
-        pad_logs = self.logs.reindex(index=pad_index, method="nearest", tolerance=1e-3, fill_value=fill_value)
+        pad_logs = self.logs.reindex(index=pad_index, method="nearest",
+                                     tolerance=self._tolerance, fill_value=fill_value)
         setattr(self, '_logs', pad_logs)
         return segments_in + [self[crop_out:crop_out+length]]
 
@@ -1682,7 +1687,7 @@ class WellSegment(AbstractWellSegment):
         """
         new_index = np.arange(self.depth_from, self.depth_to, step)
         for attr in self._filter_depth_attrs(attrs):
-            res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=1e-4)
+            res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=self._tolerance)
             setattr(self, "_" + attr, res)
         return self
 

@@ -98,6 +98,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             self.segments = [WellSegment(*args, **kwargs)]
         else:
             self.segments = segments
+        self._tolerance = 1e-3  # A tolerance to compare float-valued depths for equality.
 
     @property
     def tree_depth(self):
@@ -441,13 +442,13 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         step : positive float
             Step of cropping in meters.
         drop_last : bool, optional
-            If `True`, all segment that are out of segment bounds will be
-            dropped. If `False`, the whole segment will be covered by crops.
-            First crop which comes out of segment bounds will be kept, and
-            its `logs` will be padded from depth `depth_to` of initial segment
-            by `fill_value`. Defaults to `True`.
+            If `True`, only crops that lie within segments will be kept.
+            If `False`, the first crop which comes out of segment bounds will
+            also be kept to cover the whole segment with crops. Its `logs`
+            will be padded by `fill_value` at the end to have given `length`.
+            Defaults to `True`.
         fill_value : float, optional
-            Value to fill padded part of `logs`.
+            Value to fill padded part of `logs`. Defaults to 0.
 
         Returns
         -------
@@ -520,17 +521,14 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [Well(segments=segment.drop_nans(logs=logs)) for segment in well]
         return self.prune()
 
-    def drop_short_segments(self, min_length, tolerance=1e-5):
+    def drop_short_segments(self, min_length):
         """Drop segments at the last level with length smaller than
-        `min_length` with given `tolerance`.
+        `min_length`.
 
         Parameters
         ----------
         min_length : positive float
             Segments shorter than `min_length` are dropped.
-
-        tolerance : positive float, optional
-            Tolerance for checking segments length.
 
         Returns
         -------
@@ -539,7 +537,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         """
         wells = self.iter_level(-2)
         for well in wells:
-            well.segments = [segment for segment in well if segment.length > min_length - tolerance]
+            well.segments = [segment for segment in well if segment.length > min_length - self._tolerance]
         return self.prune()
 
     def _aggregate_array(self, func, attr):
@@ -663,7 +661,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 # Add NaN values to `logs`.
                 if attr == 'logs' and attr_val_0.shape[0] > 1:
                     index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1] + logs_step_cm, logs_step_cm)
-                    attr_val_0 = attr_val_0.reindex(index_array, method='nearest', fill_value=np.nan, tolerance=1e-5)
+                    attr_val_0 = attr_val_0.reindex(index_array, method='nearest',
+                                                    fill_value=np.nan, tolerance=self._tolerance)
                 attr_val_0.index /= 100
                 setattr(seg_0, '_' + attr, attr_val_0)
             setattr(seg_0, 'depth_from', well.depth_from)
