@@ -120,8 +120,10 @@ class WellSegment(AbstractWellSegment):
         Minimum depth entry in the well logs, loaded from `meta.json`.
     depth_to : float
         Maximum depth entry in the well logs, loaded from `meta.json`.
-    pad_depth : float
-        Depth with which segment padded.
+    actual_depth_to : float
+        Actual maximum segment depth. It is used when the segment is padded
+        by the `crop` method and then used in `Well.aggregate` to drop padded
+        part of the segment.
     logs : pandas.DataFrame
         Well logs, indexed by depth. Depth log in a source file must have
         `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
@@ -195,7 +197,7 @@ class WellSegment(AbstractWellSegment):
         self.field = meta["field"]
         self.depth_from = float(meta["depth_from"])
         self.depth_to = float(meta["depth_to"])
-        self.pad_depth = None
+        self.actual_depth_to = None
 
         self.has_samples = self._has_file("samples")
 
@@ -1529,7 +1531,7 @@ class WellSegment(AbstractWellSegment):
             return segments_in
 
         crop_out = crops_in[-1] + step
-        self.pad_depth = self.depth_to
+        self.actual_depth_to = self.depth_to
         self.depth_to = crop_out + length
         n_pads = ceil((self.depth_to - self.depth_from) / self.logs_step) + 1
         pad_index = np.arange(n_pads) * self.logs_step + self.depth_from

@@ -590,11 +590,12 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     def aggregate(self, func="mean", level=0):
         """Aggregate loaded segments' attributes from `WellSegment.attrs_image`
-        and `WellSegment.attrs_depth_index`. Concatenate loaded segments' attributes
-        from `WellSegment.attrs_fdtd_index`. The result of aggregation and concatenation
-        is a single segment for each subtree starting at level `level`. `depth_from` and
-        `depth_to` for each of these segments will be minimum `depth_from` and
-        maximum `depth_to` along all gathered segments of that subtree.
+        and `WellSegment.attrs_depth_index`. Concatenate loaded segments'
+        attributes from `WellSegment.attrs_fdtd_index`. The result of
+        aggregation and concatenation is a single segment for each subtree
+        starting at level `level`. `depth_from` and `depth_to` for each of
+        these segments will be minimum `depth_from` and maximum `depth_to`
+        along all gathered segments of that subtree.
 
         Parameters
         ----------
@@ -625,8 +626,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         wells = self.iter_level(level)
         for well in wells:
-            well.segments = [seg[:seg.pad_depth] for seg in well.iter_level()]
+            well.segments = [seg[:seg.actual_depth_to] for seg in well.iter_level()]
             seg_0 = well.segments[0]
+            logs_step_cm = int(seg_0.logs_step * 100)
 
             # TODO: different aggregation functions
             for attr in WellSegment.attrs_image:
@@ -660,8 +662,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
                 # Add NaN values to `logs`.
                 if attr == 'logs' and attr_val_0.shape[0] > 1:
-                    logs_step = int(seg_0.logs_step * 100)
-                    index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1] + logs_step, logs_step)
+                    index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1] + logs_step_cm, logs_step_cm)
                     attr_val_0 = attr_val_0.reindex(index_array, method='nearest', fill_value=np.nan, tolerance=1e-5)
                 attr_val_0.index /= 100
                 setattr(seg_0, '_' + attr, attr_val_0)
