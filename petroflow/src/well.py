@@ -99,6 +99,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         else:
             self.segments = segments
         self._tolerance = 1e-3  # A tolerance to compare float-valued depths for equality.
+        # In order for the `boring sequences` is calculated across the full `boring interval`.
+        if self._has_file("boring_intervals") and not self._has_file("boring_sequences"):
+            _ = self.boring_sequences
 
     @property
     def tree_depth(self):
@@ -648,7 +651,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
             for attr in concat_attrs:
                 attr_val_0 = getattr(seg_0, '_' + attr)
+                attr_val_0.reset_index(inplace=True)
                 attr_val_0.drop_duplicates(inplace=True)
+                attr_val_0.set_index(['DEPTH_FROM', 'DEPTH_TO'], inplace=True)
                 attr_val_0.sort_index(inplace=True)
                 setattr(seg_0, '_' + attr, attr_val_0)
 
