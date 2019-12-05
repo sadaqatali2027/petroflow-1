@@ -672,7 +672,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
             for attr in concat_attrs:
                 attr_val_0 = getattr(seg_0, '_' + attr)
+                attr_val_0.reset_index(inplace=True)
                 attr_val_0.drop_duplicates(inplace=True)
+                attr_val_0.set_index(['DEPTH_FROM', 'DEPTH_TO'], inplace=True)
                 attr_val_0.sort_index(inplace=True)
                 setattr(seg_0, '_' + attr, attr_val_0)
 
