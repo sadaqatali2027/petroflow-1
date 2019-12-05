@@ -216,6 +216,11 @@ class WellSegment(AbstractWellSegment):
         self._core_lithology_deltas = None
         self._tolerance = 1e-3  # A tolerance to compare float-valued depths for equality.
 
+        # In order to unify aggregate behavior in case of loaded and calculated `boring_sequences`,
+        # they should be computed explicitly during the creation of a segment.
+        if self._has_file("boring_intervals") and not self._has_file("boring_sequences"):
+            _ = self.boring_sequences
+
     @property
     def length(self):
         """float: Length of the segment in meters."""
