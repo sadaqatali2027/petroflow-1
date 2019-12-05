@@ -44,6 +44,20 @@ class SegmentDelegatingMeta(ABCMeta):
         return delegator
 
 
+def add_segment_properties(cls):
+    """Add missing properties of `WellSegment` to `Well`."""
+    properties = (WellSegment.attrs_depth_index + WellSegment.attrs_fdtd_index +
+                  WellSegment.attrs_no_index + WellSegment.attrs_image)
+    for attr in properties:
+        if hasattr(cls, attr):
+            continue
+        def prop(self, attr=attr):
+            return getattr(self.aggregated_segment, attr)
+        setattr(cls, attr, property(prop))
+    return cls
+
+
+@add_segment_properties
 class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     """A class, representing a well.
 
@@ -101,6 +115,16 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self._tolerance = 1e-3  # A tolerance to compare float-valued depths for equality.
 
     @property
+    def name(self):
+        """str: Well name."""
+        return self.segments[0].name
+
+    @property
+    def field(self):
+        """str: Field name."""
+        return self.segments[0].field
+
+    @property
     def tree_depth(self):
         """positive int: Depth of the tree consisting of `Well` and
         `WellSegment` instances. Initial depth of a created `Well` is 2: a
@@ -133,7 +157,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     @property
     def aggregated_segment(self):
-        """WellSegment: the only segment of an aggregated copy of the well."""
+        """WellSegment: The only segment of an aggregated copy of the well."""
         return self.deepcopy().aggregate().segments[0]
 
     def _has_segments(self):
