@@ -30,6 +30,7 @@ from .joins import cross_join, between_join, fdtd_join
 from .utils import to_list, leq_notclose, leq_close, geq_close
 from .exceptions import SkipWellException, DataRegularityError
 
+
 def add_attr_properties(cls):
     """Add missing properties for lazy loading of `WellSegment` table-based
     attributes."""
