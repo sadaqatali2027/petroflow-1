@@ -1665,7 +1665,7 @@ class WellSegment(AbstractWellSegment):
             The segment with applied function.
         """
         df = getattr(self, attr)
-        src = df.columnns if src is None else to_list(src)
+        src = df.columns if src is None else to_list(src)
         dst = src if dst is None else to_list(dst)
         res = df[src].apply(fn, axis=1, raw=True, result_type="expand", args=args, **kwargs)
         if isinstance(res, pd.Series):
