@@ -196,7 +196,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell
             Shallow copy.
         """
-        return copy(self)
+        return Well(segments=copy([seg.copy() for seg in self.segments]))
 
     def deepcopy(self):
         """Perform a deep copy of an object.

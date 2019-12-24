@@ -382,7 +382,7 @@ class WellSegment(AbstractWellSegment):
         `self.pixels_per_cm`."""
         return int(round(meters * 100)) * self.pixels_per_cm
 
-    def load_core(self, core_width=None, pixels_per_cm=None):
+    def load_core(self, core_width=None, pixels_per_cm=None, dtype='uint8'):
         """Load core images in daylight and ultraviolet.
 
         If any of method arguments are not specified, those, passed to
@@ -431,8 +431,8 @@ class WellSegment(AbstractWellSegment):
             core_dl[insert_pos:insert_pos+dl_img.shape[0]] = dl_img
             core_uv[insert_pos:insert_pos+uv_img.shape[0]] = uv_img
 
-        self._core_dl = core_dl
-        self._core_uv = core_uv
+        self._core_dl = core_dl.astype(dtype)
+        self._core_uv = core_uv.astype(dtype)
         return self
 
     def dump(self, path):
@@ -1583,6 +1583,10 @@ class WellSegment(AbstractWellSegment):
             self._create_mask_depth_index(src_index, src_values, src, mode, default, dst)
         else:
             ValueError('Unknown src: ', src)
+        if mode == 'logs':
+            self.attrs_depth_index = (*self.attrs_depth_index, dst)
+        elif mode ==' core':
+            self.attrs_image = (*self.attrs_image, dst)
         return self
 
     def _create_mask_fdtd(self, src_index, src_values, mode, default, dst):
@@ -1603,7 +1607,10 @@ class WellSegment(AbstractWellSegment):
 
         for i in range(len(src_index)):
             mask[start[i]:end[i]+1] = src_values[i]
+        if mode == 'logs':
+            mask = pd.DataFrame({'DEPTH': self.logs.index, 'MASK': mask})
         setattr(self, dst, mask)
+        setattr(self, '_' + dst, mask)
 
     def _create_mask_depth_index(self, src_index, src_values, src, mode, default, dst):
         """Create mask from depth-indexed data."""
@@ -1626,7 +1633,9 @@ class WellSegment(AbstractWellSegment):
             insert_index = insert_index[filter_index]
             src_values = src_values[filter_index]
             mask[insert_index] = src_values
+            mask = pd.DataFrame({'DEPTH': self.logs.index, 'MASK': mask})
         setattr(self, dst, mask)
+        setattr(self, '_' + dst, mask)
 
     def apply(self, fn, *args, attr="logs", src=None, dst=None, drop_src=False, **kwargs):
         """Apply a function to each row of a segment attribute.
