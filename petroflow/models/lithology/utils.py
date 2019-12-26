@@ -3,6 +3,7 @@ import dill
 import glob
 
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import colors
 
@@ -118,3 +119,31 @@ def dump_metrics(test_ppl, path):
         
 def get_last_model_path(path):
     return sorted(glob.glob(path))[-1]
+
+from collections import OrderedDict
+
+def get_classes_distribution(*datasets, columns=None):
+    if columns is None:
+        columns = range(len(datasets))
+    distribution = []
+    for ds, name in zip(datasets, columns):
+        ppl = (ds.p
+               .init_variable('df', default=[])
+               .update(V('df', mode='e'), WS('core_lithology').ravel())
+              )
+
+        df = ppl.run(len(ds), n_epochs=1).v('df')
+
+        df = (pd.concat(df)
+              .reset_index(drop=False)
+              .groupby(['FORMATION', 'GRAIN'])
+              .apply(lambda x: (x.DEPTH_TO - x.DEPTH_FROM).sum()))
+
+        df_index = df.index.to_frame().apply(concat, axis=1)
+        stat = pd.concat([df_index, df], axis=1, sort=True)
+        stat.columns = ['CLASS', name]
+        distribution.append(stat.set_index('CLASS'))
+    df = pd.concat(distribution, axis=1, sort=True).fillna(0)
+    for name in columns:
+        df[name+'_ratio'] = df[name] / df[name].sum()
+    return df
