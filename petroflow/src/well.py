@@ -231,7 +231,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         """
         return deepcopy(self)
 
-    def dump(self, path):
+    def dump(self, path, fmt='feather', force=False):
         """Dump well data. The well will be aggregated and the resulting
         segment will be dumped. Segment attributes are saved in the following
         manner:
@@ -251,7 +251,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell or a child class
             Self unchanged.
         """
-        self.aggregated_segment.dump(path)
+        self.aggregated_segment.dump(path, fmt=fmt, force=force)
         return self
 
     def __getitem__(self, key):

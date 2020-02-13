@@ -9,13 +9,14 @@ import base64
 import shutil
 from copy import copy, deepcopy
 from glob import glob
-from functools import reduce
+from functools import reduce, partial
 from itertools import chain, repeat
 from math import ceil
 
 import numpy as np
 import pandas as pd
 import lasio
+import dlispy
 import PIL
 from scipy.interpolate import interp1d
 from sklearn.linear_model import LinearRegression
@@ -271,6 +272,29 @@ class WellSegment(AbstractWellSegment):
         """Load a `.feather` file into a `DataFrame`."""
         return pd.read_feather(path, *args, **kwargs)
 
+    @staticmethod
+    def _load_hdf5(path, *args, **kwargs):
+        """Load a `.hdf5` file into a `DataFrame`."""
+        return pd.read_hdf(path, *args, **kwargs)
+
+    @staticmethod
+    def _load_dlis(path, *args, **kwargs):
+        """Load a `.dlis` file into a `DataFrame`."""
+        _, logical_file_list = dlispy.parse(path, eflr_only=False)
+        # One logical file in dlis.
+        data, = logical_file_list  # pylint: disable=unbalanced-tuple-unpacking
+
+        (frame_name, frame_data), = data.frameDataDict.items() # One frame.
+        frame = data.simpleFrames[frame_name]
+        channels = frame.Channels
+        column_names = [channel.ObName.identifier for channel in channels]
+        df = pd.DataFrame(columns=column_names)
+        for row in frame_data[::-1]: # Reverse source depth.
+            df = df.append(dict(zip(column_names, row.slots)), ignore_index=True)
+        df.rename(columns={"INDEX": "DEPTH"}, inplace=True)
+        df.DEPTH = df.DEPTH / 100
+        return df
+
     def _load_df(self, path, *args, **kwargs):
         """Load a `DataFrame` from a table format (`.las`, `.csv` or
         `.feather`) depending on its extension."""
@@ -455,7 +479,7 @@ class WellSegment(AbstractWellSegment):
         self._core_uv = core_uv
         return self
 
-    def dump(self, path):
+    def dump(self, path, fmt='feather', force=False):
         """Dump well segment data.
 
         Segment attributes are saved in the following manner:
@@ -463,12 +487,17 @@ class WellSegment(AbstractWellSegment):
           `meta.json` file.
         - `core_dl` and `core_uv` are not saved. Instead, `samples_dl` and
           `samples_uv` directories are copied if exist.
-        - All other attributes are dumped in feather format.
+        - All other attributes are dumped in feather or hdf5 format.
 
         Parameters
         ----------
         path : str
             A path to a directory, where well dir with dump will be created.
+        fmt: {"feather", "hdf5"}
+            Format for dumping attributes.
+        force : bool
+            If `True`, load all attrubutes and then dump.
+            If `False`, dump only loaded attrribites.
 
         Returns
         -------
@@ -488,17 +517,22 @@ class WellSegment(AbstractWellSegment):
         with open(os.path.join(path, "meta.json"), "w") as meta_file:
             json.dump(meta, meta_file)
 
+        dump_method = {
+            "feather": pd.DataFrame.to_feather,
+            "hdf5": partial(pd.DataFrame.to_hdf, key="df", mode="w")
+        }
+
         for attr in self.attrs_depth_index + self.attrs_fdtd_index + self.attrs_no_index:
             attr_val = getattr(self, "_" + attr)
-            if attr_val is None:
-                try:
-                    shutil.copy2(self._get_full_name(self.path, attr), path)
-                except Exception: # pylint: disable=broad-except
-                    pass
-            else:
+            if self._has_file(attr) and force:
+                attr_val = getattr(self, attr)
+            if self._has_file(attr) and attr_val is None:
+                shutil.copy2(self._get_full_name(self.path, attr), path)
+            elif attr_val is not None:
+                attr_path = os.path.join(path, attr + "." + fmt)
                 if attr not in self.attrs_no_index:
                     attr_val = attr_val.reset_index()
-                attr_val.to_feather(os.path.join(path, attr + ".feather"))
+                dump_method[fmt](attr_val, attr_path)
 
         samples_dl_path = os.path.join(self.path, "samples_dl")
         if os.path.exists(samples_dl_path):
