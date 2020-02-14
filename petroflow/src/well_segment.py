@@ -281,18 +281,24 @@ class WellSegment(AbstractWellSegment):
     def _load_dlis(path, *args, **kwargs):
         """Load a `.dlis` file into a `DataFrame`."""
         _, logical_file_list = dlispy.parse(path, eflr_only=False)
-        # One logical file in dlis.
+        # TODO: unpacking multiple logical files from dlis.
+        # Now works only if dlis has one logical file.
         data, = logical_file_list  # pylint: disable=unbalanced-tuple-unpacking
 
-        (frame_name, frame_data), = data.frameDataDict.items() # One frame.
+        # TODO: unpacking multiple frames from logical file.
+        # Now works only if logical file has one frame.
+        (frame_name, frame_data), = data.frameDataDict.items()
         frame = data.simpleFrames[frame_name]
         channels = frame.Channels
         column_names = [channel.ObName.identifier for channel in channels]
         df = pd.DataFrame(columns=column_names)
-        for row in frame_data[::-1]: # Reverse source depth.
+        # Revese order of depths in frame.
+        for row in frame_data[::-1]:
             df = df.append(dict(zip(column_names, row.slots)), ignore_index=True)
+
         df.rename(columns={"INDEX": "DEPTH"}, inplace=True)
-        df.DEPTH = df.DEPTH / 100
+        df["DEPTH"] = df["DEPTH"] / 100
+        df[df == -32768] = np.nan
         return df
 
     def _load_df(self, path, *args, **kwargs):
@@ -479,7 +485,7 @@ class WellSegment(AbstractWellSegment):
         self._core_uv = core_uv
         return self
 
-    def dump(self, path, fmt='feather', force=False):
+    def dump(self, path, fmt="feather", force=False):
         """Dump well segment data.
 
         Segment attributes are saved in the following manner:
