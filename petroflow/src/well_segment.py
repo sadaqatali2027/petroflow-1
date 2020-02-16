@@ -293,8 +293,8 @@ class WellSegment(AbstractWellSegment):
         column_names = [channel.ObName.identifier for channel in channels]
         df = pd.DataFrame(columns=column_names)
         # Revese order of depths in frame.
-        for row in frame_data[::-1]:
-            df = df.append(dict(zip(column_names, row.slots)), ignore_index=True)
+        data_list = [row.slots for row in frame_data[::-1]]
+        df = pd.DataFrame(data_list, columns=column_names)
 
         df.rename(columns={"INDEX": "DEPTH"}, inplace=True)
         df["DEPTH"] = df["DEPTH"] / 100
