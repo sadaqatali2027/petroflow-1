@@ -117,8 +117,8 @@ def dump_metrics(test_ppl, path):
     with open(path, 'wb') as f:
         dill.dump(test_ppl.v('metrics'), f)
         
-def get_last_model_path(path):
-    return sorted(glob.glob(path))[-1]
+def get_last_model_path(path, index=-1):
+    return sorted(glob.glob(path))[index]
 
 from collections import OrderedDict
 
