@@ -27,7 +27,7 @@ from plotly.offline import init_notebook_mode, plot, iplot
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, find_best_shifts, create_zero_shift
 from .joins import cross_join, between_join, fdtd_join
-from .utils import to_list, leq_notclose, leq_close, geq_close
+from .utils import to_list, process_columns, leq_notclose, leq_close, geq_close
 from .exceptions import SkipWellException, DataRegularityError
 
 
@@ -1792,7 +1792,8 @@ class WellSegment(AbstractWellSegment):
         borders = zip(borders[0::2], borders[1::2])
         return [self[a:b] for a, b in borders]
 
-    def norm_mean_std(self, mean=None, std=None, eps=1e-10):
+    @process_columns
+    def norm_mean_std(df, mean=None, std=None, eps=1e-10):
         """Standardize well logs by subtracting the mean and scaling to unit
         variance.
 
@@ -1814,13 +1815,13 @@ class WellSegment(AbstractWellSegment):
             The segment with standardized logs.
         """
         if mean is None:
-            mean = self.logs.mean()
+            mean = df.mean()
         if std is None:
-            std = self.logs.std()
-        self._logs = (self.logs - mean) / (std + eps)
-        return self
+            std = df.std()
+        return (df - mean) / (std + eps)
 
-    def norm_min_max(self, min=None, max=None, q_min=None, q_max=None, clip=True):  # pylint: disable=redefined-builtin
+    @process_columns
+    def norm_min_max(df, min=None, max=None, q_min=None, q_max=None, clip=True):  # pylint: disable=redefined-builtin
         """Linearly scale well logs to a [0, 1] range.
 
         Parameters
@@ -1844,19 +1845,19 @@ class WellSegment(AbstractWellSegment):
             The segment with normalized logs.
         """
         if min is None and q_min is None:
-            min = self.logs.min()
+            min = df.min()
         elif q_min is not None:
-            min = self.logs.quantile(q_min)
+            min = df.quantile(q_min)
 
         if max is None and q_max is None:
-            max = self.logs.max()
+            max = df.max()
         elif q_max is not None:
-            max = self.logs.quantile(q_max)
+            max = df.quantile(q_max)
 
-        self._logs = (self.logs - min) / (max - min)
+        df = (df - min) / (max - min)
         if clip:
-            self._logs.clip(0, 1, inplace=True)
-        return self
+            df.clip(0, 1, inplace=True)
+        return df
 
     def equalize_histogram(self, src=None, dst=None, channels='last'):
         """Normalize core images by histogram equalization.
