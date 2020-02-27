@@ -27,7 +27,7 @@ from plotly.offline import init_notebook_mode, plot, iplot
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, find_best_shifts, create_zero_shift
 from .joins import cross_join, between_join, fdtd_join
-from .utils import to_list, leq_notclose, leq_close, geq_close
+from .utils import to_list, process_columns, leq_notclose, leq_close, geq_close
 from .exceptions import SkipWellException, DataRegularityError
 
 
@@ -1623,27 +1623,20 @@ class WellSegment(AbstractWellSegment):
             mask[int(pos)] = row[1][column] if mapping is None else mapping[row[1][column]]
         setattr(self, dst, mask)
 
-    def apply(self, fn, *args, attr="logs", src=None, dst=None, drop_src=False, **kwargs):
+    @process_columns
+    def apply(self, df, fn, *args, axis=None, **kwargs):
         """Apply a function to each row of a segment attribute.
 
         Parameters
         ----------
         fn : callable
             A function to be applied. See Notes section for caveats.
-        attr : str, optional
-            A segment attribute, whose rows will be transformed by `fn`.
-            Defaults to `"logs"`.
-        src : str or list of str, optional
-            Columns of `attr`, whose values will be passed to `fn` as an
-            `np.ndarray` as the first positional argument. By default, the
-            entire row will be passed.
-        dst : str or list of str, optional
-            Columns of `attr`, where function results will be written. If
-            list, its length must match the number of returned results of
-            `fn`. Equals `src` by default.
-        drop_src : bool, optional
-            Specifies whether to drop `src` columns from `attr` after function
-            application. Defaults to `False`.
+        axis : {0, 1, None}, optional
+            An axis, along which the function is applied:
+            * 0: apply the function to each column
+            * 1: apply the function to each row
+            * `None`: apply the function to the whole `DataFrame`
+            Defaults to `None`.
         args : misc
             Any additional positional arguments to pass to `fn` after data
             from `attr`.
@@ -1654,26 +1647,25 @@ class WellSegment(AbstractWellSegment):
         Notes
         -----
         Currently, callables from `numpy` without pure Python implementation
-        can't be passed as `fn` if they get more than one non-keyword argument.
+        can't be passed as `fn` if they get more than one non-keyword
+        argument and `axis` is specified.
 
-        E.g. `apply(np.divide, 1000, src='DEPTH')` will fail.
-        Use `apply(lambda x: x / 1000, src='DEPTH')` instead.
+        E.g. `apply(np.divide, 1000, axis=1, src='DEPTH')` will fail.
+        Use `apply(lambda x: x / 1000, axis=1, src='DEPTH')` instead.
 
         Returns
         -------
         well : AbstractWellSegment
             The segment with applied function.
         """
-        df = getattr(self, attr)
-        src = df.columnns if src is None else to_list(src)
-        dst = src if dst is None else to_list(dst)
-        res = df[src].apply(fn, axis=1, raw=True, result_type="expand", args=args, **kwargs)
+        _ = self
+        if axis is None:
+            res = fn(df, *args, **kwargs)
+        else:
+            res = df.apply(fn, axis=axis, raw=True, result_type="expand", args=args, **kwargs)
         if isinstance(res, pd.Series):
             res = res.to_frame()
-        df[dst] = res
-        if drop_src:
-            df.drop(set(src) - set(dst), axis=1, inplace=True)
-        return self
+        return res
 
     def _filter_depth_attrs(self, attrs=None):
         """Return intersection of `attrs` and `self.attrs_depth_index`."""
@@ -1792,7 +1784,8 @@ class WellSegment(AbstractWellSegment):
         borders = zip(borders[0::2], borders[1::2])
         return [self[a:b] for a, b in borders]
 
-    def norm_mean_std(self, mean=None, std=None, eps=1e-10):
+    @process_columns
+    def norm_mean_std(self, df, mean=None, std=None, eps=1e-10):
         """Standardize well logs by subtracting the mean and scaling to unit
         variance.
 
@@ -1813,14 +1806,15 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             The segment with standardized logs.
         """
+        _ = self
         if mean is None:
-            mean = self.logs.mean()
+            mean = df.mean()
         if std is None:
-            std = self.logs.std()
-        self._logs = (self.logs - mean) / (std + eps)
-        return self
+            std = df.std()
+        return (df - mean) / (std + eps)
 
-    def norm_min_max(self, min=None, max=None, q_min=None, q_max=None, clip=True):  # pylint: disable=redefined-builtin
+    @process_columns
+    def norm_min_max(self, df, min=None, max=None, q_min=None, q_max=None, clip=True):  # pylint: disable=redefined-builtin
         """Linearly scale well logs to a [0, 1] range.
 
         Parameters
@@ -1843,20 +1837,22 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             The segment with normalized logs.
         """
+        _ = self
+
         if min is None and q_min is None:
-            min = self.logs.min()
+            min = df.min()
         elif q_min is not None:
-            min = self.logs.quantile(q_min)
+            min = df.quantile(q_min)
 
         if max is None and q_max is None:
-            max = self.logs.max()
+            max = df.max()
         elif q_max is not None:
-            max = self.logs.quantile(q_max)
+            max = df.quantile(q_max)
 
-        self._logs = (self.logs - min) / (max - min)
+        df = (df - min) / (max - min)
         if clip:
-            self._logs.clip(0, 1, inplace=True)
-        return self
+            df.clip(0, 1, inplace=True)
+        return df
 
     def equalize_histogram(self, src=None, dst=None, channels='last'):
         """Normalize core images by histogram equalization.
