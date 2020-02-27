@@ -1624,7 +1624,7 @@ class WellSegment(AbstractWellSegment):
         setattr(self, dst, mask)
 
     @process_columns
-    def apply(_, df, fn, *args, axis=None, **kwargs):
+    def apply(self, df, fn, *args, axis=None, **kwargs):
         """Apply a function to each row of a segment attribute.
 
         Parameters
@@ -1658,6 +1658,7 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment
             The segment with applied function.
         """
+        _ = self
         if axis is None:
             res = fn(df, *args, **kwargs)
         else:
@@ -1784,7 +1785,7 @@ class WellSegment(AbstractWellSegment):
         return [self[a:b] for a, b in borders]
 
     @process_columns
-    def norm_mean_std(_, df, mean=None, std=None, eps=1e-10):
+    def norm_mean_std(self, df, mean=None, std=None, eps=1e-10):
         """Standardize well logs by subtracting the mean and scaling to unit
         variance.
 
@@ -1805,6 +1806,7 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             The segment with standardized logs.
         """
+        _ = self
         if mean is None:
             mean = df.mean()
         if std is None:
@@ -1812,7 +1814,7 @@ class WellSegment(AbstractWellSegment):
         return (df - mean) / (std + eps)
 
     @process_columns
-    def norm_min_max(_, df, min=None, max=None, q_min=None, q_max=None, clip=True):  # pylint: disable=redefined-builtin
+    def norm_min_max(self, df, min=None, max=None, q_min=None, q_max=None, clip=True):  # pylint: disable=redefined-builtin
         """Linearly scale well logs to a [0, 1] range.
 
         Parameters
@@ -1835,6 +1837,8 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             The segment with normalized logs.
         """
+        _ = self
+
         if min is None and q_min is None:
             min = df.min()
         elif q_min is not None:
