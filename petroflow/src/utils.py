@@ -50,7 +50,7 @@ def process_columns(method):
         else:
             src = df.columns
         dst = src if dst is None else to_list(dst)
-        df[dst] = method(df[src], *args, **kwargs)
+        df[dst] = method(self, df[src], *args, **kwargs)
         if drop_src:
             df.drop(set(src) - set(dst), axis=1, inplace=True)
         return self

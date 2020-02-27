@@ -1624,7 +1624,7 @@ class WellSegment(AbstractWellSegment):
         setattr(self, dst, mask)
 
     @process_columns
-    def apply(df, fn, *args, axis=None, **kwargs):
+    def apply(_, df, fn, *args, axis=None, **kwargs):
         """Apply a function to each row of a segment attribute.
 
         Parameters
@@ -1784,7 +1784,7 @@ class WellSegment(AbstractWellSegment):
         return [self[a:b] for a, b in borders]
 
     @process_columns
-    def norm_mean_std(df, mean=None, std=None, eps=1e-10):
+    def norm_mean_std(_, df, mean=None, std=None, eps=1e-10):
         """Standardize well logs by subtracting the mean and scaling to unit
         variance.
 
@@ -1812,7 +1812,7 @@ class WellSegment(AbstractWellSegment):
         return (df - mean) / (std + eps)
 
     @process_columns
-    def norm_min_max(df, min=None, max=None, q_min=None, q_max=None, clip=True):  # pylint: disable=redefined-builtin
+    def norm_min_max(_, df, min=None, max=None, q_min=None, q_max=None, clip=True):  # pylint: disable=redefined-builtin
         """Linearly scale well logs to a [0, 1] range.
 
         Parameters
