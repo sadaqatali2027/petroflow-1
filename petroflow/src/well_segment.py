@@ -427,8 +427,8 @@ class WellSegment(AbstractWellSegment):
         self.core_width = core_width if core_width is not None else self.core_width
         self.pixels_per_cm = pixels_per_cm if pixels_per_cm is not None else self.pixels_per_cm
 
-        height = self._meters_to_pixels(self.depth_to - self.depth_from)
-        width = self.core_width * self.pixels_per_cm
+        height = int(self._meters_to_pixels(self.depth_to - self.depth_from))
+        width = int(self.core_width * self.pixels_per_cm)
         core_dl = np.full((height, width, 3), np.nan, dtype=np.float32)
         core_uv = np.full((height, width, 3), np.nan, dtype=np.float32)
 
