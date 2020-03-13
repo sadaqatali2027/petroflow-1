@@ -185,20 +185,24 @@ class WellSegment(AbstractWellSegment):
     attrs_no_index = ("inclination",)
     attrs_image = ("core_uv", "core_dl")
 
-    def __init__(self, path, *args, core_width=10, pixels_per_cm=5, **kwargs):
+    def __init__(self, path, *args, core_width=10, pixels_per_cm=5, validate=True, **kwargs):
         super().__init__()
         _ = args, kwargs
         self.path = path
         self.core_width = core_width
         self.pixels_per_cm = pixels_per_cm
+        self.validate = validate
 
         with open(os.path.join(self.path, "meta.json")) as meta_file:
             meta = json.load(meta_file)
         self.name = meta["name"]
         self.field = meta["field"]
-        self.depth_from = float(meta["depth_from"])
-        self.depth_to = float(meta["depth_to"])
+        self.depth_from = meta["depth_from"]
+        self.depth_to = meta["depth_to"]
         self.actual_depth_to = None
+
+        if self.validate:
+            self._validate_meta()
 
         self.has_samples = self._has_file("samples")
 
@@ -222,15 +226,23 @@ class WellSegment(AbstractWellSegment):
         if self._has_file("boring_intervals") and not self._has_file("boring_sequences"):
             _ = self.boring_sequences
 
+    def _validate_meta(self):
+        if not (isinstance(self.depth_from, int) and isinstance(self.depth_to, int)):
+            raise ValueError("depth_from and depth_to must have int type")
+
     @property
     def length(self):
-        """float: Length of the segment in meters."""
+        """float: Length of the segment in centimeters."""
         return self.depth_to - self.depth_from
 
     @property
     def logs_step(self):
-        """float: Step between measurements in `logs` in meters."""
-        return round((self.logs.index[1:] - self.logs.index[:-1]).min(), 2)
+        """float: Step between measurements in `logs` in centimeters."""
+        steps = self.logs.index[1:] - self.logs.index[:-1]
+        unique_steps = np.unique(steps)
+        if len(unique_steps) > 1:
+            raise ValueError("Well logs must have a fixed sampling rate")
+        return unique_steps[0]
 
     @property
     def boring_sequences(self):
@@ -259,6 +271,7 @@ class WellSegment(AbstractWellSegment):
     @staticmethod
     def _load_las(path, *args, **kwargs):
         """Load a `.las` file into a `DataFrame`."""
+        # TODO: add m -> cm cast
         return lasio.read(path, *args, **kwargs).df().reset_index()
 
     @staticmethod
@@ -279,23 +292,31 @@ class WellSegment(AbstractWellSegment):
             raise ValueError("A loader for data in {} format is not implemented".format(ext))
         return getattr(self, "_load_" + ext)(path, *args, **kwargs)
 
-    def _filter_depth_df(self, df):
+    def _filter_depth_df(self, df, drop_last=True):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
-        df = df[self.depth_from:self.depth_to]
+        df = df.loc[self.depth_from:self.depth_to]
         if len(df) == 0:
             return df
-        both_bounds_in_df = np.allclose([self.depth_from, self.depth_to],
-                                        [df.index[0], df.index[-1]], rtol=0, atol=self._tolerance)
-        if both_bounds_in_df:  # See __getitem__ docstring for an explanation.
+        if drop_last and (self.depth_from == df.index[0]) and (self.depth_to == df.index[-1]):
+            # See __getitem__ docstring for an explanation of this behaviour
             df.drop(df.index[-1], inplace=True)
         return df
+
+    def _validate_depth_df(self, df):
+        # TODO: validate:
+        # 1. depth is int
+        # 2. depth is unique
+        # 3. depth is sorted
+        pass
 
     def _load_depth_df(self, path, *args, **kwargs):
         """Load a `DataFrame`, indexed by depth, from a table format and keep
         only depths between `self.depth_from` and `self.depth_to`."""
         df = self._load_df(path, *args, **kwargs).set_index("DEPTH")
-        df = self._filter_depth_df(df)
+        if self.validate:
+            self._validate_depth_df(df)
+        df = self._filter_depth_df(df, drop_last=False)
         return df
 
     def _filter_fdtd_df(self, df):
@@ -307,10 +328,19 @@ class WellSegment(AbstractWellSegment):
         mask = (np.array(depth_from) < self.depth_to) & (self.depth_from < np.array(depth_to))
         return df[mask]
 
+    def _validate_fdtd_df(self, df):
+        # TODO: validate:
+        # 1. depth_from and depth_to are int
+        # 2. depth_from and depth_to don't overlap
+        # 3. depth_from and depth_to are sorted
+        pass
+
     def _load_fdtd_df(self, path, *args, **kwargs):
         """Load a `DataFrame`, indexed by depth range, from a table format and
         keep only depths between `self.depth_from` and `self.depth_to`."""
         df = self._load_df(path, *args, **kwargs).set_index(["DEPTH_FROM", "DEPTH_TO"])
+        if self.validate:
+            self._validate_fdtd_df(df)
         df = self._filter_fdtd_df(df)
         return df
 
@@ -398,10 +428,10 @@ class WellSegment(AbstractWellSegment):
             uv_img = np.array(uv_img.resize((width, height), resample=PIL.Image.LANCZOS))
         return dl_img, uv_img
 
-    def _meters_to_pixels(self, meters):
-        """Convert meters to pixels given conversion ratio in
+    def _cm_to_pixels(self, length):
+        """Convert centimeters to pixels given conversion ratio in
         `self.pixels_per_cm`."""
-        return int(round(meters * 100)) * self.pixels_per_cm
+        return round(length * self.pixels_per_cm)
 
     def load_core(self, core_width=None, pixels_per_cm=None):
         """Load core images in daylight and ultraviolet.
@@ -427,13 +457,18 @@ class WellSegment(AbstractWellSegment):
         self.core_width = core_width if core_width is not None else self.core_width
         self.pixels_per_cm = pixels_per_cm if pixels_per_cm is not None else self.pixels_per_cm
 
-        height = self._meters_to_pixels(self.depth_to - self.depth_from)
-        width = self.core_width * self.pixels_per_cm
-        core_dl = np.full((height, width, 3), np.nan, dtype=np.float32)
-        core_uv = np.full((height, width, 3), np.nan, dtype=np.float32)
+        height = self._cm_to_pixels(self.length)
+        width = self._cm_to_pixels(self.core_width)
+
+        exist_dl = os.path.isdir(os.path.join(self.path, "samples_dl"))
+        exist_uv = os.path.isdir(os.path.join(self.path, "samples_uv"))
+        if not exist_dl and not exist_uv:
+            raise FileNotFoundError("At least one of samples_dl or samples_uv must exist")
+        core_dl = np.full((height, width, 3), np.nan, dtype=np.float32) if exist_dl else None
+        core_uv = np.full((height, width, 3), np.nan, dtype=np.float32) if exist_uv else None
 
         for (sample_depth_from, sample_depth_to), sample_name in self.samples["SAMPLE"].iteritems():
-            sample_height = self._meters_to_pixels(sample_depth_to - sample_depth_from)
+            sample_height = self._cm_to_pixels(sample_depth_to - sample_depth_from)
             sample_name = str(sample_name)
 
             dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
@@ -442,17 +477,17 @@ class WellSegment(AbstractWellSegment):
             uv_img = self._load_image(uv_path)
             dl_img, uv_img = self._match_samples(dl_img, uv_img, sample_height, width)
 
-            top_crop = max(0, self._meters_to_pixels(self.depth_from - sample_depth_from))
-            bottom_crop = sample_height - max(0, self._meters_to_pixels(sample_depth_to - self.depth_to))
+            top_crop = max(0, self._cm_to_pixels(self.depth_from - sample_depth_from))
+            bottom_crop = sample_height - max(0, self._cm_to_pixels(sample_depth_to - self.depth_to))
             dl_img = dl_img[top_crop:bottom_crop]
             uv_img = uv_img[top_crop:bottom_crop]
 
-            insert_pos = max(0, self._meters_to_pixels(sample_depth_from - self.depth_from))
+            insert_pos = max(0, self._cm_to_pixels(sample_depth_from - self.depth_from))
             core_dl[insert_pos:insert_pos+dl_img.shape[0]] = dl_img
             core_uv[insert_pos:insert_pos+uv_img.shape[0]] = uv_img
 
-        self._core_dl = core_dl
-        self._core_uv = core_uv
+        self._core_dl = core_dl if exist_dl else None
+        self._core_uv = core_uv if exist_uv else None
         return self
 
     def dump(self, path):
@@ -500,13 +535,23 @@ class WellSegment(AbstractWellSegment):
                     attr_val = attr_val.reset_index()
                 attr_val.to_feather(os.path.join(path, attr + ".feather"))
 
+        if not self.has_samples:
+            return self
+
+        # Copy DL and UV images, specified in samples
+        def ignore(directory, files):
+            _ = directory
+            return sorted(set(files) - set(self.samples["SAMPLE"]))
+
         samples_dl_path = os.path.join(self.path, "samples_dl")
         if os.path.exists(samples_dl_path):
-            shutil.copytree(samples_dl_path, os.path.join(path, "samples_dl"), copy_function=os.link)
+            shutil.copytree(samples_dl_path, os.path.join(path, "samples_dl"),
+                            copy_function=os.link, ignore=ignore)
 
         samples_uv_path = os.path.join(self.path, "samples_uv")
         if os.path.exists(samples_uv_path):
-            shutil.copytree(samples_uv_path, os.path.join(path, "samples_uv"), copy_function=os.link)
+            shutil.copytree(samples_uv_path, os.path.join(path, "samples_uv"),
+                            copy_function=os.link, ignore=ignore)
 
         return self
 
@@ -621,9 +666,9 @@ class WellSegment(AbstractWellSegment):
               If both `start` and `stop` are in `self.logs.index`, then only
               `start` is kept in the resulting segment to ensure, that such
               methods as `crop` always return the same number of samples
-              regardless of cropping position if crop size is given in meters.
-              If only one of the ends of the slice present in the index, it is
-              kept in the result contrary to usual python slices.
+              regardless of cropping position. If only one of the ends of the
+              slice present in the index, it is kept in the result contrary to
+              usual python slices.
 
         Returns
         -------
@@ -635,15 +680,19 @@ class WellSegment(AbstractWellSegment):
         res = self.copy()
         if key.step is not None:
             raise ValueError("A well does not support slicing with a specified step")
-        start = float(key.start) if key.start is not None else res.depth_from
-        overlap_start = max(res.depth_from, start)
-        stop = float(key.stop) if key.stop is not None else res.depth_to
-        overlap_stop = min(res.depth_to, stop)
-        if overlap_start > overlap_stop:
-            raise SkipWellException("Slicing interval is out of segment bounds")
-        res.depth_from = overlap_start
-        res.depth_to = overlap_stop
 
+        if key.start is not None:
+            # TODO: parse key.start
+            res.depth_from = max(key.start, res.depth_from)
+
+        if key.stop is not None:
+            # TODO: parse key.stop
+            res.depth_to = min(key.stop, res.depth_to)
+
+        if res.depth_from > res.depth_to:
+            raise SkipWellException("Slicing interval is out of segment bounds")
+
+        # Slice attributes
         attr_iter = chain(
             zip(res.attrs_depth_index, repeat(res._filter_depth_df)),
             zip(res.attrs_fdtd_index, repeat(res._filter_fdtd_df))
@@ -653,10 +702,12 @@ class WellSegment(AbstractWellSegment):
             if attr_val is not None:
                 setattr(res, "_" + attr, filt(attr_val))
 
-        if (res._core_dl is not None) and (res._core_uv is not None):
-            start_pos = self._meters_to_pixels(res.depth_from - self.depth_from)
-            stop_pos = self._meters_to_pixels(res.depth_to - self.depth_from)
+        # Slice images
+        start_pos = self._cm_to_pixels(res.depth_from - self.depth_from)
+        stop_pos = self._cm_to_pixels(res.depth_to - self.depth_from)
+        if res._core_dl is not None:
             res._core_dl = res._core_dl[start_pos:stop_pos]
+        if res._core_uv is not None:
             res._core_uv = res._core_uv[start_pos:stop_pos]
         return res
 
