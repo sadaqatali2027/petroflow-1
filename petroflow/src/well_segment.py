@@ -1588,14 +1588,15 @@ class WellSegment(AbstractWellSegment):
         # TODO: parse length and step, must be int
         n_crops, mod = divmod(self.length - length, step)
         n_crops += 1  # The number of crops strictly within the segment
-        if not drop_last and mod:  # Pad logs by length
+        if not drop_last and mod and self._has_file("logs"):  # Pad logs by length
             n_crops += 1  # Create an extra segment
+            logs = self.logs  # Preload logs, since segment depths will be updated further
             self.actual_depth_to = self.depth_to
             self.depth_to += length
-            index = np.arange(self.actual_depth_to + self.logs_step, self.depth_to, self.logs_step)
-            data = np.full((len(index), len(self.logs.columns)), fill_value)
-            pad_df = pd.DataFrame(data, index=index, columns=self.logs.columns)
-            self._logs = pd.concat([self.logs, pad_df])
+            index = np.arange(self.actual_depth_to, self.depth_to, self.logs_step)
+            data = np.full((len(index), len(logs.columns)), fill_value)
+            pad_df = pd.DataFrame(data, index=index, columns=logs.columns)
+            self._logs = pd.concat([logs, pad_df])
         crops_starts = self.depth_from + np.arange(n_crops) * step
         crops = [self[start:start+length] for start in crops_starts]
         return crops
