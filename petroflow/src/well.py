@@ -454,6 +454,11 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             ]
         return self
 
+    def _check_segment_lengths(self, length):
+        if any(seg.length < length for seg in self.iter_level()):
+            err_msg = "A segment, shorter than {} exists. Call drop_short_segments before random_crop.".format(length)
+            raise ValueError(err_msg)
+
     def crop(self, length, step, drop_last=False, fill_value=0):
         """Create crops from segments at the last level. All cropped segments
         have the same length and are cropped with some fixed step.
@@ -479,6 +484,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell or a child class
             The well with cropped segments.
         """
+        if drop_last:
+            self._check_segment_lengths(length)
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [
@@ -505,6 +512,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell or a child class
             The well with cropped segments.
         """
+        self._check_segment_lengths(length)
         wells = self.iter_level(-2)
         p = np.array([sum([segment.length for segment in item]) for item in wells])
         random_wells = Counter(np.random.choice(wells, n_crops, p=p/sum(p)))

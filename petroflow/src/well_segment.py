@@ -1557,9 +1557,10 @@ class WellSegment(AbstractWellSegment):
         segments : list of WellSegment
             Cropped segments.
         """
-        bounds = self.depth_from, max(self.depth_from, self.depth_to-length)
-        positions = np.sort(np.random.uniform(*bounds, size=n_crops))
-        return [self[pos:pos+length] for pos in positions]
+        bounds = self.depth_from, max(self.depth_from, self.depth_to - length)
+        crops_starts = np.floor(np.sort(np.random.uniform(*bounds, size=n_crops))).astype(int).tolist()
+        crops = [self[start:start+length] for start in crops_starts]
+        return crops
 
     def crop(self, length, step, drop_last=False, fill_value=0):
         """Create crops from the segment. All cropped segments have the same
