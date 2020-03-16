@@ -457,8 +457,8 @@ class WellSegment(AbstractWellSegment):
         self.core_width = core_width if core_width is not None else self.core_width
         self.pixels_per_cm = pixels_per_cm if pixels_per_cm is not None else self.pixels_per_cm
 
-        height = self._cm_to_pixels(self.length)
-        width = self._cm_to_pixels(self.core_width)
+        height = int(self._cm_to_pixels(self.length))
+        width = int(self._cm_to_pixels(self.core_width))
 
         exist_dl = os.path.isdir(os.path.join(self.path, "samples_dl"))
         exist_uv = os.path.isdir(os.path.join(self.path, "samples_uv"))
