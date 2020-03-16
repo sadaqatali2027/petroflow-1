@@ -1586,10 +1586,17 @@ class WellSegment(AbstractWellSegment):
             Cropped segments.
         """
         # TODO: parse length and step, must be int
-        if not drop_last:
-            # TODO: pad
-            pass
-        crops_starts = np.arange(self.depth_from, self.depth_to - length + step, step)
+        n_crops, mod = divmod(self.length - length, step)
+        n_crops += 1  # The number of crops strictly within the segment
+        if not drop_last and mod:  # Pad logs by length
+            n_crops += 1  # Create an extra segment
+            self.actual_depth_to = self.depth_to
+            self.depth_to += length
+            index = np.arange(self.actual_depth_to + self.logs_step, self.depth_to, self.logs_step)
+            data = np.full((len(index), len(self.logs.columns)), fill_value)
+            pad_df = pd.DataFrame(data, index=index, columns=self.logs.columns)
+            self._logs = pd.concat([self.logs, pad_df])
+        crops_starts = self.depth_from + np.arange(n_crops) * step
         crops = [self[start:start+length] for start in crops_starts]
         return crops
 
