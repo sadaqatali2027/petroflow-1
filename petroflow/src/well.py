@@ -569,7 +569,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         """
         wells = self.iter_level(-2)
         for well in wells:
-            well.segments = [segment for segment in well if segment.length > min_length - self._tolerance]
+            well.segments = [segment for segment in well if segment.length >= min_length]
         return self.prune()
 
     def _aggregate_array(self, func, attr):
