@@ -136,17 +136,17 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     @property
     def length(self):
-        """float: Length of the well in meters."""
+        """float: Length of the well in centimeters."""
         return self.depth_to - self.depth_from
 
     @property
     def depth_from(self):
-        """float: Top of the well in meters."""
+        """float: Top of the well in centimeters."""
         return min([well.depth_from for well in self])
 
     @property
     def depth_to(self):
-        """float: Bottom of the well in meters."""
+        """float: Bottom of the well in centimeters."""
         return max([well.depth_to for well in self])
 
     @property
@@ -454,7 +454,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             ]
         return self
 
-    def crop(self, length, step, drop_last=True, fill_value=0):
+    def crop(self, length, step, drop_last=False, fill_value=0):
         """Create crops from segments at the last level. All cropped segments
         have the same length and are cropped with some fixed step.
         The tree depth will be increased.

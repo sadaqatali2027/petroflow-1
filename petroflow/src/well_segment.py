@@ -292,13 +292,13 @@ class WellSegment(AbstractWellSegment):
             raise ValueError("A loader for data in {} format is not implemented".format(ext))
         return getattr(self, "_load_" + ext)(path, *args, **kwargs)
 
-    def _filter_depth_df(self, df, drop_last=True):
+    def _filter_depth_df(self, df):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
         df = df.loc[self.depth_from:self.depth_to]
         if len(df) == 0:
             return df
-        if drop_last and (self.depth_from == df.index[0]) and (self.depth_to == df.index[-1]):
+        if (self.depth_from == df.index[0]) and (self.depth_to == df.index[-1]):
             # See __getitem__ docstring for an explanation of this behaviour
             df.drop(df.index[-1], inplace=True)
         return df
@@ -316,7 +316,7 @@ class WellSegment(AbstractWellSegment):
         df = self._load_df(path, *args, **kwargs).set_index("DEPTH")
         if self.validate:
             self._validate_depth_df(df)
-        df = self._filter_depth_df(df, drop_last=False)
+        df = self._filter_depth_df(df)
         return df
 
     def _filter_fdtd_df(self, df):
@@ -464,8 +464,8 @@ class WellSegment(AbstractWellSegment):
         exist_uv = os.path.isdir(os.path.join(self.path, "samples_uv"))
         if not exist_dl and not exist_uv:
             raise FileNotFoundError("At least one of samples_dl or samples_uv must exist")
-        core_dl = np.full((height, width, 3), np.nan, dtype=np.float32) if exist_dl else None
-        core_uv = np.full((height, width, 3), np.nan, dtype=np.float32) if exist_uv else None
+        core_dl = np.full((height, width, 3), np.nan, dtype=np.float32)
+        core_uv = np.full((height, width, 3), np.nan, dtype=np.float32)
 
         for (sample_depth_from, sample_depth_to), sample_name in self.samples["SAMPLE"].iteritems():
             sample_height = self._cm_to_pixels(sample_depth_to - sample_depth_from)
@@ -682,11 +682,11 @@ class WellSegment(AbstractWellSegment):
             raise ValueError("A well does not support slicing with a specified step")
 
         if key.start is not None:
-            # TODO: parse key.start
+            # TODO: parse key.start, must be int
             res.depth_from = max(key.start, res.depth_from)
 
         if key.stop is not None:
-            # TODO: parse key.stop
+            # TODO: parse key.stop, must be int
             res.depth_to = min(key.stop, res.depth_to)
 
         if res.depth_from > res.depth_to:
@@ -1561,7 +1561,7 @@ class WellSegment(AbstractWellSegment):
         positions = np.sort(np.random.uniform(*bounds, size=n_crops))
         return [self[pos:pos+length] for pos in positions]
 
-    def crop(self, length, step, drop_last=True, fill_value=0):
+    def crop(self, length, step, drop_last=False, fill_value=0):
         """Create crops from the segment. All cropped segments have the same
         length and are cropped with some fixed step.
 
@@ -1585,21 +1585,13 @@ class WellSegment(AbstractWellSegment):
         segments : list of WellSegment
             Cropped segments.
         """
-        n_crops_in = ceil((self.depth_to - self.depth_from - length) / step)
-        crops_in = np.arange(n_crops_in) * step + self.depth_from
-        segments_in = [self[pos:pos+length] for pos in crops_in]
-        if drop_last or np.allclose(crops_in[-1] + length, self.depth_to, rtol=0, atol=self._tolerance):
-            return segments_in
-
-        crop_out = crops_in[-1] + step
-        self.actual_depth_to = self.depth_to
-        self.depth_to = crop_out + length
-        n_pads = ceil((self.depth_to - self.depth_from) / self.logs_step) + 1
-        pad_index = np.arange(n_pads) * self.logs_step + self.depth_from
-        pad_logs = self.logs.reindex(index=pad_index, method="nearest",
-                                     tolerance=self._tolerance, fill_value=fill_value)
-        setattr(self, '_logs', pad_logs)
-        return segments_in + [self[crop_out:crop_out+length]]
+        # TODO: parse length and step, must be int
+        if not drop_last:
+            # TODO: pad
+            pass
+        crops_starts = np.arange(self.depth_from, self.depth_to - length + step, step)
+        crops = [self[start:start+length] for start in crops_starts]
+        return crops
 
     def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask'):
         """Transform a column from some `WellSegment` attribute into a mask
