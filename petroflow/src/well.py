@@ -112,7 +112,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             self.segments = [WellSegment(*args, **kwargs)]
         else:
             self.segments = segments
-        self._tolerance = 1e-3  # A tolerance to compare float-valued depths for equality.
 
     @property
     def name(self):
@@ -594,16 +593,16 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                           but {} was given. It was replaced by 'mean'.".format(func))
             func = 'mean'
 
-        pixels_per_m = self.iter_level()[0].pixels_per_cm * 100
-        agg_array_height_pix = round((self.depth_to - self.depth_from) * pixels_per_m)
+        pixels_per_cm = self.iter_level()[0].pixels_per_cm
+        agg_array_height_pix = round((self.depth_to - self.depth_from) * pixels_per_cm)
         attr_val_shape = getattr(self.iter_level()[0], '_' + attr).shape
 
         total = np.zeros((agg_array_height_pix, *attr_val_shape[1:]), dtype=int)
         background = np.full_like(total, np.nan, dtype=np.double)
         for segment in self.iter_level():
             attr_val = getattr(segment, '_' + attr)
-            segment_place = slice(round((segment.depth_from - self.depth_from) * pixels_per_m),
-                                  round((segment.depth_to - self.depth_from) * pixels_per_m))
+            segment_place = slice(round((segment.depth_from - self.depth_from) * pixels_per_cm),
+                                  round((segment.depth_to - self.depth_from) * pixels_per_cm))
 
             if func == 'max':
                 background[segment_place] = np.fmax(background[segment_place], attr_val)
@@ -658,48 +657,44 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         for well in wells:
             well.segments = [seg[:seg.actual_depth_to] for seg in well.iter_level()]
             seg_0 = well.segments[0]
-            logs_step_cm = int(seg_0.logs_step * 100)
+            logs_step = seg_0.logs_step
 
             # TODO: different aggregation functions
             for attr in WellSegment.attrs_image:
-                setattr(seg_0, '_' + attr, well._aggregate_array(func, attr))  # pylint: disable=protected-access
+                setattr(seg_0, "_" + attr, well._aggregate_array(func, attr))  # pylint: disable=protected-access
 
-            # Concatenate of all segments attributes
+            # Concatenate all segments' attributes
             for attr in aggregate_attrs + concat_attrs:
-                attr_values = [getattr(segment, '_' + attr) for segment in well.segments]
+                attr_values = [getattr(segment, "_" + attr) for segment in well.segments]
                 if all(value is None for value in attr_values):
                     if attr in concat_attrs:
                         concat_attrs.remove(attr)
                     else:
                         aggregate_attrs.remove(attr)
                     continue
-                # If an attribute is still not loaded for several segments, it should be loaded explicitly.
+                # If an attribute is not loaded for several segments, it should be loaded explicitly.
                 # It can happen in case of previous manual processing of a `Well`.
                 attr_val_0 = pd.concat([getattr(segment, attr) for segment in well.segments])
-                setattr(seg_0, '_' + attr, attr_val_0)
+                setattr(seg_0, "_" + attr, attr_val_0)
 
             for attr in concat_attrs:
-                attr_val_0 = getattr(seg_0, '_' + attr)
+                attr_val_0 = getattr(seg_0, "_" + attr)
                 attr_val_0.reset_index(inplace=True)
                 attr_val_0.drop_duplicates(inplace=True)
-                attr_val_0.set_index(['DEPTH_FROM', 'DEPTH_TO'], inplace=True)
+                attr_val_0.set_index(["DEPTH_FROM", "DEPTH_TO"], inplace=True)
                 attr_val_0.sort_index(inplace=True)
-                setattr(seg_0, '_' + attr, attr_val_0)
+                setattr(seg_0, "_" + attr, attr_val_0)
 
             for attr in aggregate_attrs:
                 attr_val_0 = getattr(seg_0, '_' + attr)
-                # Round depths to centimeters in order not to make `groupby` by `float` values.
-                attr_val_0.index = attr_val_0.index.map(lambda idx: round(idx * 100))
                 attr_val_0 = attr_val_0.groupby(level=0).agg(func)
 
                 # Add NaN values to `logs`.
-                if attr == 'logs' and attr_val_0.shape[0] > 1:
-                    index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1] + logs_step_cm, logs_step_cm)
-                    attr_val_0 = attr_val_0.reindex(index_array, method='nearest',
-                                                    fill_value=np.nan, tolerance=self._tolerance)
-                attr_val_0.index /= 100
-                setattr(seg_0, '_' + attr, attr_val_0)
-            setattr(seg_0, 'depth_from', well.depth_from)
-            setattr(seg_0, 'depth_to', well.depth_to)
+                if attr == "logs":
+                    index = np.arange(attr_val_0.index[0], attr_val_0.index[-1] + logs_step, logs_step)
+                    attr_val_0 = attr_val_0.reindex(index=index)
+                setattr(seg_0, "_" + attr, attr_val_0)
+            setattr(seg_0, "depth_from", well.depth_from)
+            setattr(seg_0, "depth_to", well.depth_to)
             well.segments = [seg_0]
         return self.prune()

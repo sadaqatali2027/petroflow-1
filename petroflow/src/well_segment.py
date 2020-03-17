@@ -130,6 +130,8 @@ class WellSegment(AbstractWellSegment):
         `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
         `core_logs` should match. Loaded from the file with the same name from
         the well directory.
+    logs_step: float
+        Step between measurements in `logs` in centimeters.
     inclination : pandas.DataFrame
         Well inclination. Loaded from the file with the same name from the
         well directory.
@@ -206,6 +208,7 @@ class WellSegment(AbstractWellSegment):
 
         self.has_samples = self._has_file("samples")
 
+        self.logs_step = None
         self._logs = None
         self._inclination = None
         self._layers = None
@@ -235,14 +238,14 @@ class WellSegment(AbstractWellSegment):
         """float: Length of the segment in centimeters."""
         return self.depth_to - self.depth_from
 
-    @property
-    def logs_step(self):
-        """float: Step between measurements in `logs` in centimeters."""
+    def load_logs(self, *args, **kwargs):
+        self._logs = self._load_depth_df(self._get_full_name(self.path, "logs"), *args, **kwargs)
         steps = self.logs.index[1:] - self.logs.index[:-1]
         unique_steps = np.unique(steps)
-        if len(unique_steps) > 1:
+        if self.validate and (len(unique_steps) > 1):
             raise ValueError("Well logs must have a fixed sampling rate")
-        return unique_steps[0]
+        self.logs_step = unique_steps[0]
+        return self
 
     @property
     def boring_sequences(self):
@@ -1590,6 +1593,7 @@ class WellSegment(AbstractWellSegment):
         n_crops, mod = divmod(self.length - length, step)
         n_crops += 1  # The number of crops strictly within the segment
         if not drop_last and mod and self._has_file("logs"):  # Pad logs by length
+            # TODO: pad core images if loaded
             n_crops += 1  # Create an extra segment
             logs = self.logs  # Preload logs, since segment depths will be updated further
             self.actual_depth_to = self.depth_to
@@ -1743,6 +1747,7 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             The segment with reindexed `attrs`.
         """
+        # TODO: update logs_step
         new_index = np.arange(self.depth_from, self.depth_to, step)
         for attr in self._filter_depth_attrs(attrs):
             res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=self._tolerance)
