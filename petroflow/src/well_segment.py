@@ -79,7 +79,7 @@ class WellSegment(AbstractWellSegment):
     `WellSegment` actually stores well data and implements its processing
     logic.
 
-    Each table-based attribute of `WellSegment`, described in `Attributes`
+    Each table-based attribute of a `WellSegment`, described in `Attributes`
     section, can be loaded in two different ways:
     1. via corresponding load method, e.g. `load_logs` or `load_layers`. All
        specified arguments will be passed to a loader, responsible for file's
@@ -89,6 +89,8 @@ class WellSegment(AbstractWellSegment):
     `core_dl` and `core_uv` attributes are loaded either by accessing them for
     the first time, or by calling `load_core` method.
 
+    # TODO: add info about depth units
+
     Parameters
     ----------
     path : str
@@ -96,8 +98,8 @@ class WellSegment(AbstractWellSegment):
         - `meta.json` - a json dict with the following keys:
             - `name` - well name
             - `field` - field name
-            - `depth_from` - minimum depth entry in the well logs
-            - `depth_to` - maximum depth entry in the well logs
+            - `depth_from` - minimum depth entry in the well logs (in cm)
+            - `depth_to` - maximum depth entry in the well logs (in cm)
           These values will be stored as instance attributes.
         - `samples_dl` and `samples_uv` (optional) - directories, containing
           daylight and ultraviolet images of core samples respectively. Images
@@ -106,10 +108,13 @@ class WellSegment(AbstractWellSegment):
           attributes (see more details in the `Attributes` section).
     core_width : positive float, optional
         The width of core samples in cm. Defaults to 10 cm.
-    pixels_per_cm : positive int, optional
+    pixels_per_cm : positive float, optional
         The number of pixels in cm used to determine the loaded width of core
         sample images. Image height is calculated so as to keep the aspect
         ratio. Defaults to 5 pixels.
+    validate : bool, optional
+        Specifies whether to check well data for correctness and consistency.
+        Slightly reduces processing speed. Defaults to `True`.
 
     Attributes
     ----------
@@ -118,13 +123,13 @@ class WellSegment(AbstractWellSegment):
     field : str
         Field name, loaded from `meta.json`.
     depth_from : float
-        Minimum depth entry in the well logs, loaded from `meta.json`.
+        Minimum depth entry in the well logs in cm, loaded from `meta.json`.
     depth_to : float
-        Maximum depth entry in the well logs, loaded from `meta.json`.
+        Maximum depth entry in the well logs in cm, loaded from `meta.json`.
     actual_depth_to : float
-        Actual maximum segment depth. It is used when the segment is padded
-        by the `crop` method and then used in `Well.aggregate` to drop padded
-        part of the segment.
+        Actual maximum segment depth in cm. It is defined if the segment has
+        been padded by the `crop` method and is then used in `Well.aggregate`
+        to drop padded part of the segment.
     logs : pandas.DataFrame
         Well logs, indexed by depth. Depth log in a source file must have
         `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
@@ -140,8 +145,8 @@ class WellSegment(AbstractWellSegment):
         with the same name, having the following structure: DEPTH_FROM -
         DEPTH_TO - LAYER.
     boring_intervals : pandas.DataFrame
-        Depths of boring intervals with core recovery in meters, indexed by
-        depth range. Loaded from the file with the same name, having the
+        Depths of boring intervals with core recovery in centimeters, indexed
+        by depth range. Loaded from the file with the same name, having the
         following structure: DEPTH_FROM - DEPTH_TO - CORE_RECOVERY.
     boring_sequences : pandas.DataFrame
         Depth ranges of contiguous boring intervals, extracted one after
@@ -447,7 +452,7 @@ class WellSegment(AbstractWellSegment):
         ----------
         core_width : positive float, optional
             The width of core samples in centimeters.
-        pixels_per_cm : positive int, optional
+        pixels_per_cm : positive float, optional
             The number of pixels in centimeters used to determine the loaded
             width of core sample images. Image height is calculated so as to
             keep the aspect ratio.
@@ -669,9 +674,10 @@ class WellSegment(AbstractWellSegment):
               If both `start` and `stop` are in `self.logs.index`, then only
               `start` is kept in the resulting segment to ensure, that such
               methods as `crop` always return the same number of samples
-              regardless of cropping position. If only one of the ends of the
-              slice present in the index, it is kept in the result contrary to
-              usual python slices.
+              regardless of cropping position if crop length is given in
+              centimeters and no less than `logs_step`. If only one of the
+              ends of the slice present in the index, it is kept in the result
+              contrary to usual python slices.
 
         Returns
         -------
@@ -1224,9 +1230,11 @@ class WellSegment(AbstractWellSegment):
         return cor**2
 
     def plot_matching(self, mode=None, scale=False, interactive=True, subplot_height=700, subplot_width=200):
-        """Plot well log and corresponding core log for each boring sequence.
+        """Plot well log and the corresponding core log for each boring
+        sequence.
 
-        This method can be used to illustrate results of core-to-log matching.
+        This method can be used to illustrate the results of core-to-log
+        matching.
 
         Parameters
         ----------
@@ -1545,13 +1553,13 @@ class WellSegment(AbstractWellSegment):
         return pd.DataFrame(columns=["DEPTH_FROM", "DEPTH_TO"])
 
     def random_crop(self, length, n_crops=1):
-        """Create random crops from the segment. All cropped segments have the same
-        length, their positions are sampled uniformly from the segment.
+        """Create random crops from the segment. All cropped segments have the
+        same length, their positions are sampled uniformly from the segment.
 
         Parameters
         ----------
         length : positive float
-            Length of each crop in meters.
+            Length of each crop in centimeters.
         n_crops : positive int, optional
             The number of crops from the segment. Defaults to 1.
 
@@ -1572,15 +1580,15 @@ class WellSegment(AbstractWellSegment):
         Parameters
         ----------
         length : positive float
-            Length of each crop in meters.
+            Length of each crop in centimeters.
         step : positive float
-            Step of cropping in meters.
+            Step of cropping in centimeters.
         drop_last : bool, optional
             If `True`, only crops that lie within the segment will be kept.
             If `False`, the first crop which comes out of segment bounds will
             also be kept to cover the whole segment with crops. Its `logs`
             will be padded by `fill_value` at the end to have given `length`.
-            Defaults to `True`.
+            Defaults to `False`.
         fill_value : float, optional
             Value to fill padded part of `logs`. Defaults to 0.
 
@@ -1805,8 +1813,8 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def drop_nans(self, logs=None):
-        """Create segments that does not contain `nan` values in logs,
-        indicated in `logs`.
+        """Create segments that do not contain `nan` values in logs, specified
+        in `logs`.
 
         Parameters
         ----------
