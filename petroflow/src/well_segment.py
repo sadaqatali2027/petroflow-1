@@ -135,7 +135,7 @@ class WellSegment(AbstractWellSegment):
         `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
         `core_logs` should match. Loaded from the file with the same name from
         the well directory.
-    logs_step: float
+    logs_step: positive int
         Step between measurements in `logs` in centimeters.
     inclination : pandas.DataFrame
         Well inclination. Loaded from the file with the same name from the
@@ -1736,17 +1736,21 @@ class WellSegment(AbstractWellSegment):
         attrs = self.attrs_depth_index if attrs is None else attrs
         return np.intersect1d(attrs, self.attrs_depth_index)
 
-    def reindex(self, step, attrs=None):
+    def reindex(self, step, interpolate=False, attrs=None):
         """Conform depth-indexed `attrs` of the segment to a new index,
-        starting from `self.depth_from` to `self.depth_to` with a step `step`,
-        placing `nan` values in locations having no value in the previous
-        index.
+        starting from `self.depth_from` to `self.depth_to` with a step `step`.
+        If `interpolate` is `True`, the data will be linearly interpolated,
+        otherwise `nan` values will be placed in locations having no value in
+        the original index.
 
         Parameters
         ----------
-        step : positive float
+        step : positive int
             Distance between any two adjacent values in the new index in
-            meters.
+            centimeters.
+        interpolate : bool, optional
+            Specifies whether to interpolate attributes after reindexation.
+            Defaults to `False`.
         attrs : str or list of str
             Depth-indexed attributes of the segment to be reindexed.
 
@@ -1755,11 +1759,20 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             The segment with reindexed `attrs`.
         """
-        # TODO: update logs_step
+        # TODO: parse step, must be int
         new_index = np.arange(self.depth_from, self.depth_to, step)
         for attr in self._filter_depth_attrs(attrs):
-            res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=self._tolerance)
+            attr_val = getattr(self, attr)
+            if interpolate:
+                tmp_index = attr_val.index.union(new_index)
+                tmp_index.name = attr_val.index.name
+                res = attr_val.reindex(index=tmp_index)
+                res = res.interpolate(method="index", limit_direction="both").loc[new_index]
+            else:
+                res = attr_val.reindex(index=new_index)
             setattr(self, "_" + attr, res)
+            if attr == "logs":
+                self.logs_step = step
         return self
 
     def interpolate(self, *args, attrs=None, **kwargs):
@@ -1780,7 +1793,7 @@ class WellSegment(AbstractWellSegment):
             The segment with interpolated values in `attrs`.
         """
         for attr in self._filter_depth_attrs(attrs):
-            res = getattr(self, attr).interpolate(*args, **kwargs)
+            res = getattr(self, attr).interpolate(method="index", *args, **kwargs)
             setattr(self, "_" + attr, res)
         return self
 
