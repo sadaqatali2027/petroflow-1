@@ -122,11 +122,11 @@ class WellSegment(AbstractWellSegment):
         Well name, loaded from `meta.json`.
     field : str
         Field name, loaded from `meta.json`.
-    depth_from : float
+    depth_from : int
         Minimum depth entry in the well logs in cm, loaded from `meta.json`.
-    depth_to : float
+    depth_to : int
         Maximum depth entry in the well logs in cm, loaded from `meta.json`.
-    actual_depth_to : float
+    actual_depth_to : int
         Actual maximum segment depth in cm. It is defined if the segment has
         been padded by the `crop` method and is then used in `Well.aggregate`
         to drop padded part of the segment.
@@ -1606,7 +1606,7 @@ class WellSegment(AbstractWellSegment):
             logs = self.logs  # Preload logs, since segment depths will be updated further
             self.actual_depth_to = self.depth_to
             self.depth_to += length
-            index = np.arange(self.actual_depth_to, self.depth_to, self.logs_step)
+            index = logs.index[-1] + np.arange(self.logs_step, length, self.logs_step)
             data = np.full((len(index), len(logs.columns)), fill_value)
             pad_df = pd.DataFrame(data, index=index, columns=logs.columns)
             self._logs = pd.concat([logs, pad_df])
