@@ -660,7 +660,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         for well in wells:
             well.segments = [seg[:seg.actual_depth_to] for seg in well.iter_level()]
             seg_0 = well.segments[0]
-            logs_step = seg_0.logs_step
 
             # TODO: different aggregation functions
             for attr in WellSegment.attrs_image:
@@ -694,7 +693,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
                 # Add NaN values to `logs`.
                 if attr == "logs":
-                    index = np.arange(attr_val_0.index[0], attr_val_0.index[-1] + logs_step, logs_step)
+                    index = pd.RangeIndex(attr_val_0.index[0], attr_val_0.index[-1] + seg_0.logs_step,
+                                          seg_0.logs_step, name="DEPTH")
                     attr_val_0 = attr_val_0.reindex(index=index)
                 setattr(seg_0, "_" + attr, attr_val_0)
             setattr(seg_0, "depth_from", well.depth_from)
