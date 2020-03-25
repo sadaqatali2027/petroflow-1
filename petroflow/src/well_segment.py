@@ -1739,9 +1739,9 @@ class WellSegment(AbstractWellSegment):
     def reindex(self, step, interpolate=False, attrs=None):
         """Conform depth-indexed `attrs` of the segment to a new index,
         starting from `self.depth_from` to `self.depth_to` with a step `step`.
-        If `interpolate` is `True`, the data will be linearly interpolated,
-        otherwise `nan` values will be placed in locations having no value in
-        the original index.
+        If `interpolate` is `False`, `nan` values will be placed in locations
+        having no value in the original index. Otherwise the data will be
+        linearly interpolated.
 
         Parameters
         ----------
