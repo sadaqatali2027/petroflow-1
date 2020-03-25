@@ -1,11 +1,8 @@
 """Miscellaneous utility functions."""
 
 import functools
-import inspect
 
 import numpy as np
-
-from ..batchflow import FilesIndex
 
 
 def to_list(obj):
