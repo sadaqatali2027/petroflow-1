@@ -79,7 +79,7 @@ class WellSegment(AbstractWellSegment):
     `WellSegment` actually stores well data and implements its processing
     logic.
 
-    Each table-based attribute of `WellSegment`, described in `Attributes`
+    Each table-based attribute of a `WellSegment`, described in `Attributes`
     section, can be loaded in two different ways:
     1. via corresponding load method, e.g. `load_logs` or `load_layers`. All
        specified arguments will be passed to a loader, responsible for file's
@@ -89,6 +89,8 @@ class WellSegment(AbstractWellSegment):
     `core_dl` and `core_uv` attributes are loaded either by accessing them for
     the first time, or by calling `load_core` method.
 
+    # TODO: add info about depth units
+
     Parameters
     ----------
     path : str
@@ -96,8 +98,8 @@ class WellSegment(AbstractWellSegment):
         - `meta.json` - a json dict with the following keys:
             - `name` - well name
             - `field` - field name
-            - `depth_from` - minimum depth entry in the well logs
-            - `depth_to` - maximum depth entry in the well logs
+            - `depth_from` - minimum depth entry in the well logs (in cm)
+            - `depth_to` - maximum depth entry in the well logs (in cm)
           These values will be stored as instance attributes.
         - `samples_dl` and `samples_uv` (optional) - directories, containing
           daylight and ultraviolet images of core samples respectively. Images
@@ -106,10 +108,13 @@ class WellSegment(AbstractWellSegment):
           attributes (see more details in the `Attributes` section).
     core_width : positive float, optional
         The width of core samples in cm. Defaults to 10 cm.
-    pixels_per_cm : positive int, optional
+    pixels_per_cm : positive float, optional
         The number of pixels in cm used to determine the loaded width of core
         sample images. Image height is calculated so as to keep the aspect
         ratio. Defaults to 5 pixels.
+    validate : bool, optional
+        Specifies whether to check well data for correctness and consistency.
+        Slightly reduces processing speed. Defaults to `True`.
 
     Attributes
     ----------
@@ -117,19 +122,21 @@ class WellSegment(AbstractWellSegment):
         Well name, loaded from `meta.json`.
     field : str
         Field name, loaded from `meta.json`.
-    depth_from : float
-        Minimum depth entry in the well logs, loaded from `meta.json`.
-    depth_to : float
-        Maximum depth entry in the well logs, loaded from `meta.json`.
-    actual_depth_to : float
-        Actual maximum segment depth. It is used when the segment is padded
-        by the `crop` method and then used in `Well.aggregate` to drop padded
-        part of the segment.
+    depth_from : int
+        Minimum depth entry in the well logs in cm, loaded from `meta.json`.
+    depth_to : int
+        Maximum depth entry in the well logs in cm, loaded from `meta.json`.
+    actual_depth_to : int
+        Actual maximum segment depth in cm. It is defined if the segment has
+        been padded by the `crop` method and is then used in `Well.aggregate`
+        to drop padded part of the segment.
     logs : pandas.DataFrame
         Well logs, indexed by depth. Depth log in a source file must have
         `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
         `core_logs` should match. Loaded from the file with the same name from
         the well directory.
+    logs_step: positive int
+        Step between measurements in `logs` in centimeters.
     inclination : pandas.DataFrame
         Well inclination. Loaded from the file with the same name from the
         well directory.
@@ -138,8 +145,8 @@ class WellSegment(AbstractWellSegment):
         with the same name, having the following structure: DEPTH_FROM -
         DEPTH_TO - LAYER.
     boring_intervals : pandas.DataFrame
-        Depths of boring intervals with core recovery in meters, indexed by
-        depth range. Loaded from the file with the same name, having the
+        Depths of boring intervals with core recovery in centimeters, indexed
+        by depth range. Loaded from the file with the same name, having the
         following structure: DEPTH_FROM - DEPTH_TO - CORE_RECOVERY.
     boring_sequences : pandas.DataFrame
         Depth ranges of contiguous boring intervals, extracted one after
@@ -185,23 +192,28 @@ class WellSegment(AbstractWellSegment):
     attrs_no_index = ("inclination",)
     attrs_image = ("core_uv", "core_dl")
 
-    def __init__(self, path, *args, core_width=10, pixels_per_cm=5, **kwargs):
+    def __init__(self, path, *args, core_width=10, pixels_per_cm=5, validate=True, **kwargs):
         super().__init__()
         _ = args, kwargs
         self.path = path
         self.core_width = core_width
         self.pixels_per_cm = pixels_per_cm
+        self.validate = validate
 
         with open(os.path.join(self.path, "meta.json")) as meta_file:
             meta = json.load(meta_file)
         self.name = meta["name"]
         self.field = meta["field"]
-        self.depth_from = float(meta["depth_from"])
-        self.depth_to = float(meta["depth_to"])
+        self.depth_from = meta["depth_from"]
+        self.depth_to = meta["depth_to"]
         self.actual_depth_to = None
+
+        if self.validate:
+            self._validate_meta()
 
         self.has_samples = self._has_file("samples")
 
+        self.logs_step = None
         self._logs = None
         self._inclination = None
         self._layers = None
@@ -222,15 +234,23 @@ class WellSegment(AbstractWellSegment):
         if self._has_file("boring_intervals") and not self._has_file("boring_sequences"):
             _ = self.boring_sequences
 
-    @property
-    def length(self):
-        """float: Length of the segment in meters."""
-        return self.depth_to - self.depth_from
+    def _validate_meta(self):
+        if not (isinstance(self.depth_from, int) and isinstance(self.depth_to, int)):
+            raise ValueError("depth_from and depth_to must have int type")
 
     @property
-    def logs_step(self):
-        """float: Step between measurements in `logs` in meters."""
-        return round((self.logs.index[1:] - self.logs.index[:-1]).min(), 2)
+    def length(self):
+        """float: Length of the segment in centimeters."""
+        return self.depth_to - self.depth_from
+
+    def load_logs(self, *args, **kwargs):
+        self._logs = self._load_depth_df(self._get_full_name(self.path, "logs"), *args, **kwargs)
+        steps = self.logs.index[1:] - self.logs.index[:-1]
+        unique_steps = np.unique(steps)
+        if self.validate and (len(unique_steps) > 1):
+            raise ValueError("Well logs must have a fixed sampling rate")
+        self.logs_step = unique_steps[0]
+        return self
 
     @property
     def boring_sequences(self):
@@ -259,6 +279,7 @@ class WellSegment(AbstractWellSegment):
     @staticmethod
     def _load_las(path, *args, **kwargs):
         """Load a `.las` file into a `DataFrame`."""
+        # TODO: add m -> cm cast
         return lasio.read(path, *args, **kwargs).df().reset_index()
 
     @staticmethod
@@ -282,19 +303,27 @@ class WellSegment(AbstractWellSegment):
     def _filter_depth_df(self, df):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
-        df = df[self.depth_from:self.depth_to]
+        df = df.loc[self.depth_from:self.depth_to]
         if len(df) == 0:
             return df
-        both_bounds_in_df = np.allclose([self.depth_from, self.depth_to],
-                                        [df.index[0], df.index[-1]], rtol=0, atol=self._tolerance)
-        if both_bounds_in_df:  # See __getitem__ docstring for an explanation.
+        if (self.depth_from == df.index[0]) and (self.depth_to == df.index[-1]):
+            # See __getitem__ docstring for an explanation of this behaviour
             df.drop(df.index[-1], inplace=True)
         return df
+
+    def _validate_depth_df(self, df):
+        # TODO: validate:
+        # 1. depth is int
+        # 2. depth is unique
+        # 3. depth is sorted
+        pass
 
     def _load_depth_df(self, path, *args, **kwargs):
         """Load a `DataFrame`, indexed by depth, from a table format and keep
         only depths between `self.depth_from` and `self.depth_to`."""
         df = self._load_df(path, *args, **kwargs).set_index("DEPTH")
+        if self.validate:
+            self._validate_depth_df(df)
         df = self._filter_depth_df(df)
         return df
 
@@ -307,10 +336,19 @@ class WellSegment(AbstractWellSegment):
         mask = (np.array(depth_from) < self.depth_to) & (self.depth_from < np.array(depth_to))
         return df[mask]
 
+    def _validate_fdtd_df(self, df):
+        # TODO: validate:
+        # 1. depth_from and depth_to are int
+        # 2. depth_from and depth_to don't overlap
+        # 3. depth_from and depth_to are sorted
+        pass
+
     def _load_fdtd_df(self, path, *args, **kwargs):
         """Load a `DataFrame`, indexed by depth range, from a table format and
         keep only depths between `self.depth_from` and `self.depth_to`."""
         df = self._load_df(path, *args, **kwargs).set_index(["DEPTH_FROM", "DEPTH_TO"])
+        if self.validate:
+            self._validate_fdtd_df(df)
         df = self._filter_fdtd_df(df)
         return df
 
@@ -398,10 +436,10 @@ class WellSegment(AbstractWellSegment):
             uv_img = np.array(uv_img.resize((width, height), resample=PIL.Image.LANCZOS))
         return dl_img, uv_img
 
-    def _meters_to_pixels(self, meters):
-        """Convert meters to pixels given conversion ratio in
+    def _cm_to_pixels(self, length):
+        """Convert centimeters to pixels given conversion ratio in
         `self.pixels_per_cm`."""
-        return int(round(meters * 100)) * self.pixels_per_cm
+        return round(length * self.pixels_per_cm)
 
     def load_core(self, core_width=None, pixels_per_cm=None, dtype='uint8'):
         """Load core images in daylight and ultraviolet.
@@ -414,7 +452,7 @@ class WellSegment(AbstractWellSegment):
         ----------
         core_width : positive float, optional
             The width of core samples in centimeters.
-        pixels_per_cm : positive int, optional
+        pixels_per_cm : positive float, optional
             The number of pixels in centimeters used to determine the loaded
             width of core sample images. Image height is calculated so as to
             keep the aspect ratio.
@@ -427,13 +465,18 @@ class WellSegment(AbstractWellSegment):
         self.core_width = core_width if core_width is not None else self.core_width
         self.pixels_per_cm = pixels_per_cm if pixels_per_cm is not None else self.pixels_per_cm
 
-        height = self._meters_to_pixels(self.depth_to - self.depth_from)
-        width = self.core_width * self.pixels_per_cm
+        height = self._cm_to_pixels(self.length)
+        width = self._cm_to_pixels(self.core_width)
+
+        exist_dl = os.path.isdir(os.path.join(self.path, "samples_dl"))
+        exist_uv = os.path.isdir(os.path.join(self.path, "samples_uv"))
+        if not exist_dl and not exist_uv:
+            raise FileNotFoundError("At least one of samples_dl or samples_uv must exist")
         core_dl = np.full((height, width, 3), np.nan, dtype=np.float32)
         core_uv = np.full((height, width, 3), np.nan, dtype=np.float32)
 
         for (sample_depth_from, sample_depth_to), sample_name in self.samples["SAMPLE"].iteritems():
-            sample_height = self._meters_to_pixels(sample_depth_to - sample_depth_from)
+            sample_height = self._cm_to_pixels(sample_depth_to - sample_depth_from)
             sample_name = str(sample_name)
 
             dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
@@ -443,17 +486,17 @@ class WellSegment(AbstractWellSegment):
 
             dl_img, uv_img = self._match_samples(dl_img, uv_img, sample_height, width)
 
-            top_crop = max(0, self._meters_to_pixels(self.depth_from - sample_depth_from))
-            bottom_crop = sample_height - max(0, self._meters_to_pixels(sample_depth_to - self.depth_to))
+            top_crop = max(0, self._cm_to_pixels(self.depth_from - sample_depth_from))
+            bottom_crop = sample_height - max(0, self._cm_to_pixels(sample_depth_to - self.depth_to))
             dl_img = dl_img[top_crop:bottom_crop]
             uv_img = uv_img[top_crop:bottom_crop]
 
-            insert_pos = max(0, self._meters_to_pixels(sample_depth_from - self.depth_from))
+            insert_pos = max(0, self._cm_to_pixels(sample_depth_from - self.depth_from))
             core_dl[insert_pos:insert_pos+dl_img.shape[0]] = dl_img
             core_uv[insert_pos:insert_pos+uv_img.shape[0]] = uv_img
 
-        self._core_dl = core_dl.astype(dtype)
-        self._core_uv = core_uv.astype(dtype)
+        self._core_dl = core_dl if exist_dl else None
+        self._core_uv = core_uv if exist_uv else None
         return self
 
     def dump(self, path):
@@ -501,13 +544,23 @@ class WellSegment(AbstractWellSegment):
                     attr_val = attr_val.reset_index()
                 attr_val.to_feather(os.path.join(path, attr + ".feather"))
 
+        if not self.has_samples:
+            return self
+
+        # Copy DL and UV images, specified in samples
+        def ignore(directory, files):
+            _ = directory
+            return sorted(set(files) - set(self.samples["SAMPLE"]))
+
         samples_dl_path = os.path.join(self.path, "samples_dl")
         if os.path.exists(samples_dl_path):
-            shutil.copytree(samples_dl_path, os.path.join(path, "samples_dl"), copy_function=os.link)
+            shutil.copytree(samples_dl_path, os.path.join(path, "samples_dl"),
+                            copy_function=os.link, ignore=ignore)
 
         samples_uv_path = os.path.join(self.path, "samples_uv")
         if os.path.exists(samples_uv_path):
-            shutil.copytree(samples_uv_path, os.path.join(path, "samples_uv"), copy_function=os.link)
+            shutil.copytree(samples_uv_path, os.path.join(path, "samples_uv"),
+                            copy_function=os.link, ignore=ignore)
 
         return self
 
@@ -622,9 +675,10 @@ class WellSegment(AbstractWellSegment):
               If both `start` and `stop` are in `self.logs.index`, then only
               `start` is kept in the resulting segment to ensure, that such
               methods as `crop` always return the same number of samples
-              regardless of cropping position if crop size is given in meters.
-              If only one of the ends of the slice present in the index, it is
-              kept in the result contrary to usual python slices.
+              regardless of cropping position if crop length is given in
+              centimeters and no less than `logs_step`. If only one of the
+              ends of the slice present in the index, it is kept in the result
+              contrary to usual python slices.
 
         Returns
         -------
@@ -636,15 +690,19 @@ class WellSegment(AbstractWellSegment):
         res = self.copy()
         if key.step is not None:
             raise ValueError("A well does not support slicing with a specified step")
-        start = float(key.start) if key.start is not None else res.depth_from
-        overlap_start = max(res.depth_from, start)
-        stop = float(key.stop) if key.stop is not None else res.depth_to
-        overlap_stop = min(res.depth_to, stop)
-        if overlap_start > overlap_stop:
-            raise SkipWellException("Slicing interval is out of segment bounds")
-        res.depth_from = overlap_start
-        res.depth_to = overlap_stop
 
+        if key.start is not None:
+            # TODO: parse key.start, must be int
+            res.depth_from = max(key.start, res.depth_from)
+
+        if key.stop is not None:
+            # TODO: parse key.stop, must be int
+            res.depth_to = min(key.stop, res.depth_to)
+
+        if res.depth_from > res.depth_to:
+            raise SkipWellException("Slicing interval is out of segment bounds")
+
+        # Slice attributes
         attr_iter = chain(
             zip(res.attrs_depth_index, repeat(res._filter_depth_df)),
             zip(res.attrs_fdtd_index, repeat(res._filter_fdtd_df))
@@ -654,10 +712,12 @@ class WellSegment(AbstractWellSegment):
             if attr_val is not None:
                 setattr(res, "_" + attr, filt(attr_val))
 
-        if (res._core_dl is not None) and (res._core_uv is not None):
-            start_pos = self._meters_to_pixels(res.depth_from - self.depth_from)
-            stop_pos = self._meters_to_pixels(res.depth_to - self.depth_from)
+        # Slice images
+        start_pos = self._cm_to_pixels(res.depth_from - self.depth_from)
+        stop_pos = self._cm_to_pixels(res.depth_to - self.depth_from)
+        if res._core_dl is not None:
             res._core_dl = res._core_dl[start_pos:stop_pos]
+        if res._core_uv is not None:
             res._core_uv = res._core_uv[start_pos:stop_pos]
         return res
 
@@ -1171,9 +1231,11 @@ class WellSegment(AbstractWellSegment):
         return cor**2
 
     def plot_matching(self, mode=None, scale=False, interactive=True, subplot_height=700, subplot_width=200):
-        """Plot well log and corresponding core log for each boring sequence.
+        """Plot well log and the corresponding core log for each boring
+        sequence.
 
-        This method can be used to illustrate results of core-to-log matching.
+        This method can be used to illustrate the results of core-to-log
+        matching.
 
         Parameters
         ----------
@@ -1503,13 +1565,13 @@ class WellSegment(AbstractWellSegment):
         return pd.DataFrame(columns=["DEPTH_FROM", "DEPTH_TO"])
 
     def random_crop(self, length, n_crops=1):
-        """Create random crops from the segment. All cropped segments have the same
-        length, their positions are sampled uniformly from the segment.
+        """Create random crops from the segment. All cropped segments have the
+        same length, their positions are sampled uniformly from the segment.
 
         Parameters
         ----------
         length : positive float
-            Length of each crop in meters.
+            Length of each crop in centimeters.
         n_crops : positive int, optional
             The number of crops from the segment. Defaults to 1.
 
@@ -1518,26 +1580,27 @@ class WellSegment(AbstractWellSegment):
         segments : list of WellSegment
             Cropped segments.
         """
-        bounds = self.depth_from, max(self.depth_from, self.depth_to-length)
-        positions = np.sort(np.random.uniform(*bounds, size=n_crops))
-        return [self[pos:pos+length] for pos in positions]
+        bounds = self.depth_from, max(self.depth_from, self.depth_to - length)
+        crops_starts = np.floor(np.sort(np.random.uniform(*bounds, size=n_crops))).astype(int).tolist()
+        crops = [self[start:start+length] for start in crops_starts]
+        return crops
 
-    def crop(self, length, step, drop_last=True, fill_value=0):
+    def crop(self, length, step, drop_last=False, fill_value=0):
         """Create crops from the segment. All cropped segments have the same
         length and are cropped with some fixed step.
 
         Parameters
         ----------
         length : positive float
-            Length of each crop in meters.
+            Length of each crop in centimeters.
         step : positive float
-            Step of cropping in meters.
+            Step of cropping in centimeters.
         drop_last : bool, optional
             If `True`, only crops that lie within the segment will be kept.
             If `False`, the first crop which comes out of segment bounds will
             also be kept to cover the whole segment with crops. Its `logs`
             will be padded by `fill_value` at the end to have given `length`.
-            Defaults to `True`.
+            Defaults to `False`.
         fill_value : float, optional
             Value to fill padded part of `logs`. Defaults to 0.
 
@@ -1546,21 +1609,22 @@ class WellSegment(AbstractWellSegment):
         segments : list of WellSegment
             Cropped segments.
         """
-        n_crops_in = ceil((self.depth_to - self.depth_from - length) / step)
-        crops_in = np.arange(n_crops_in) * step + self.depth_from
-        segments_in = [self[pos:pos+length] for pos in crops_in]
-        if drop_last or np.allclose(crops_in[-1] + length, self.depth_to, rtol=0, atol=self._tolerance):
-            return segments_in
-
-        crop_out = crops_in[-1] + step
-        self.actual_depth_to = self.depth_to
-        self.depth_to = crop_out + length
-        n_pads = ceil((self.depth_to - self.depth_from) / self.logs_step) + 1
-        pad_index = np.arange(n_pads) * self.logs_step + self.depth_from
-        pad_logs = self.logs.reindex(index=pad_index, method="nearest",
-                                     tolerance=self._tolerance, fill_value=fill_value)
-        setattr(self, '_logs', pad_logs)
-        return segments_in + [self[crop_out:crop_out+length]]
+        # TODO: parse length and step, must be int
+        n_crops, mod = divmod(self.length - length, step)
+        n_crops += 1  # The number of crops strictly within the segment
+        if not drop_last and mod and self._has_file("logs"):  # Pad logs by length
+            # TODO: pad core images if loaded
+            n_crops += 1  # Create an extra segment
+            logs = self.logs  # Preload logs, since segment depths will be updated further
+            self.actual_depth_to = self.depth_to
+            self.depth_to += length
+            index = logs.index[-1] + np.arange(self.logs_step, length, self.logs_step)
+            data = np.full((len(index), len(logs.columns)), fill_value)
+            pad_df = pd.DataFrame(data, index=index, columns=logs.columns)
+            self._logs = pd.concat([logs, pad_df])
+        crops_starts = self.depth_from + np.arange(n_crops) * step
+        crops = [self[start:start+length] for start in crops_starts]
+        return crops
 
     def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask'):
         """Transform a column from some `WellSegment` attribute into a mask
@@ -1716,17 +1780,21 @@ class WellSegment(AbstractWellSegment):
         attrs = self.attrs_depth_index if attrs is None else attrs
         return np.intersect1d(attrs, self.attrs_depth_index)
 
-    def reindex(self, step, attrs=None):
+    def reindex(self, step, interpolate=False, attrs=None):
         """Conform depth-indexed `attrs` of the segment to a new index,
-        starting from `self.depth_from` to `self.depth_to` with a step `step`,
-        placing `nan` values in locations having no value in the previous
-        index.
+        starting from `self.depth_from` to `self.depth_to` with a step `step`.
+        If `interpolate` is `False`, `nan` values will be placed in locations
+        having no value in the original index. Otherwise the data will be
+        linearly interpolated.
 
         Parameters
         ----------
-        step : positive float
+        step : positive int
             Distance between any two adjacent values in the new index in
-            meters.
+            centimeters.
+        interpolate : bool, optional
+            Specifies whether to interpolate attributes after reindexation.
+            Defaults to `False`.
         attrs : str or list of str
             Depth-indexed attributes of the segment to be reindexed.
 
@@ -1735,10 +1803,20 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             The segment with reindexed `attrs`.
         """
+        # TODO: parse step, must be int
         new_index = np.arange(self.depth_from, self.depth_to, step)
         for attr in self._filter_depth_attrs(attrs):
-            res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=self._tolerance)
+            attr_val = getattr(self, attr)
+            if interpolate:
+                tmp_index = attr_val.index.union(new_index)
+                tmp_index.name = attr_val.index.name
+                res = attr_val.reindex(index=tmp_index)
+                res = res.interpolate(method="index", limit_direction="both").loc[new_index]
+            else:
+                res = attr_val.reindex(index=new_index)
             setattr(self, "_" + attr, res)
+            if attr == "logs":
+                self.logs_step = step
         return self
 
     def interpolate(self, *args, attrs=None, **kwargs):
@@ -1759,7 +1837,7 @@ class WellSegment(AbstractWellSegment):
             The segment with interpolated values in `attrs`.
         """
         for attr in self._filter_depth_attrs(attrs):
-            res = getattr(self, attr).interpolate(*args, **kwargs)
+            res = getattr(self, attr).interpolate(method="index", *args, **kwargs)
             setattr(self, "_" + attr, res)
         return self
 
@@ -1792,8 +1870,8 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def drop_nans(self, logs=None):
-        """Create segments that does not contain `nan` values in logs,
-        indicated in `logs`.
+        """Create segments that do not contain `nan` values in logs, specified
+        in `logs`.
 
         Parameters
         ----------
