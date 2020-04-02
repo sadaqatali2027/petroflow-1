@@ -46,6 +46,20 @@ class SegmentDelegatingMeta(ABCMeta):
         return delegator
 
 
+def add_segment_properties(cls):
+    """Add missing properties of `WellSegment` to `Well`."""
+    properties = (WellSegment.attrs_depth_index + WellSegment.attrs_fdtd_index +
+                  WellSegment.attrs_no_index + WellSegment.attrs_image)
+    for attr in properties:
+        if hasattr(cls, attr):
+            continue
+        def prop(self, attr=attr):
+            return getattr(self.aggregated_segment, attr)
+        setattr(cls, attr, property(prop))
+    return cls
+
+
+@add_segment_properties
 class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     """A class, representing a well.
 
@@ -100,6 +114,17 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             self.segments = [WellSegment(*args, **kwargs)]
         else:
             self.segments = segments
+        self._tolerance = 1e-3  # A tolerance to compare float-valued depths for equality.
+
+    @property
+    def name(self):
+        """str: Well name."""
+        return self.segments[0].name
+
+    @property
+    def field(self):
+        """str: Field name."""
+        return self.segments[0].field
 
     @property
     def tree_depth(self):
@@ -134,7 +159,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     @property
     def aggregated_segment(self):
-        """WellSegment: the only segment of an aggregated copy of the well."""
+        """WellSegment: The only segment of an aggregated copy of the well."""
         return self.deepcopy().aggregate().segments[0]
 
     def _has_segments(self):
@@ -431,7 +456,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             ]
         return self.prune()
 
-    def crop(self, length, step, drop_last=True):
+    def crop(self, length, step, drop_last=True, fill_value=0):
         """Create crops from segments at the last level. All cropped segments
         have the same length and are cropped with some fixed step.
         The tree depth will be increased.
@@ -443,10 +468,13 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         step : positive float
             Step of cropping in meters.
         drop_last : bool, optional
-            If `True`, only crops that lie within the segment will be kept.
-            If `False`, an extra segment, starting from `depth_to` - `length`
-            will be added to cover the whole segment with crops.
+            If `True`, only crops that lie within segments will be kept.
+            If `False`, the first crop which comes out of segment bounds will
+            also be kept to cover the whole segment with crops. Its `logs`
+            will be padded by `fill_value` at the end to have given `length`.
             Defaults to `True`.
+        fill_value : float, optional
+            Value to fill padded part of `logs`. Defaults to 0.
 
         Returns
         -------
@@ -456,7 +484,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [
-                Well(segments=segment.crop(length, step, drop_last))
+                Well(segments=segment.crop(length, step, drop_last, fill_value))
                 for segment in well
             ]
         return self
@@ -519,17 +547,14 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             well.segments = [Well(segments=segment.drop_nans(logs=logs)) for segment in well]
         return self.prune()
 
-    def drop_short_segments(self, min_length, tolerance=1e-5):
+    def drop_short_segments(self, min_length):
         """Drop segments at the last level with length smaller than
-        `min_length` with given `tolerance`.
+        `min_length`.
 
         Parameters
         ----------
         min_length : positive float
             Segments shorter than `min_length` are dropped.
-
-        tolerance : positive float, optional
-            Tolerance for checking segments length.
 
         Returns
         -------
@@ -538,7 +563,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         """
         wells = self.iter_level(-2)
         for well in wells:
-            well.segments = [segment for segment in well if segment.length > min_length - tolerance]
+            well.segments = [segment for segment in well if segment.length > min_length - self._tolerance]
         return self.prune()
 
     def _aggregate_array(self, func, attr):
@@ -589,11 +614,12 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     def aggregate(self, func="mean", level=0):
         """Aggregate loaded segments' attributes from `WellSegment.attrs_image`
-        and `WellSegment.attrs_depth_index`. Concatenate loaded segments' attributes
-        from `WellSegment.attrs_fdtd_index`. The result of aggregation and concatenation
-        is a single segment for each subtree starting at level `level`. `depth_from` and
-        `depth_to` for each of these segments will be minimum `depth_from` and
-        maximum `depth_to` along all gathered segments of that subtree.
+        and `WellSegment.attrs_depth_index`. Concatenate loaded segments'
+        attributes from `WellSegment.attrs_fdtd_index`. The result of
+        aggregation and concatenation is a single segment for each subtree
+        starting at level `level`. `depth_from` and `depth_to` for each of
+        these segments will be minimum `depth_from` and maximum `depth_to`
+        along all gathered segments of that subtree.
 
         Parameters
         ----------
@@ -624,8 +650,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         wells = self.iter_level(level)
         for well in wells:
-            well.segments = well.iter_level()
+            well.segments = [seg[:seg.actual_depth_to] for seg in well.iter_level()]
             seg_0 = well.segments[0]
+            logs_step_cm = int(seg_0.logs_step * 100)
 
             # TODO: different aggregation functions
             for attr in WellSegment.attrs_image:
@@ -647,7 +674,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
             for attr in concat_attrs:
                 attr_val_0 = getattr(seg_0, '_' + attr)
+                attr_val_0.reset_index(inplace=True)
                 attr_val_0.drop_duplicates(inplace=True)
+                attr_val_0.set_index(['DEPTH_FROM', 'DEPTH_TO'], inplace=True)
                 attr_val_0.sort_index(inplace=True)
                 setattr(seg_0, '_' + attr, attr_val_0)
 
@@ -659,9 +688,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
                 # Add NaN values to `logs`.
                 if attr == 'logs' and attr_val_0.shape[0] > 1:
-                    index_step = (attr_val_0.index[1:] - attr_val_0.index[:-1]).min()
-                    index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1] + index_step, index_step)
-                    attr_val_0 = attr_val_0.reindex(index_array, method='nearest', fill_value=np.nan, tolerance=1e-5)
+                    index_array = np.arange(attr_val_0.index[0], attr_val_0.index[-1] + logs_step_cm, logs_step_cm)
+                    attr_val_0 = attr_val_0.reindex(index_array, method='nearest',
+                                                    fill_value=np.nan, tolerance=self._tolerance)
                 attr_val_0.index /= 100
                 setattr(seg_0, '_' + attr, attr_val_0)
             setattr(seg_0, 'depth_from', well.depth_from)

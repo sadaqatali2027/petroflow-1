@@ -11,6 +11,7 @@ from copy import copy, deepcopy
 from glob import glob
 from functools import reduce
 from itertools import chain, repeat
+from math import ceil
 
 import numpy as np
 import pandas as pd
@@ -26,8 +27,9 @@ from plotly.offline import init_notebook_mode, plot, iplot
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, find_best_shifts, create_zero_shift
 from .joins import cross_join, between_join, fdtd_join
-from .utils import to_list, leq_notclose, leq_close, geq_close
+from .utils import to_list, process_columns, leq_notclose, leq_close, geq_close
 from .exceptions import SkipWellException, DataRegularityError
+
 
 def add_attr_properties(cls):
     """Add missing properties for lazy loading of `WellSegment` table-based
@@ -119,6 +121,10 @@ class WellSegment(AbstractWellSegment):
         Minimum depth entry in the well logs, loaded from `meta.json`.
     depth_to : float
         Maximum depth entry in the well logs, loaded from `meta.json`.
+    actual_depth_to : float
+        Actual maximum segment depth. It is used when the segment is padded
+        by the `crop` method and then used in `Well.aggregate` to drop padded
+        part of the segment.
     logs : pandas.DataFrame
         Well logs, indexed by depth. Depth log in a source file must have
         `DEPTH` mnemonic. Mnemonics of the same log type in `logs` and
@@ -174,7 +180,7 @@ class WellSegment(AbstractWellSegment):
         directory.
     """
 
-    attrs_depth_index = ("logs", "core_properties", "core_logs", "grain")
+    attrs_depth_index = ("logs", "core_properties", "core_logs")
     attrs_fdtd_index = ("layers", "boring_sequences", "boring_intervals", "core_lithology", "samples")
     attrs_no_index = ("inclination",)
     attrs_image = ("core_uv", "core_dl")
@@ -192,6 +198,7 @@ class WellSegment(AbstractWellSegment):
         self.field = meta["field"]
         self.depth_from = float(meta["depth_from"])
         self.depth_to = float(meta["depth_to"])
+        self.actual_depth_to = None
 
         self.has_samples = self._has_file("samples")
 
@@ -208,12 +215,22 @@ class WellSegment(AbstractWellSegment):
         self._core_uv = None
         self._boring_intervals_deltas = None
         self._core_lithology_deltas = None
-        self._grain = None
+        self._tolerance = 1e-3  # A tolerance to compare float-valued depths for equality.
+
+        # In order to unify aggregate behavior in case of loaded and calculated `boring_sequences`,
+        # they should be computed explicitly during the creation of a segment.
+        if self._has_file("boring_intervals") and not self._has_file("boring_sequences"):
+            _ = self.boring_sequences
 
     @property
     def length(self):
         """float: Length of the segment in meters."""
         return self.depth_to - self.depth_from
+
+    @property
+    def logs_step(self):
+        """float: Step between measurements in `logs` in meters."""
+        return round((self.logs.index[1:] - self.logs.index[:-1]).min(), 2)
 
     @property
     def boring_sequences(self):
@@ -266,7 +283,11 @@ class WellSegment(AbstractWellSegment):
         """Keep only depths between `self.depth_from` and `self.depth_to` in a
         `DataFrame`, indexed by depth."""
         df = df[self.depth_from:self.depth_to]
-        if len(df) > 0 and np.allclose([self.depth_from, self.depth_to], [df.index[0], df.index[-1]], rtol=1e-7):
+        if len(df) == 0:
+            return df
+        both_bounds_in_df = np.allclose([self.depth_from, self.depth_to],
+                                        [df.index[0], df.index[-1]], rtol=0, atol=self._tolerance)
+        if both_bounds_in_df:  # See __getitem__ docstring for an explanation.
             df.drop(df.index[-1], inplace=True)
         return df
 
@@ -965,14 +986,13 @@ class WellSegment(AbstractWellSegment):
         string in a `modes` list."""
         return [cls._unify_matching_mode(mode) for mode in to_list(modes)]
 
-    @staticmethod
-    def _blur_log(log, win_size):
+    def _blur_log(self, log, win_size):
         """Blur a log with a Gaussian filter of size `win_size`."""
         if win_size is None:
             return log
         old_index = log.index
         new_index = np.arange(old_index.min(), old_index.max(), 0.01)
-        log = log.reindex(index=new_index, method="nearest", tolerance=1e-4)
+        log = log.reindex(index=new_index, method="nearest", tolerance=self._tolerance)
         log = log.interpolate(limit_direction="both")
         std = win_size / 6  # three-sigma rule
         log = log.rolling(window=win_size, min_periods=1, win_type="gaussian", center=True).mean(std=std)
@@ -1502,7 +1522,7 @@ class WellSegment(AbstractWellSegment):
         positions = np.sort(np.random.uniform(*bounds, size=n_crops))
         return [self[pos:pos+length] for pos in positions]
 
-    def crop(self, length, step, drop_last=True):
+    def crop(self, length, step, drop_last=True, fill_value=0):
         """Create crops from the segment. All cropped segments have the same
         length and are cropped with some fixed step.
 
@@ -1514,23 +1534,33 @@ class WellSegment(AbstractWellSegment):
             Step of cropping in meters.
         drop_last : bool, optional
             If `True`, only crops that lie within the segment will be kept.
-            If `False`, an extra segment, starting from `depth_to` - `length`
-            will be added to cover the whole segment with crops.
+            If `False`, the first crop which comes out of segment bounds will
+            also be kept to cover the whole segment with crops. Its `logs`
+            will be padded by `fill_value` at the end to have given `length`.
             Defaults to `True`.
+        fill_value : float, optional
+            Value to fill padded part of `logs`. Defaults to 0.
 
         Returns
         -------
         segments : list of WellSegment
             Cropped segments.
         """
-        positions = np.arange(self.depth_from, self.depth_to, step)
-        crops_in = positions[positions + length <= self.depth_to]
-        last_crop = self.depth_to - length
-        if drop_last:
-            positions = crops_in
-        else:
-            positions = np.append(crops_in, last_crop)
-        return [self[pos:pos+length] for pos in positions]
+        n_crops_in = ceil((self.depth_to - self.depth_from - length) / step)
+        crops_in = np.arange(n_crops_in) * step + self.depth_from
+        segments_in = [self[pos:pos+length] for pos in crops_in]
+        if drop_last or np.allclose(crops_in[-1] + length, self.depth_to, rtol=0, atol=self._tolerance):
+            return segments_in
+
+        crop_out = crops_in[-1] + step
+        self.actual_depth_to = self.depth_to
+        self.depth_to = crop_out + length
+        n_pads = ceil((self.depth_to - self.depth_from) / self.logs_step) + 1
+        pad_index = np.arange(n_pads) * self.logs_step + self.depth_from
+        pad_logs = self.logs.reindex(index=pad_index, method="nearest",
+                                     tolerance=self._tolerance, fill_value=fill_value)
+        setattr(self, '_logs', pad_logs)
+        return segments_in + [self[crop_out:crop_out+length]]
 
     def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask'):
         """Transform a column from some `WellSegment` attribute into a mask
@@ -1637,27 +1667,20 @@ class WellSegment(AbstractWellSegment):
         setattr(self, dst, mask)
         setattr(self, '_' + dst, mask)
 
-    def apply(self, fn, *args, attr="logs", src=None, dst=None, drop_src=False, **kwargs):
+    @process_columns
+    def apply(self, df, fn, *args, axis=None, **kwargs):
         """Apply a function to each row of a segment attribute.
 
         Parameters
         ----------
         fn : callable
-            A function to be applied.
-        attr : str, optional
-            A segment attribute, whose rows will be transformed by `fn`.
-            Defaults to `"logs"`.
-        src : str or list of str, optional
-            Columns of `attr`, whose values will be passed to `fn` as an
-            `np.ndarray` as the first positional argument. By default, the
-            entire row will be passed.
-        dst : str or list of str, optional
-            Columns of `attr`, where function results will be written. If
-            list, its length must match the number of returned results of
-            `fn`. Equals `src` by default.
-        drop_src : bool, optional
-            Specifies whether to drop `src` columns from `attr` after function
-            application. Defaults to `False`.
+            A function to be applied. See Notes section for caveats.
+        axis : {0, 1, None}, optional
+            An axis, along which the function is applied:
+            * 0: apply the function to each column
+            * 1: apply the function to each row
+            * `None`: apply the function to the whole `DataFrame`
+            Defaults to `None`.
         args : misc
             Any additional positional arguments to pass to `fn` after data
             from `attr`.
@@ -1665,21 +1688,28 @@ class WellSegment(AbstractWellSegment):
             Any additional keyword arguments to pass as keyword arguments to
             `fn`.
 
+        Notes
+        -----
+        Currently, callables from `numpy` without pure Python implementation
+        can't be passed as `fn` if they get more than one non-keyword
+        argument and `axis` is specified.
+
+        E.g. `apply(np.divide, 1000, axis=1, src='DEPTH')` will fail.
+        Use `apply(lambda x: x / 1000, axis=1, src='DEPTH')` instead.
+
         Returns
         -------
         well : AbstractWellSegment
             The segment with applied function.
         """
-        df = getattr(self, attr)
-        src = df.columnns if src is None else to_list(src)
-        dst = src if dst is None else to_list(dst)
-        res = df[src].apply(fn, axis=1, raw=True, result_type="expand", args=args, **kwargs)
+        _ = self
+        if axis is None:
+            res = fn(df, *args, **kwargs)
+        else:
+            res = df.apply(fn, axis=axis, raw=True, result_type="expand", args=args, **kwargs)
         if isinstance(res, pd.Series):
             res = res.to_frame()
-        df[dst] = res
-        if drop_src:
-            df.drop(set(src) - set(dst), axis=1, inplace=True)
-        return self
+        return res
 
     def _filter_depth_attrs(self, attrs=None):
         """Return intersection of `attrs` and `self.attrs_depth_index`."""
@@ -1707,7 +1737,7 @@ class WellSegment(AbstractWellSegment):
         """
         new_index = np.arange(self.depth_from, self.depth_to, step)
         for attr in self._filter_depth_attrs(attrs):
-            res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=1e-4)
+            res = getattr(self, attr).reindex(index=new_index, method="nearest", tolerance=self._tolerance)
             setattr(self, "_" + attr, res)
         return self
 
@@ -1798,7 +1828,8 @@ class WellSegment(AbstractWellSegment):
         borders = zip(borders[0::2], borders[1::2])
         return [self[a:b] for a, b in borders]
 
-    def norm_mean_std(self, mean=None, std=None, eps=1e-10):
+    @process_columns
+    def norm_mean_std(self, df, mean=None, std=None, eps=1e-10):
         """Standardize well logs by subtracting the mean and scaling to unit
         variance.
 
@@ -1819,14 +1850,15 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             The segment with standardized logs.
         """
+        _ = self
         if mean is None:
-            mean = self.logs.mean()
+            mean = df.mean()
         if std is None:
-            std = self.logs.std()
-        self._logs = (self.logs - mean) / (std + eps)
-        return self
+            std = df.std()
+        return (df - mean) / (std + eps)
 
-    def norm_min_max(self, min=None, max=None, q_min=None, q_max=None, clip=True):  # pylint: disable=redefined-builtin
+    @process_columns
+    def norm_min_max(self, df, min=None, max=None, q_min=None, q_max=None, clip=True):  # pylint: disable=redefined-builtin
         """Linearly scale well logs to a [0, 1] range.
 
         Parameters
@@ -1849,20 +1881,22 @@ class WellSegment(AbstractWellSegment):
         well : AbstractWellSegment or a child class
             The segment with normalized logs.
         """
+        _ = self
+
         if min is None and q_min is None:
-            min = self.logs.min()
+            min = df.min()
         elif q_min is not None:
-            min = self.logs.quantile(q_min)
+            min = df.quantile(q_min)
 
         if max is None and q_max is None:
-            max = self.logs.max()
+            max = df.max()
         elif q_max is not None:
-            max = self.logs.quantile(q_max)
+            max = df.quantile(q_max)
 
-        self._logs = (self.logs - min) / (max - min)
+        df = (df - min) / (max - min)
         if clip:
-            self._logs.clip(0, 1, inplace=True)
-        return self
+            df.clip(0, 1, inplace=True)
+        return df
 
     def equalize_histogram(self, src=None, dst=None, channels='last'):
         """Normalize core images by histogram equalization.
