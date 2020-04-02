@@ -43,7 +43,7 @@ def plot_wells(wells):
                 plt.show()
                 break
 
-def plot_examples(batch, reverse_mapping):
+def plot_examples(batch, reverse_mapping, n_crops=10, random=True):
     images = np.transpose(batch.core, axes=(0, 2, 3, 1))
     predictions = np.tile(batch.proba.argmax(1), (1, 250, 1)).transpose(0, 2, 1)
     targets = np.tile(batch.masks, (1, 250, 1)).transpose(0, 2, 1)
@@ -63,8 +63,9 @@ def plot_examples(batch, reverse_mapping):
     for i, value in reverse_mapping.items():
         plt.text(20, 20 * i + 11, value, color='black', fontsize=12, bbox=dict(facecolor='white'))
     plt.show()
-
-    for i in np.random.choice(len(images), 10, replace=False):
+    
+    items = np.random.choice(len(images), n_crops, replace=False) if random else range(n_crops)
+    for i in items:
         plt.figure(figsize=(15, 15))
         plt.subplot(131)
         plt.imshow(images[i] / 255)
@@ -79,7 +80,7 @@ def filter_dataset(ds):
                   .init_variable('wells', default=[])
                   .has_attr('core_lithology')
                   .update(V('wells', mode='e'), B().indices)
-                  .run(10, n_epochs=1, drop_last=False, shuffle=False))
+                  .run(len(ds), n_epochs=1, drop_last=False, shuffle=False))
 
     filtered_index = ds.index.create_subset(filter_ppl.v('wells'))
     return WellDataset(index=filtered_index)
@@ -87,7 +88,7 @@ def filter_dataset(ds):
 def concat(df):
     return df.FORMATION + ' ' + df.GRAIN
     
-def get_classes(ds):
+def get_classes(ds, batch_size=32):
     classes_ppl = (ds.p
            .init_variable('classes', default=[])
            .update(V('classes', mode='a'), (
@@ -100,7 +101,7 @@ def get_classes(ds):
         .unique(V('classes'), save_to=V('classes'))
     )
 
-    classes_ppl.run(32, n_epochs=1, drop_last=False)
+    classes_ppl.run(batch_size, n_epochs=1, drop_last=False)
     return classes_ppl.v('classes')
 
 def dump_results(train_ppl, path):
