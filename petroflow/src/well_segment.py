@@ -1552,7 +1552,7 @@ class WellSegment(AbstractWellSegment):
         """Get segments from depths, specified in depth indexed attributes."""
         indices = [getattr(self, item).index for item in src]
         indices = np.concatenate(indices)
-        segments = [self[depth-length/2:depth+length/2] for depth in indices]
+        segments = [self[depth-int(np.ceil(length/2)):depth+int(np.floor(length/2))] for depth in indices]
         return segments
 
     @staticmethod
