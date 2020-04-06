@@ -1506,7 +1506,7 @@ class WellSegment(AbstractWellSegment):
             res_segments.append(self[depth_from:depth_to])
         return res_segments
 
-    def create_segments(self, src, connected=True, length=0.1):
+    def create_segments(self, src, connected=True, length=10):
         """Split `self` into segments with depth ranges or depths, specified in
         attributes in `src`.
 
@@ -1521,7 +1521,7 @@ class WellSegment(AbstractWellSegment):
             Defaults to `True`.
         length : float, optional
             For `src` indexed by depth: length of the segment centered by depth.
-            Defaults to `0.1` (10 cm).
+            Defaults to 10 (cm).
 
         Returns
         -------
