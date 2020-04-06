@@ -11,7 +11,6 @@ from copy import copy, deepcopy
 from glob import glob
 from functools import reduce
 from itertools import chain, repeat
-from math import ceil
 
 import numpy as np
 import pandas as pd
@@ -441,7 +440,7 @@ class WellSegment(AbstractWellSegment):
         `self.pixels_per_cm`."""
         return round(length * self.pixels_per_cm)
 
-    def load_core(self, core_width=None, pixels_per_cm=None, dtype='uint8'):
+    def load_core(self, core_width=None, pixels_per_cm=None):
         """Load core images in daylight and ultraviolet.
 
         If any of method arguments are not specified, those, passed to
@@ -1679,7 +1678,7 @@ class WellSegment(AbstractWellSegment):
             ValueError('Unknown src: ', src)
         if mode == 'logs':
             self.attrs_depth_index = (*self.attrs_depth_index, dst)
-        elif mode ==' core':
+        elif mode == 'core':
             self.attrs_image = (*self.attrs_image, dst)
         return self
 

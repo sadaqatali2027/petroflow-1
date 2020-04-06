@@ -743,8 +743,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         if self.n_segments < n_segments:
             if skip:
                 raise SkipWellException("Well hasn't enough segments {}".format(n_segments))
-            else:
-                n_segments = self.n_segments
+            n_segments = self.n_segments
 
         wells = self.iter_level(-2)
         segments = [(i, segment) for i, well in enumerate(wells) for segment in well]
