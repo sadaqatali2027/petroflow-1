@@ -3,14 +3,68 @@
 
 import warnings
 from copy import copy, deepcopy
+from functools import wraps
 from collections import defaultdict, Counter
 
 import numpy as np
 import pandas as pd
 
+from .base_delegator import BaseDelegator
 from .abstract_classes import AbstractWell
 from .well_segment import WellSegment
 from .exceptions import SkipWellException
+
+
+class SegmentDelegatingMeta(BaseDelegator):
+    """A metaclass to delegate calls to absent abstract methods of a `Well` to
+    its children (instances of `Well` or `WellSegment`)"""
+
+    @classmethod
+    def _create_method(mcls, method, namespace):
+        delegate_fn = getattr(mcls, namespace["delegators"][method])
+        namespace[method] = delegate_fn(method)
+
+    @staticmethod
+    def segment_delegator(name):
+        """Delegate the call to each segment of a `Well`. Acts as the default
+        delegator."""
+        @wraps(getattr(WellSegment, name))
+        def delegator(self, *args, **kwargs):
+            results = []
+            for segment in self:
+                res = getattr(segment, name)(*args, **kwargs)
+                if not isinstance(res, list):
+                    res = [res]
+                results.extend(res)
+            res_well = self.copy()
+            res_well.segments = results
+            return res_well
+        return delegator
+
+    @staticmethod
+    def aggregating_delegator(name):
+        """If `aggregate` is `False`, delegate the call to each segment of a
+        `Well`. Otherwise, aggregate the `Well` and call the method."""
+        @wraps(getattr(WellSegment, name))
+        def delegator(self, *args, aggregate=True, **kwargs):
+            segments = [self.aggregated_segment] if aggregate else self.iter_level()
+            for segment in segments:
+                getattr(segment, name)(*args, **kwargs)
+            return self
+        return delegator
+
+    @staticmethod
+    def well_delegator(name):
+        """Delegate the call to each segment of a `Well` and create new
+        `Well`s from the corresponding results. Increases the depth of the
+        segment tree."""
+        @wraps(getattr(WellSegment, name))
+        def delegator(self, *args, **kwargs):
+            wells = self.iter_level(-2)
+            for well in wells:
+                well.segments = [type(self)(segments=getattr(segment, name)(*args, **kwargs)) for segment in well]
+            return self.prune()
+        return delegator
 
 
 def add_segment_properties(cls):
