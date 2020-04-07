@@ -8,13 +8,14 @@ from collections import defaultdict
 import numpy as np
 
 from ..batchflow import Batch, SkipBatchException, action, inbatch_parallel, any_action_failed
+from ..batchflow.batchflow.batch import MethodsTransformingMeta
 from .well import Well
 from .base_delegator import BaseDelegator
 from .abstract_classes import AbstractWell
 from .exceptions import SkipWellException
 
 
-class WellDelegatingMeta(BaseDelegator):
+class WellDelegatingMeta(BaseDelegator, MethodsTransformingMeta):
     """A metaclass to delegate calls to absent abstract methods of a
     `WellBatch` to `Well` objects in `wells` component."""
 
