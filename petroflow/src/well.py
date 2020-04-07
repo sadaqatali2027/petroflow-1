@@ -348,30 +348,6 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 well.segments = []
         return self.prune()
 
-    # def drop_nans(self, logs=None):
-    #     """Split a well into contiguous segments, that do not contain `nan`
-    #     values in logs, specified in `logs`. The tree depth will be increased.
-
-    #     Parameters
-    #     ----------
-    #     logs : None or int or list of str
-    #         - If `None`, create segments without `nan` values in all logs.
-    #         - If `int`, create segments so that each row of logs has at least
-    #           `logs` not-nan values.
-    #         - If `list`, create segments without `nan` values in logs with
-    #           mnemonics in `logs`.
-    #         Defaults to `None`.
-
-    #     Returns
-    #     -------
-    #     self : AbstractWell
-    #         The well with dropped `nan` values from segments.
-    #     """
-    #     wells = self.iter_level(-2)
-    #     for well in wells:
-    #         well.segments = [Well(segments=segment.drop_nans(logs=logs)) for segment in well]
-    #     return self.prune()
-
     def drop_short_segments(self, min_length):
         """Drop segments at the last level with length smaller than
         `min_length`.
