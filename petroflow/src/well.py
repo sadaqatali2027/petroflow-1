@@ -13,6 +13,7 @@ from .base_delegator import BaseDelegator
 from .abstract_classes import AbstractWell
 from .well_segment import WellSegment
 from .exceptions import SkipWellException
+from .utils import parse_depth
 
 
 class SegmentDelegatingMeta(BaseDelegator):
@@ -416,7 +417,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell
             The well with dropped short segments.
         """
-        # TODO: parse min_length, must be int
+        min_length = parse_depth(min_length)
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [segment for segment in well if segment.length >= min_length]

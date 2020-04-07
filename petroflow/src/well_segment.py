@@ -26,7 +26,7 @@ from plotly.offline import init_notebook_mode, plot, iplot
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, find_best_shifts, create_zero_shift
 from .joins import cross_join, between_join, fdtd_join
-from .utils import to_list, process_columns, leq_notclose, leq_close, geq_close
+from .utils import to_list, process_columns, parse_depth, leq_notclose, leq_close, geq_close
 from .exceptions import SkipWellException, DataRegularityError
 
 
@@ -716,12 +716,10 @@ class WellSegment(AbstractWellSegment):
             raise ValueError("A well does not support slicing with a specified step")
 
         if key.start is not None:
-            # TODO: parse key.start, must be int
-            res.depth_from = max(key.start, res.depth_from)
+            res.depth_from = max(parse_depth(key.start), res.depth_from)
 
         if key.stop is not None:
-            # TODO: parse key.stop, must be int
-            res.depth_to = min(key.stop, res.depth_to)
+            res.depth_to = min(parse_depth(key.stop), res.depth_to)
 
         if res.depth_from > res.depth_to:
             raise SkipWellException("Slicing interval is out of segment bounds")
@@ -1634,7 +1632,8 @@ class WellSegment(AbstractWellSegment):
         segments : list of WellSegment
             Cropped segments.
         """
-        # TODO: parse length and step, must be int
+        length = parse_depth(length)
+        step = parse_depth(step)
         n_crops, mod = divmod(self.length - length, step)
         n_crops += 1  # The number of crops strictly within the segment
         if not drop_last and mod and self._has_file("logs"):  # Pad logs by length
@@ -1796,7 +1795,7 @@ class WellSegment(AbstractWellSegment):
         self : type(self)
             Self with reindexed `attrs`.
         """
-        # TODO: parse step, must be int
+        step = parse_depth(step)
         new_index = np.arange(self.depth_from, self.depth_to, step)
         for attr in self._filter_depth_attrs(attrs):
             attr_val = getattr(self, attr)
@@ -2032,7 +2031,7 @@ class WellSegment(AbstractWellSegment):
         self : type(self)
             Self with shifted logs columns.
         """
-        # TODO: parse max_period, must be int
+        max_period = parse_depth(max_period)
         mnemonics = self.logs.columns if mnemonics is None else to_list(mnemonics)
         max_period = int(max_period / self.logs_step)
         periods = np.random.randint(-max_period, max_period + 1, len(mnemonics))
