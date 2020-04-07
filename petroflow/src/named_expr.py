@@ -1,8 +1,9 @@
 """Named expression for wells."""
+import pandas as pd
 
 from ..batchflow import NamedExpression
 from ..batchflow.batchflow.named_expr import _DummyBatch  # pylint: disable=import-error
-
+from .utils import to_list
 
 class NestedList:
     """Wrapper for nested lists."""
@@ -23,7 +24,9 @@ class NestedList:
         return NestedList([[item[key] for item in inner_list] for inner_list in self._nested_list])
 
     def __setitem__(self, key, value):
+        key = to_list(key)
         for item, val in zip(self.ravel(), value):
+            val = pd.DataFrame(val, columns=key, index=item.index)
             item[key] = val
 
     def __repr__(self):
