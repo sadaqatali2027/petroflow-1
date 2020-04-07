@@ -11,7 +11,6 @@ from copy import copy, deepcopy
 from glob import glob
 from functools import reduce
 from itertools import chain, repeat
-from math import ceil
 
 import numpy as np
 import pandas as pd
@@ -244,6 +243,27 @@ class WellSegment(AbstractWellSegment):
         return self.depth_to - self.depth_from
 
     def load_logs(self, *args, **kwargs):
+        """Load well logs and calculate logs step in centimeters.
+
+        Parameters
+        ----------
+        args : misc
+            Any additional positional arguments to pass to the file loader,
+            depends on its extension.
+        kwargs : misc
+            Any additional keyword arguments to pass as keyword arguments to
+            the file loader, depends on its extension.
+
+        Returns
+        -------
+        self : type(self)
+            Self with loaded well logs.
+
+        Raises
+        ------
+        ValueError
+            If logs don't have a fixed sampling rate.
+        """
         self._logs = self._load_depth_df(self._get_full_name(self.path, "logs"), *args, **kwargs)
         steps = self.logs.index[1:] - self.logs.index[:-1]
         unique_steps = np.unique(steps)
@@ -459,8 +479,8 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment or a child class
-            Self with core images loaded for each segment.
+        self : type(self)
+            Self with loaded core images.
         """
         self.core_width = core_width if core_width is not None else self.core_width
         self.pixels_per_cm = pixels_per_cm if pixels_per_cm is not None else self.pixels_per_cm
@@ -515,7 +535,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment or a child class
+        self : WellSegment
             Self unchanged.
         """
         path = os.path.join(path, self.name)
@@ -575,7 +595,8 @@ class WellSegment(AbstractWellSegment):
         """Plot well logs and core images.
 
         All well logs and core images in daylight and ultraviolet are plotted
-        on separate subplots.
+        on separate subplots. If called for a `Well` or `WellBatch` instance,
+        an extra `aggregate` argument can be passed.
 
         Parameters
         ----------
@@ -590,10 +611,14 @@ class WellSegment(AbstractWellSegment):
         subplot_width : positive int
             Width of each subplot with well log or core samples images in
             pixels. Defaults to 200.
+        aggregate : bool
+            Specifies whether to plot all segments of the well on the same
+            plot or create a separate plot for each segment. Creates one plot
+            by default.
 
         Returns
         -------
-        self : AbstractWellSegment or a child class
+        self : AbstractWellSegment
             Self unchanged.
         """
         init_notebook_mode(connected=True)
@@ -681,7 +706,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment
+        well : WellSegment
             A segment with filtered logs or depths.
         """
         if not isinstance(key, slice):
@@ -725,7 +750,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment
+        self : WellSegment
             Shallow copy.
         """
         return copy(self)
@@ -735,7 +760,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment
+        self : WellSegment
             Deep copy.
         """
         return deepcopy(self)
@@ -1234,7 +1259,8 @@ class WellSegment(AbstractWellSegment):
         sequence.
 
         This method can be used to illustrate the results of core-to-log
-        matching.
+        matching. If called for a `Well` or `WellBatch` instance, an extra
+        `aggregate` argument can be passed.
 
         Parameters
         ----------
@@ -1259,10 +1285,14 @@ class WellSegment(AbstractWellSegment):
             Height of each subplot with well and core logs. Defaults to 700.
         subplot_width : positive int
             Width of each subplot with well and core logs. Defaults to 200.
+        aggregate : bool
+            Specifies whether to plot all segments of the well on the same
+            plot or create a separate plot for each segment. Creates one plot
+            by default.
 
         Returns
         -------
-        self : AbstractWellSegment or a child class
+        self : type(self)
             Self unchanged.
         """
         init_notebook_mode(connected=True)
@@ -1349,8 +1379,8 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment or a child class
-            A segment with created depth log.
+        self : type(self)
+            Self with created depth log.
         """
         self.logs["DEPTH"] = self.logs.index
         return self
@@ -1365,8 +1395,8 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment or a child class
-            A segment with filtered logs.
+        self : type(self)
+            Self with filtered logs.
         """
         res = self.copy()
         res._logs.drop(to_list(mnemonics), axis=1, inplace=True)
@@ -1382,8 +1412,8 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment or a child class
-            A segment with filtered logs.
+        self : type(self)
+            Self with filtered logs.
         """
         missing_mnemonics = np.setdiff1d(mnemonics, self.logs.columns)
         if len(missing_mnemonics) > 0:
@@ -1403,8 +1433,8 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment or a child class
-            A segment with renamed logs. Changes `self.logs` inplace.
+        self : type(self)
+            Self with renamed logs. Changes `logs` inplace.
         """
         self.logs.rename(columns=rename_dict, inplace=True)
         return self
@@ -1455,8 +1485,10 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : list of WellSegment
-            Segments, representing kept layers.
+        res : list of WellSegment or type(self)
+            If called for a `WellSegment`, returns a list of segments,
+            representing kept layers. Otherwise, return `self` with dropped
+            layers.
         """
         return self._filter_layers(layers, connected, invert_mask=True)
 
@@ -1473,8 +1505,10 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : list of WellSegment
-            Segments, representing kept layers.
+        res : list of WellSegment or type(self)
+            If called for a `WellSegment`, returns a list of segments,
+            representing kept layers. Otherwise, return `self` with kept
+            layers.
         """
         return self._filter_layers(layers, connected, invert_mask=False)
 
@@ -1492,8 +1526,10 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        segments : list of WellSegment
-            Kept boring sequences.
+        res : list of WellSegment or type(self)
+            If called for a `WellSegment`, returns a list of segments,
+            representing kept boring sequences. Otherwise, return `self` with
+            kept matched segments.
         """
         mask = self.boring_sequences["R2"] > threshold
         if mode is not None:
@@ -1516,12 +1552,13 @@ class WellSegment(AbstractWellSegment):
             consists of attributes in fdtd format then each row will represent
             a new segment. Otherwise, an exception will be raised.
         connected : bool, optional
-            Join segments which are one after another. Defaults to `True`.
+            Join segments that follow one another. Defaults to `True`.
 
         Returns
         -------
-        segments : list of WellSegment
-            Split segments.
+        res : list of WellSegment or type(self)
+            If called for a `WellSegment`, returns a list of split segments.
+            Otherwise, return `self` with split segments.
         """
         if not isinstance(src, list):
             src = [src]
@@ -1640,25 +1677,30 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment or a child class
-            Self with mask.
+        self : type(self)
+            Self with created mask.
         """
         if src in self.attrs_fdtd_index:
             self._create_mask_fdtd(src, column, mapping, mode, default, dst)
         elif src in self.attrs_depth_index:
             self._create_mask_depth_index(src, column, mapping, mode, default, dst)
         else:
-            ValueError('Unknown src: ', src)
+            ValueError("Unknown src: ", src)
         return self
+
+    def _create_empty_mask(self, mode, default):
+        """Create a mask, filled with `default` value."""
+        if mode == "core":
+            mask = np.full(len(self.core_dl), default)
+        elif mode == "logs":
+            mask = np.full(len(self.logs), default)
+        else:
+            raise ValueError("Unknown mode: ", mode)
+        return mask
 
     def _create_mask_fdtd(self, src, column, mapping, mode, default, dst):
         """Create mask from fdtd data."""
-        if mode == 'core':
-            mask = np.ones(len(self.core_dl)) * default
-        elif mode == 'logs':
-            mask = np.ones(len(self.logs)) * default
-        else:
-            raise ValueError('Unknown mode: ', mode)
+        mask = self._create_empty_mask(mode, default)
 
         table = getattr(self, src)
         factor = len(mask) / self.length
@@ -1672,12 +1714,7 @@ class WellSegment(AbstractWellSegment):
     def _create_mask_depth_index(self, src, column, mapping, mode, default, dst):
         """Create mask from depth-indexed data."""
         # TODO: fix interpolation
-        if mode == 'core':
-            mask = np.ones(len(self.core_dl)) * default
-        elif mode == 'logs':
-            mask = np.ones(len(self.logs)) * default
-        else:
-            raise ValueError('Unknown mode: ', mode)
+        mask = self._create_empty_mask(mode, default)
 
         table = getattr(self, src)
         factor = len(mask) / self.length
@@ -1719,8 +1756,8 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment
-            The segment with applied function.
+        self : type(self)
+            Self with applied function.
         """
         _ = self
         if axis is None:
@@ -1756,8 +1793,8 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment or a child class
-            The segment with reindexed `attrs`.
+        self : type(self)
+            Self with reindexed `attrs`.
         """
         # TODO: parse step, must be int
         new_index = np.arange(self.depth_from, self.depth_to, step)
@@ -1789,8 +1826,8 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment or a child class
-            The segment with interpolated values in `attrs`.
+        self : type(self)
+            Self with interpolated values in `attrs`.
         """
         for attr in self._filter_depth_attrs(attrs):
             res = getattr(self, attr).interpolate(method="index", *args, **kwargs)
@@ -1812,8 +1849,8 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment
-            The segment with blurred logs in `attrs`.
+        self : type(self)
+            Self with blurred logs in `attrs`.
         """
         if std is None:
             std = win_size / 6  # three-sigma rule
@@ -1826,8 +1863,8 @@ class WellSegment(AbstractWellSegment):
         return self
 
     def drop_nans(self, logs=None):
-        """Create segments that do not contain `nan` values in logs, specified
-        in `logs`.
+        """Split a well into contiguous segments, that do not contain `nan`
+        values in logs, specified in `logs`.
 
         Parameters
         ----------
@@ -1841,8 +1878,9 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        segments : list of WellSegment
-            Segments with dropped `nan` values.
+        res : list of WellSegment or type(self)
+            If called for a `WellSegment`, returns a list of segments without
+            `nan` values. Otherwise, return `self` with dropped `nan` values.
         """
         logs = self.logs.columns if logs is None else logs
         if isinstance(logs, int):
@@ -1881,8 +1919,8 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment or a child class
-            The segment with standardized logs.
+        self : type(self)
+            Self with standardized logs.
         """
         _ = self
         if mean is None:
@@ -1912,8 +1950,8 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        well : AbstractWellSegment or a child class
-            The segment with normalized logs.
+        self : type(self)
+            Self with normalized logs.
         """
         _ = self
 
@@ -1948,7 +1986,7 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment or a child class
+        self : type(self)
             Self with normalized images.
         """
         src = to_list(src)
@@ -1981,8 +2019,8 @@ class WellSegment(AbstractWellSegment):
 
         Parameters
         ----------
-        max_period : float
-            Max possible shift period in meters.
+        max_period : positive int
+            Maximum possible shift in centimeters.
         mnemonics : None or str or list of str
             - If `None`, shift all logs columns.
             - If `str`, shift single column from logs with `mnemonics` name.
@@ -1991,11 +2029,12 @@ class WellSegment(AbstractWellSegment):
 
         Returns
         -------
-        self : AbstractWellSegment or a child class
+        self : type(self)
             Self with shifted logs columns.
         """
+        # TODO: parse max_period, must be int
         mnemonics = self.logs.columns if mnemonics is None else to_list(mnemonics)
-        max_period = int(np.floor(max_period * (len(self.logs) / self.length)))
+        max_period = int(max_period / self.logs_step)
         periods = np.random.randint(-max_period, max_period + 1, len(mnemonics))
         for mnemonic, period in zip(mnemonics, periods):
             fill_index = 0 if period > 0 else -1
