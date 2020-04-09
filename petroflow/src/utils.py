@@ -4,6 +4,7 @@ import functools
 
 import numpy as np
 
+from numba import njit
 
 def to_list(obj):
     """Cast an object to a list. Almost identical to `list(obj)` for 1-D
@@ -135,4 +136,10 @@ def fill_nans_around(arr, period):
         right_slice = slice(*rights[i])
         if right_slice.start != 0:
             arr[right_slice] = arr[right_slice.start - 1]
+    return arr
+
+@njit
+def insert_intervals(arr, starts, ends, values):
+    for start, end, value in zip(starts, ends, values):
+        arr[start:end] = value
     return arr

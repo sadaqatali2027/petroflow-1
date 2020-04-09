@@ -27,7 +27,7 @@ from plotly.offline import init_notebook_mode, plot, iplot
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, find_best_shifts, create_zero_shift
 from .joins import cross_join, between_join, fdtd_join
-from .utils import to_list, process_columns, leq_notclose, leq_close, geq_close, fill_nans_around
+from .utils import to_list, process_columns, leq_notclose, leq_close, geq_close, fill_nans_around, insert_intervals
 from .exceptions import SkipWellException, DataRegularityError
 
 
@@ -1615,7 +1615,7 @@ class WellSegment(AbstractWellSegment):
         return crops
 
     def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask',
-                    period=None, create_index=False):
+                    period=None, create_index=False, bad_values=[None, np.nan, ' ']):
         """Transform a column from some `WellSegment` attribute into a mask
         correponding to a well log or to a core image.
 
@@ -1653,89 +1653,73 @@ class WellSegment(AbstractWellSegment):
         if mode not in ['core', 'logs']:
             raise ValueError('Unknown mode: ', mode)
 
-        series = getattr(self, src)[column]
+        src_series = getattr(self, src)[column]
+        src_series = src_series[~src_series.isin(bad_values)]
+        src_index = src_series.index
+        src_values = src_series.values
 
-        if not series.index.is_monotonic:
+        if not src_index.is_monotonic:
             series.sort_index(level=0, inplace=True)
 
-        bad_values = [np.nan, ' '] # TODO: Bad values should be filtered earlier
         if mapping is not None:
-            series = series[~series.isin(bad_values)]
-
-        src_index = series.index
-        src_values = series.values
-
-        if mapping is not None:
-            uniques, indices = np.unique(src_values, return_inverse=True)
+            uniques, indices = np.unique(src_series, return_inverse=True)
             src_values = np.array([mapping[x] for x in uniques])[indices]
 
-        if src in self.attrs_fdtd_index:
-            self._create_mask_fdtd(src_index, src_values, mode, default, dst)
+        if src == 'logs' and mode == 'logs':
+            index, mask = src_index, src_values
+        elif src in self.attrs_fdtd_index:
+            index, mask = self._create_mask_fdtd(src_index, src_values, mode, default, dst, create_index)
         elif src in self.attrs_depth_index:
-            self._create_mask_depth_index(src_index, src_values, src, mode, default, dst)
+            index, mask = self._create_mask_depth(src_index, src_values, mode, default, dst, create_index)
         else:
             ValueError('Unknown src: ', src)
 
         if create_index:
-            mask = getattr(self, dst)
-            index = np.linspace(self.depth_from, self.depth_to, len(mask))
             setattr(self, dst + '_index', index)
 
         if period is not None:
-            mask = getattr(self, dst)
             period = int(np.floor(period * (len(mask) / self.length)))
-            filled_mask = fill_nans_around(mask, period)
-            setattr(self, dst, filled_mask)
+            mask = fill_nans_around(mask, period)
+
+        setattr(self, dst, mask)
 
         return self
 
-    def _create_mask_fdtd(self, src_index, src_values, mode, default, dst):
-        """Create mask from fdtd data."""
+    def _create_mask_template(self, mode, default, dst, create_index):
+        if mode == 'core':
+            index = np.linspace(self.depth_from, self.depth_to, len(self.core_dl))
+            length = len(self.core_dl)
+        elif mode == 'logs':
+            index = self.logs.index
+            length = len(self.logs)
+
+        mask = np.full(length, default)
+        if create_index:
+            setattr(self, dst + '_index', index)
+
+        return index, mask
+
+    def _create_mask_fdtd(self, src_index, src_values, mode, default, dst, create_index):
+        """Create mask by fdtd indexed src."""
+        index, mask = self._create_mask_template(mode, default, dst, create_index)
         depth_from = src_index.get_level_values('DEPTH_FROM').values
         depth_to = src_index.get_level_values('DEPTH_TO').values
+        insert_from = np.searchsorted(index, depth_from, side='left')
+        insert_to = np.searchsorted(index, depth_to, side='right')
+        mask = insert_intervals(mask, insert_from, insert_to, src_values)
 
-        if mode == 'core':
-            mask = np.ones(len(self.core_dl)) * default
-            factor = len(mask) / self.length
-            start = np.round((np.maximum(depth_from, self.depth_from) - self.depth_from) * factor).astype(int)
-            end = np.round((np.minimum(depth_to, self.depth_to) - self.depth_from) * factor).astype(int)
-            end = end + (self.pixels_per_cm - 1)
-        elif mode == 'logs':
-            mask = np.ones(len(self.logs)) * default
-            start = np.searchsorted(self.logs.index, depth_from, side='left')
-            end = np.searchsorted(self.logs.index, depth_to, side='right')
+        return index, mask
 
-        for i in range(len(src_index)):
-            mask[start[i]:end[i]+1] = src_values[i]
+    def _create_mask_depth(self, src_index, src_values, mode, default, dst, create_index):
+        """Create mask by depth indexed src."""
+        index, mask = self._create_mask_template(mode, default, dst, create_index)
+        insert_depth = np.searchsorted(index, src_index, side='left')
+        duplicates = np.concatenate([insert_depth[1:] - insert_depth[:-1] == 0, [False]])
+        insert_depth = insert_depth[~duplicates]
+        src_values = src_values[~duplicates]
+        mask[insert_depth] = src_values
 
-        setattr(self, dst, mask)
-
-    def _create_mask_depth_index(self, src_index, src_values, src, mode, default, dst):
-        """Create mask from depth-indexed data."""
-        if src == 'logs' and mode == 'logs':
-            mask = src_values
-        elif mode == 'core':
-            mask = np.ones(len(self.core_dl)) * default
-            factor = len(mask) / self.length
-            insert_index = np.round((src_index.values - self.depth_from) * factor).astype(int)
-            insert_index = np.repeat(insert_index, self.pixels_per_cm)
-            index_increment = np.tile(np.arange(0, self.pixels_per_cm), len(src_index))
-            insert_index = insert_index + index_increment
-            # Tiling can create indices out of mask lower bound, if index of
-            # last value from src is close enough to the last `core_dl` index.
-            out_of_bounds = insert_index < len(mask)
-            insert_index = insert_index[out_of_bounds]
-            src_values = np.repeat(src_values, self.pixels_per_cm)[out_of_bounds]
-            mask[insert_index] = src_values
-        elif mode == 'logs':
-            mask = np.ones(len(self.logs)) * default
-            mask_index = self.logs.index
-            insert_index = np.searchsorted(mask_index, src_index, side='left')
-            filter_index = list((insert_index[1:] - insert_index[:-1]) != 0) + [True]
-            insert_index = insert_index[filter_index]
-            src_values = src_values[filter_index]
-            mask[insert_index] = src_values
-        setattr(self, dst, mask)
+        return index, mask
 
     @process_columns
     def apply(self, df, fn, *args, axis=None, **kwargs):
