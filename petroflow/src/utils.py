@@ -62,18 +62,3 @@ def parse_depth(depth):
     if depth <= 0:
         raise ValueError("Length must be positive")
     return depth
-
-
-def leq_notclose(x1, x2):
-    """Return the truth value of (x1 <= x2) AND (x1 is NOT close to x2) element-wise."""
-    return np.less_equal(x1, x2) & ~np.isclose(x1, x2)
-
-
-def leq_close(x1, x2):
-    """Return the truth value of (x1 <= x2) OR (x1 is close to x2) element-wise."""
-    return np.less_equal(x1, x2) | np.isclose(x1, x2)
-
-
-def geq_close(x1, x2):
-    """Return the truth value of (x1 >= x2) OR (x1 is close to x2) element-wise."""
-    return np.greater_equal(x1, x2) | np.isclose(x1, x2)

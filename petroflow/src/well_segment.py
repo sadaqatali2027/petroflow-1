@@ -26,7 +26,7 @@ from plotly.offline import init_notebook_mode, plot, iplot
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, find_best_shifts, create_zero_shift
 from .joins import cross_join, between_join, fdtd_join
-from .utils import to_list, process_columns, parse_depth, leq_notclose, leq_close, geq_close
+from .utils import to_list, process_columns, parse_depth
 from .exceptions import SkipWellException, DataRegularityError
 
 
