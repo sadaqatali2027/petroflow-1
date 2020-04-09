@@ -28,11 +28,11 @@ class AbstractWellSegment(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def check_regularity(self):
+    def validate_core(self):
         pass
 
     @abstractmethod
-    def check_samples(self):
+    def validate_samples(self):
         pass
 
     @abstractmethod
