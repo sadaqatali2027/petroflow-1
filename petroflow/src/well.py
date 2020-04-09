@@ -2,36 +2,35 @@
 # pylint: disable=abstract-method
 
 import warnings
-from abc import ABCMeta
 from copy import copy, deepcopy
 from functools import wraps
-from collections import Counter
+from collections import defaultdict, Counter
 
 import numpy as np
 import pandas as pd
 
+from .base_delegator import BaseDelegator
 from .abstract_classes import AbstractWell
 from .well_segment import WellSegment
 from .exceptions import SkipWellException
+from .utils import parse_depth
 
 from .utils import to_list
 
 
-class SegmentDelegatingMeta(ABCMeta):
-    """A metaclass to delegate abstract methods from `Well` to its children
-    (instances of `Well` or `WellSegment`)."""
-    def __new__(mcls, name, bases, namespace):
-        abstract_methods = [
-            base.__abstractmethods__ for base in bases if hasattr(base, "__abstractmethods__")
-        ]
-        abstract_methods = frozenset().union(*abstract_methods)
-        for method_name in abstract_methods:
-            if method_name not in namespace:
-                namespace[method_name] = mcls._make_delegator(method_name)
-        return super().__new__(mcls, name, bases, namespace)
+class SegmentDelegatingMeta(BaseDelegator):
+    """A metaclass to delegate calls to absent abstract methods of a `Well` to
+    its children (instances of `Well` or `WellSegment`)"""
+
+    @classmethod
+    def _create_method(mcls, method, namespace):
+        delegate_fn = getattr(mcls, namespace["delegators"][method])
+        namespace[method] = delegate_fn(method)
 
     @staticmethod
-    def _make_delegator(name):
+    def segment_delegator(name):
+        """Delegate the call to each segment of a `Well`. Acts as the default
+        delegator."""
         @wraps(getattr(WellSegment, name))
         def delegator(self, *args, **kwargs):
             results = []
@@ -43,6 +42,31 @@ class SegmentDelegatingMeta(ABCMeta):
             res_well = self.copy()
             res_well.segments = results
             return res_well
+        return delegator
+
+    @staticmethod
+    def aggregating_delegator(name):
+        """If `aggregate` is `False`, delegate the call to each segment of a
+        `Well`. Otherwise, aggregate the `Well` and call the method."""
+        @wraps(getattr(WellSegment, name))
+        def delegator(self, *args, aggregate=True, **kwargs):
+            segments = [self.aggregated_segment] if aggregate else self.iter_level()
+            for segment in segments:
+                getattr(segment, name)(*args, **kwargs)
+            return self
+        return delegator
+
+    @staticmethod
+    def well_delegator(name):
+        """Delegate the call to each segment of a `Well` and create new
+        `Well`s from the corresponding results. Increases the depth of the
+        segment tree."""
+        @wraps(getattr(WellSegment, name))
+        def delegator(self, *args, **kwargs):
+            wells = self.iter_level(-2)
+            for well in wells:
+                well.segments = [type(self)(segments=getattr(segment, name)(*args, **kwargs)) for segment in well]
+            return self.prune()
         return delegator
 
 
@@ -72,7 +96,8 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
     All methods, declared in `AbstractWell` and not overridden in `Well` will
     be created by `SegmentDelegatingMeta` metaclass. These methods will
-    delegate the call to each segment of the well.
+    delegate the call to each segment of the well in various ways, depending
+    on the corresponding value in the `delegators` dictionary.
 
     Parameters
     ----------
@@ -100,17 +125,30 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
     validate : bool, optional
         Specifies whether to check well data for correctness and consistency.
         Slightly reduces processing speed. Defaults to `True`.
-    segments : list of `WellSegment` or `Well` instances or None, optional
+    segments : list of WellSegment or Well instances or None, optional
         Segments to put into `segments` attribute. Usually is used by methods
         which increase the tree depth. If `None`, `path` must be defined.
 
     Attributes
     ----------
-    segments : list of `WellSegment` or `Well` instances or None
+    segments : list of WellSegment or Well instances or None
         A segment tree of the well. All leave nodes are instances of
         `WellSegment` class, representing a contiguous part of a well. All
         other tree nodes are instances of `Well` class.
     """
+
+    # delegator type depending on action name
+    delegators = defaultdict(
+        lambda: "segment_delegator",
+        plot="aggregating_delegator",
+        plot_matching="aggregating_delegator",
+        drop_layers="well_delegator",
+        keep_layers="well_delegator",
+        keep_matched_sequences="well_delegator",
+        create_segments="well_delegator",
+        drop_nans="well_delegator",
+    )
+
     def __init__(self, *args, segments=None, **kwargs):
         super().__init__()
         if segments is None:
@@ -250,7 +288,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Returns
         -------
-        self : AbstractWell or a child class
+        self : AbstractWell
             Self unchanged.
         """
         self.aggregated_segment.dump(path)
@@ -277,7 +315,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         Returns
         -------
         well : AbstractWell
-            A well with filtered logs or depths.
+            The well with filtered logs or depths.
         """
         results = []
         for segment in self:
@@ -459,6 +497,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         return self.prune()
 
     def _check_segment_lengths(self, length):
+        """Check that all segments of `self` are not shorter than `length`."""
         if any(seg.length < length for seg in self.iter_level()):
             err_msg = "A segment, shorter than {} exists. Call drop_short_segments before random_crop.".format(length)
             raise ValueError(err_msg)
@@ -485,7 +524,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Returns
         -------
-        self : AbstractWell or a child class
+        self : AbstractWell
             The well with cropped segments.
         """
         if drop_last:
@@ -513,7 +552,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Returns
         -------
-        self : AbstractWell or a child class
+        self : AbstractWell
             The well with cropped segments.
         """
         self._check_segment_lengths(length)
@@ -533,37 +572,13 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
                 well.segments = []
         return self.prune()
 
-    def drop_nans(self, logs=None):
-        """Split a well into contiguous segments, that do not contain `nan`
-        values in logs, specified in `logs`. The tree depth will be increased.
-
-        Parameters
-        ----------
-        logs : None or int or list of str
-            - If `None`, create segments without `nan` values in all logs.
-            - If `int`, create segments so that each row of logs has at least
-              `logs` not-nan values.
-            - If `list`, create segments without `nan` values in logs with
-              mnemonics in `logs`.
-            Defaults to `None`.
-
-        Returns
-        -------
-        self : AbstractWell
-            The well with dropped `nan` values from segments.
-        """
-        wells = self.iter_level(-2)
-        for well in wells:
-            well.segments = [Well(segments=segment.drop_nans(logs=logs)) for segment in well]
-        return self.prune()
-
     def drop_short_segments(self, min_length):
         """Drop segments at the last level with length smaller than
         `min_length`.
 
         Parameters
         ----------
-        min_length : positive float
+        min_length : positive int
             Minimum length of a segment in centimeters to be kept in the well.
 
         Returns
@@ -571,6 +586,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell
             The well with dropped short segments.
         """
+        min_length = parse_depth(min_length)
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [segment for segment in well if segment.length >= min_length]
@@ -581,22 +597,22 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Parameters
         ----------
-        func : {'mean', 'max'}
+        func : {"mean", "max"}
             Name of an aggregation function.
         attr : str
-            Name of an attribute.
+            Name of an image attribute to aggregate.
 
         Returns
         -------
         numpy.ndarray
-            Assembled array.
+            Aggregated image.
         """
         if getattr(self.iter_level()[0], '_' + attr) is None:
             return None
-        if func not in ['mean', 'max']:
+        if func not in ["mean", "max"]:
             warnings.warn("Only 'mean' and 'max' aggregations are currently supported for image attributes, \
                           but {} was given. It was replaced by 'mean'.".format(func))
-            func = 'mean'
+            func = "mean"
 
         pixels_per_cm = self.iter_level()[0].pixels_per_cm
         agg_array_height_pix = round((self.depth_to - self.depth_from) * pixels_per_cm)
@@ -609,39 +625,37 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
             segment_place = slice(round((segment.depth_from - self.depth_from) * pixels_per_cm),
                                   round((segment.depth_to - self.depth_from) * pixels_per_cm))
 
-            if func == 'max':
+            if func == "max":
                 background[segment_place] = np.fmax(background[segment_place], attr_val)
                 continue
-            if func == 'mean':
+            if func == "mean":
                 background[segment_place] = np.nansum([background[segment_place], attr_val], axis=0)
                 total[segment_place] += 1
 
-        if func == 'max':
+        if func == "max":
             return background
 
         total = np.where(total == 0, 1, total)
         return background / total
 
     def aggregate(self, func="mean", level=0):
-        """Aggregate loaded segments' attributes from `WellSegment.attrs_image`
-        and `WellSegment.attrs_depth_index`. Concatenate loaded segments'
-        attributes from `WellSegment.attrs_fdtd_index`. The result of
-        aggregation and concatenation is a single segment for each subtree
-        starting at level `level`. `depth_from` and `depth_to` for each of
-        these segments will be minimum `depth_from` and maximum `depth_to`
-        along all gathered segments of that subtree.
+        """Aggregate loaded attributes from `WellSegment.attrs_image` and
+        `WellSegment.attrs_depth_index`. Concatenate loaded attributes from
+        `WellSegment.attrs_fdtd_index`. As a result, a single segment is
+        created for each subtree starting at level `level`. `depth_from` and
+        `depth_to` for each of these segments will be minimum `depth_from` and
+        maximum `depth_to` along all gathered segments of that subtree.
 
         Parameters
         ----------
         func : str, callable
             Function to use for aggregating the data.
-            - `str` - short function name (e.g. `'max'`, `'min'`). See
+            - `str` - short function name (e.g. `"max"`, `"min"`). See
               `pd.aggregate` documentation.
             - `callable` - a function which takes a `pd.Series` and returns a
                single element.
-            Only 'mean' and 'max' aggregations are currently supported for
-            attributes from `WellSegment.attrs_image`!
-            Defaults to "mean".
+            Only "mean" and "max" aggregations are currently supported for
+            attributes from `WellSegment.attrs_image`! Defaults to "mean".
         level : int, optional
             The level of the well tree to which aggregation is performed. All
             segments of each subtree on this level will be gathered into one.

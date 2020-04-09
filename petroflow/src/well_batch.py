@@ -2,30 +2,27 @@
 # pylint: disable=abstract-method
 
 import traceback
-from abc import ABCMeta
 from functools import wraps
 from collections import defaultdict
 
 import numpy as np
 
 from ..batchflow import Batch, SkipBatchException, action, inbatch_parallel, any_action_failed
+from ..batchflow.batchflow.batch import MethodsTransformingMeta
 from .well import Well
+from .base_delegator import BaseDelegator
 from .abstract_classes import AbstractWell
 from .exceptions import SkipWellException
 
 
-class WellDelegatingMeta(ABCMeta):
+class WellDelegatingMeta(BaseDelegator, MethodsTransformingMeta):
     """A metaclass to delegate calls to absent abstract methods of a
     `WellBatch` to `Well` objects in `wells` component."""
 
-    def __new__(mcls, name, bases, namespace):
-        abstract_methods = [base.__abstractmethods__ for base in bases if hasattr(base, "__abstractmethods__")]
-        abstract_methods = frozenset().union(*abstract_methods)
-        for method_name in abstract_methods:
-            if method_name not in namespace:
-                target = namespace["targets"][method_name]
-                namespace[method_name] = mcls._make_parallel_action(method_name, target)
-        return super().__new__(mcls, name, bases, namespace)
+    @classmethod
+    def _create_method(mcls, method, namespace):
+        target = namespace["targets"][method]
+        namespace[method] = mcls._make_parallel_action(method, target)
 
     @staticmethod
     def _make_parallel_action(name, target):

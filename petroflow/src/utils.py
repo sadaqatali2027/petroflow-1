@@ -54,16 +54,11 @@ def process_columns(method):
     return wrapper
 
 
-def leq_notclose(x1, x2):
-    """Return the truth value of (x1 <= x2) AND (x1 is NOT close to x2) element-wise."""
-    return np.less_equal(x1, x2) & ~np.isclose(x1, x2)
-
-
-def leq_close(x1, x2):
-    """Return the truth value of (x1 <= x2) OR (x1 is close to x2) element-wise."""
-    return np.less_equal(x1, x2) | np.isclose(x1, x2)
-
-
-def geq_close(x1, x2):
-    """Return the truth value of (x1 >= x2) OR (x1 is close to x2) element-wise."""
-    return np.greater_equal(x1, x2) | np.isclose(x1, x2)
+def parse_depth(depth):
+    """Validate, that `depth` is a positive `int`."""
+    # TODO: parse depth in str format with unit specification (e.g. "1000m")
+    if not isinstance(depth, int):
+        raise ValueError("Length must have int type")
+    if depth <= 0:
+        raise ValueError("Length must be positive")
+    return depth
