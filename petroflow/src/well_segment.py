@@ -236,6 +236,8 @@ class WellSegment(AbstractWellSegment):
     def _validate_meta(self):
         if not (isinstance(self.depth_from, int) and isinstance(self.depth_to, int)):
             raise ValueError("depth_from and depth_to must have int type")
+        if self.depth_from >= self.depth_to:
+            raise ValueError("depth_from must be less than depth_to")
 
     @property
     def length(self):
