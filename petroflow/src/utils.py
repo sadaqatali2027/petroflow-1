@@ -57,7 +57,7 @@ def process_columns(method):
 def parse_depth(depth):
     """Validate, that `depth` is a positive `int`."""
     # TODO: parse depth in str format with unit specification (e.g. "1000m")
-    if not isinstance(depth, int):
+    if not isinstance(depth, (int, np.integer)):
         raise ValueError("Length must have int type")
     if depth <= 0:
         raise ValueError("Length must be positive")
