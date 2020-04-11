@@ -1,8 +1,13 @@
 """Miscellaneous utility functions."""
 
+import re
 import functools
 
+import pint
 import numpy as np
+
+
+UNIT_REGISTRY = pint.UnitRegistry()
 
 
 def to_list(obj):
@@ -54,11 +59,19 @@ def process_columns(method):
     return wrapper
 
 
-def parse_depth(depth):
-    """Validate, that `depth` is a positive `int`."""
-    # TODO: parse depth in str format with unit specification (e.g. "1000m")
+def parse_depth(depth, check_positive=False):
+    """Convert `depth` to centimeters and validate, that it has `int` type.
+    Optionally check, that it is positive."""
+    if isinstance(depth, str):
+        regexp = re.compile(r"(?P<value>[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?)(?P<units>[a-zA-Z]+)")
+        match = regexp.fullmatch(depth)
+        if not match:
+            raise ValueError("Depth/length must be specified in a <value><units> format")
+        depth = float(match.group("value")) * UNIT_REGISTRY(match.group("units")).to("cm").magnitude
+        if depth.is_integer():
+            depth = int(depth)
     if not isinstance(depth, (int, np.integer)):
-        raise ValueError("Length must have int type")
-    if depth <= 0:
-        raise ValueError("Length must be positive")
+        raise ValueError("Depth/length must have int type")
+    if check_positive and depth <= 0:
+        raise ValueError("Depth/length must be positive")
     return depth
