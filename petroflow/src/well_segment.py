@@ -1328,6 +1328,7 @@ class WellSegment(AbstractWellSegment):
         # figsize in order to prevent figure shrinkage in case of small number of subplots
         margin = 120
 
+        # Calculate matching R^2 if core-to-log matching was not performed
         boring_sequences = self.boring_sequences.reset_index()
         if mode is None and "MODE" not in boring_sequences.columns:
             raise ValueError("Core-to-log matching has to be performed beforehand if mode is not specified")
@@ -1342,13 +1343,14 @@ class WellSegment(AbstractWellSegment):
             for _, (depth_from, depth_to, _mode) in boring_sequences[["DEPTH_FROM", "DEPTH_TO", "MODE"]].iterrows():
                 log_mnemonic, core_mnemonic, core_attr, sign = self._parse_matching_mode(_mode)
                 well_log = self.logs[log_mnemonic].dropna()
-                core_log_segment = sign * getattr(self, core_attr)[core_mnemonic].dropna()[depth_from:depth_to]
+                core_log_segment = sign * getattr(self, core_attr)[core_mnemonic].dropna().loc[depth_from:depth_to]
                 r2_list.append(self._calc_matching_r2(well_log, core_log_segment))
             boring_sequences["R2"] = r2_list
         boring_sequences = boring_sequences[["DEPTH_FROM", "DEPTH_TO", "MODE", "R2"]]
         not_none_mask = boring_sequences["MODE"].map(lambda x: x is not None)
         boring_sequences = boring_sequences[not_none_mask]
 
+        # Create a figure and traces for well and core logs
         depth_from_list = boring_sequences["DEPTH_FROM"]
         depth_to_list = boring_sequences["DEPTH_TO"]
         mode_list = boring_sequences["MODE"]
@@ -1360,8 +1362,8 @@ class WellSegment(AbstractWellSegment):
 
         for i, (depth_from, depth_to, _mode) in enumerate(zip(depth_from_list, depth_to_list, mode_list), 1):
             log_mnemonic, core_mnemonic, core_attr, sign = self._parse_matching_mode(_mode)
-            well_log_segment = self.logs[log_mnemonic].dropna()[depth_from - 3 : depth_to + 3]
-            core_log_segment = sign * getattr(self, core_attr)[core_mnemonic].dropna()[depth_from:depth_to]
+            well_log_segment = self.logs[log_mnemonic].dropna().loc[depth_from - 300 : depth_to + 300]
+            core_log_segment = sign * getattr(self, core_attr)[core_mnemonic].dropna().loc[depth_from:depth_to]
 
             if scale and min(len(well_log_segment), len(core_log_segment)) > 1:
                 log_interpolator = interp1d(well_log_segment.index, well_log_segment, kind="linear",
@@ -1371,14 +1373,15 @@ class WellSegment(AbstractWellSegment):
                 reg = LinearRegression().fit(X, y)
                 core_log_segment = pd.Series(reg.predict(X), index=core_log_segment.index)
 
-            well_log_trace = go.Scatter(x=well_log_segment, y=well_log_segment.index, name="Well " + log_mnemonic,
-                                        line=dict(color="rgb(255, 127, 14)"), showlegend=False)
+            well_log_trace = go.Scatter(x=well_log_segment, y=well_log_segment.index / 100, showlegend=False,
+                                        line=dict(color="rgb(255, 127, 14)"))
             drawing_mode = "markers" if core_attr == "core_properties" else None
-            core_log_trace = go.Scatter(x=core_log_segment, y=core_log_segment.index, name="Core " + core_mnemonic,
-                                        line=dict(color="rgb(31, 119, 180)"), mode=drawing_mode, showlegend=False)
+            core_log_trace = go.Scatter(x=core_log_segment, y=core_log_segment.index / 100, showlegend=False,
+                                        line=dict(color="rgb(31, 119, 180)"), mode=drawing_mode)
             fig.append_trace(well_log_trace, 1, i)
             fig.append_trace(core_log_trace, 1, i)
 
+        # Update figure layout
         layout = fig.layout
         fig_layout = go.Layout(title="{} {}".format(self.field.capitalize(), self.name),
                                legend=dict(orientation="h"), width=n_cols*subplot_width + margin,
@@ -1392,6 +1395,7 @@ class WellSegment(AbstractWellSegment):
         for ann in layout["annotations"]:
             ann["font"]["size"] = 14
 
+        # Reverse y-axis on all the subplots
         for ix in range(n_cols):
             axis_ix = str(ix + 1) if ix > 0 else ""
             axis_name = "yaxis" + axis_ix
