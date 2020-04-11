@@ -11,7 +11,6 @@ from copy import copy, deepcopy
 from glob import glob
 from functools import reduce
 from itertools import chain, repeat
-from math import ceil
 
 import numpy as np
 import pandas as pd
@@ -27,7 +26,7 @@ from plotly.offline import init_notebook_mode, plot, iplot
 from .abstract_classes import AbstractWellSegment
 from .matching import select_contigious_intervals, match_boring_sequence, find_best_shifts, create_zero_shift
 from .joins import cross_join, between_join, fdtd_join
-from .utils import to_list, process_columns, leq_notclose, leq_close, geq_close, fill_nans_around, insert_intervals
+from .utils import to_list, process_columns, leq_notclose, leq_close, geq_close, insert_intervals
 from .exceptions import SkipWellException, DataRegularityError
 
 
@@ -1614,8 +1613,8 @@ class WellSegment(AbstractWellSegment):
         crops = [self[start:start+length] for start in crops_starts]
         return crops
 
-    def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask',
-                    period=None, create_index=False, bad_values=[None, np.nan, ' ']):
+    def create_mask(self, src, column, mapping=None, mode='logs', dst='mask',
+                    default=np.nan, bad_values=None, create_index=False, limit=None):
         """Transform a column from some `WellSegment` attribute into a mask
         correponding to a well log or to a core image.
 
@@ -1634,16 +1633,21 @@ class WellSegment(AbstractWellSegment):
             lenght will match the length of well logs. If 'core', mask length
             will match the heigth of `core_dl` in pixels. Defaults to
             `'logs'`.
+        dst : str, optional
+            `WellSegment` attribute to save the mask to. Defaults to `mask`.
         default : float, optional
             Default value for mask if `src` doesn't contain information for
             corresponding depth. Defaults to `numpy.nan`.
-        dst : str, optional
-            `WellSegment` attribute to save the mask to. Defaults to `mask`.
-        period : int, optional
-            Length of nan intervals to fill with the closest not nan value.
-        create_index : bool, optional, defaults to False
-            If True, create index in meters according to `mode` and set it
-            to the attr with `dst` name postfixed with '_index'.
+        bad_values : list of str, optional
+            Values from `src` series to exlude (e.g. [None, np.nan, ' ']).
+        create_index : bool
+            Whether save index in centimeters to the attr with name `dst`
+            postfixed with '_index'. Defaults to False.
+        limit : int, optional
+            If specified, the maximum number of consecutive nan values to fill
+            both backward and forward with the closest value that is not nan.
+            In other words, if there is a gap with more than this number
+            of consecutive nans, it will only be partially filled.
 
         Returns
         -------
@@ -1654,12 +1658,14 @@ class WellSegment(AbstractWellSegment):
             raise ValueError('Unknown mode: ', mode)
 
         src_series = getattr(self, src)[column]
-        src_series = src_series[~src_series.isin(bad_values)]
+
+        if not src_series.index.is_monotonic:
+            src_series.sort_index(level=0, inplace=True)
+        if bad_values is not None:
+            src_series = src_series[~src_series.isin(bad_values)]
+
         src_index = src_series.index
         src_values = src_series.values
-
-        if not src_index.is_monotonic:
-            series.sort_index(level=0, inplace=True)
 
         if mapping is not None:
             uniques, indices = np.unique(src_series, return_inverse=True)
@@ -1672,20 +1678,21 @@ class WellSegment(AbstractWellSegment):
         elif src in self.attrs_depth_index:
             index, mask = self._create_mask_depth(src_index, src_values, mode, default, dst, create_index)
         else:
-            ValueError('Unknown src: ', src)
+            ValueError('Unknown src type: ', src)
 
-        if create_index:
+        if create_index is not None:
             setattr(self, dst + '_index', index)
 
-        if period is not None:
-            period = int(np.floor(period * (len(mask) / self.length)))
-            mask = fill_nans_around(mask, period)
+        if limit is not None:
+            limit *= self.logs_step if mode == 'logs' else self.pixels_per_cm
+            mask = pd.Series(mask).fillna(method='ffill', limit=limit).fillna(method='bfill', limit=limit).values
 
         setattr(self, dst, mask)
 
         return self
 
     def _create_mask_template(self, mode, default, dst, create_index):
+        """Create index in centimeters and mask filled with default values"""
         if mode == 'core':
             index = np.linspace(self.depth_from, self.depth_to, len(self.core_dl))
             length = len(self.core_dl)
