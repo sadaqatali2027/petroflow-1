@@ -648,6 +648,33 @@ class WellSegment(AbstractWellSegment):
         encoded_img = "data:image/png;base64," + encoded_img
         return encoded_img
 
+    def _plot_core(self, subplot_titles, traces, images, plot_core, image_dir, title):
+        """Create a trace with core images if `plot_core` is `True` and
+        `image_dir` exists in a well dir and return the index of the created
+        subplot.
+
+        Note, that the method has side effects: it updates `subplot_titles`,
+        `traces` and `images` lists inplace.
+        """
+        plot_core = plot_core and os.path.isdir(os.path.join(self.path, image_dir))
+        if not plot_core:
+            return None
+        col = len(traces) + 1
+        subplot_titles += [title]
+        traces.append(go.Scatter(x=[0, 1], y=[self.depth_from / 100, self.depth_to / 100], opacity=0))
+        samples = self.samples.reset_index()[["DEPTH_FROM", "DEPTH_TO", "SAMPLE"]]
+        for _, (depth_from, depth_to, sample_name) in samples.iterrows():
+            depth_from /= 100
+            depth_to /= 100
+            sample_name = str(sample_name)
+
+            sample_path = self._get_full_name(os.path.join(self.path, image_dir), sample_name)
+            sample_image = self._encode(sample_path)
+            sample_image = go.layout.Image(source=sample_image, xref="x"+str(col), yref="y", x=0, y=depth_from,
+                                           sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
+            images.append(sample_image)
+        return col
+
     def plot(self, plot_core=True, interactive=True, subplot_height=700, subplot_width=200):
         """Plot well logs and core images.
 
@@ -684,56 +711,37 @@ class WellSegment(AbstractWellSegment):
         # figsize in order to prevent figure shrinkage in case of small number of subplots
         margin = 120
 
-        n_cols = len(self.logs.columns)
+        # Create traces for well logs
+        index = self.logs.index / 100
         subplot_titles = list(self.logs.columns)
-        if plot_core and self.has_samples:
-            n_cols += 2
-            subplot_titles += ["CORE DL", "CORE UV"]
-            dl_col = n_cols - 1
-            uv_col = n_cols
+        traces = [go.Scatter(x=self.logs[mnemonic], y=index, mode="lines") for mnemonic in subplot_titles]
 
-        fig = make_subplots(rows=1, cols=n_cols, subplot_titles=subplot_titles, shared_yaxes=True)
-        for i, mnemonic in enumerate(self.logs.columns, 1):
-            trace = go.Scatter(x=self.logs[mnemonic], y=self.logs.index, mode="lines", name=mnemonic)
+        # Create DL and UV traces
+        images = []
+        dl_col = self._plot_core(subplot_titles, traces, images, plot_core, "samples_dl", "CORE DL")
+        uv_col = self._plot_core(subplot_titles, traces, images, plot_core, "samples_uv", "CORE UV")
+
+        # Create a figure
+        fig = make_subplots(rows=1, cols=len(traces), shared_yaxes=True, subplot_titles=subplot_titles)
+        for i, trace in enumerate(traces, 1):
             fig.append_trace(trace, 1, i)
 
-        images = []
-        if plot_core and self.has_samples:
-            trace = go.Scatter(x=[0, 1], y=[self.depth_from, self.depth_to], opacity=0, name="CORE DL")
-            fig.append_trace(trace, 1, dl_col)
-            trace = go.Scatter(x=[0, 1], y=[self.depth_from, self.depth_to], opacity=0, name="CORE UV")
-            fig.append_trace(trace, 1, uv_col)
-
-            samples = self.samples.reset_index()[["DEPTH_FROM", "DEPTH_TO", "SAMPLE"]]
-            for _, (depth_from, depth_to, sample_name) in samples.iterrows():
-                sample_name = str(sample_name)
-
-                dl_path = self._get_full_name(os.path.join(self.path, "samples_dl"), sample_name)
-                sample_dl = self._encode(dl_path)
-                sample_dl = go.layout.Image(source=sample_dl, xref="x"+str(dl_col), yref="y", x=0, y=depth_from,
-                                            sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
-                images.append(sample_dl)
-
-                uv_path = self._get_full_name(os.path.join(self.path, "samples_uv"), sample_name)
-                sample_uv = self._encode(uv_path)
-                sample_uv = go.layout.Image(source=sample_uv, xref="x"+str(uv_col), yref="y", x=0, y=depth_from,
-                                            sizex=1, sizey=depth_to-depth_from, sizing="stretch", layer="below")
-                images.append(sample_uv)
-
+        # Update figure layout
         layout = fig.layout
         fig_layout = go.Layout(title="{} {}".format(self.field.capitalize(), self.name), showlegend=False,
-                               width=n_cols*subplot_width + margin, height=subplot_height,
-                               yaxis=dict(range=[self.depth_to, self.depth_from]), images=images)
+                               width=len(traces)*subplot_width + margin, height=subplot_height,
+                               yaxis=dict(range=[self.depth_to / 100, self.depth_from / 100]), images=images)
         layout.update(fig_layout)
 
         for key in layout:
             if key.startswith("xaxis"):
                 layout[key]["fixedrange"] = True
 
-        if plot_core and self.has_samples:
+        if dl_col is not None:
             layout["xaxis" + str(dl_col)]["showticklabels"] = False
             layout["xaxis" + str(dl_col)]["showgrid"] = False
 
+        if uv_col is not None:
             layout["xaxis" + str(uv_col)]["showticklabels"] = False
             layout["xaxis" + str(uv_col)]["showgrid"] = False
 
