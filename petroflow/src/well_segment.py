@@ -121,10 +121,12 @@ class WellSegment(AbstractWellSegment):
         Well name, loaded from `meta.json`.
     field : str
         Field name, loaded from `meta.json`.
-    depth_from : int
+    depth_from : int or str
         Minimum depth entry in the well logs in cm, loaded from `meta.json`.
-    depth_to : int
+        If `str`, must be specified in a <value><units> format (e.g. "10m").
+    depth_to : int or str
         Maximum depth entry in the well logs in cm, loaded from `meta.json`.
+        If `str`, must be specified in a <value><units> format (e.g. "10m").
     actual_depth_to : int
         Actual maximum segment depth in cm. It is defined if the segment has
         been padded by the `crop` method and is then used in `Well.aggregate`
@@ -203,12 +205,11 @@ class WellSegment(AbstractWellSegment):
             meta = json.load(meta_file)
         self.name = meta["name"]
         self.field = meta["field"]
-        self.depth_from = meta["depth_from"]
-        self.depth_to = meta["depth_to"]
+        self.depth_from = parse_depth(meta["depth_from"], var_name="depth_from")
+        self.depth_to = parse_depth(meta["depth_to"], var_name="depth_to")
         self.actual_depth_to = None
-
-        if self.validate:
-            self._validate_meta()
+        if self.depth_from >= self.depth_to:
+            raise ValueError("depth_from must be less than depth_to")
 
         self.has_samples = self._has_file("samples")
 
@@ -226,18 +227,11 @@ class WellSegment(AbstractWellSegment):
         self._core_uv = None
         self._boring_intervals_deltas = None
         self._core_lithology_deltas = None
-        self._tolerance = 1e-3  # A tolerance to compare float-valued depths for equality.
 
         # In order to unify aggregate behavior in case of loaded and calculated `boring_sequences`,
         # they should be computed explicitly during the creation of a segment.
         if self._has_file("boring_intervals") and not self._has_file("boring_sequences"):
             _ = self.boring_sequences
-
-    def _validate_meta(self):
-        if not (isinstance(self.depth_from, int) and isinstance(self.depth_to, int)):
-            raise ValueError("depth_from and depth_to must have int type")
-        if self.depth_from >= self.depth_to:
-            raise ValueError("depth_from must be less than depth_to")
 
     @property
     def length(self):
@@ -781,10 +775,10 @@ class WellSegment(AbstractWellSegment):
             raise ValueError("A well does not support slicing with a specified step")
 
         if key.start is not None:
-            res.depth_from = max(parse_depth(key.start), res.depth_from)
+            res.depth_from = max(parse_depth(key.start, var_name="depth_from"), res.depth_from)
 
         if key.stop is not None:
-            res.depth_to = min(parse_depth(key.stop), res.depth_to)
+            res.depth_to = min(parse_depth(key.stop, var_name="depth_to"), res.depth_to)
 
         if res.depth_from > res.depth_to:
             raise SkipWellException("Slicing interval is out of segment bounds")
@@ -1097,17 +1091,17 @@ class WellSegment(AbstractWellSegment):
         string in a `modes` list."""
         return [cls._unify_matching_mode(mode) for mode in to_list(modes)]
 
-    def _blur_log(self, log, win_size):
+    @staticmethod
+    def _blur_log(log, win_size):
         """Blur a log with a Gaussian filter of size `win_size`."""
         if win_size is None:
             return log
         old_index = log.index
-        new_index = np.arange(old_index.min(), old_index.max(), 0.01)
-        log = log.reindex(index=new_index, method="nearest", tolerance=self._tolerance)
-        log = log.interpolate(limit_direction="both")
+        new_index = np.arange(old_index.min(), old_index.max() + 1)
+        log = log.reindex(index=new_index).interpolate(method="index", limit_direction="both")
         std = win_size / 6  # three-sigma rule
         log = log.rolling(window=win_size, min_periods=1, win_type="gaussian", center=True).mean(std=std)
-        log = log.reindex(index=old_index, method="nearest")
+        log = log.loc[old_index]
         return log
 
     def match_core_logs(self, mode="GK ~ core_logs.GK", split_lithology_intervals=True, gaussian_win_size=None,
@@ -1626,8 +1620,9 @@ class WellSegment(AbstractWellSegment):
 
         Parameters
         ----------
-        length : positive float
-            Length of each crop in centimeters.
+        length : positive int or str
+            Length of each crop in centimeters. If `str`, must be specified in
+            a <value><units> format (e.g. "10m").
         n_crops : positive int, optional
             The number of crops from the segment. Defaults to 1.
 
@@ -1636,6 +1631,7 @@ class WellSegment(AbstractWellSegment):
         segments : list of WellSegment
             Cropped segments.
         """
+        length = parse_depth(length, check_positive=True, var_name="length")
         bounds = self.depth_from, max(self.depth_from, self.depth_to - length)
         crops_starts = np.floor(np.sort(np.random.uniform(*bounds, size=n_crops))).astype(int).tolist()
         crops = [self[start:start+length] for start in crops_starts]
@@ -1647,10 +1643,12 @@ class WellSegment(AbstractWellSegment):
 
         Parameters
         ----------
-        length : positive float
-            Length of each crop in centimeters.
-        step : positive float
-            Step of cropping in centimeters.
+        length : positive int or str
+            Length of each crop in centimeters. If `str`, must be specified in
+            a <value><units> format (e.g. "10m").
+        step : positive int or str
+            Step of cropping in centimeters.  If `str`, must be specified in a
+            <value><units> format (e.g. "10m").
         drop_last : bool, optional
             If `True`, only crops that lie within the segment will be kept.
             If `False`, the first crop which comes out of segment bounds will
@@ -1665,8 +1663,8 @@ class WellSegment(AbstractWellSegment):
         segments : list of WellSegment
             Cropped segments.
         """
-        length = parse_depth(length)
-        step = parse_depth(step)
+        length = parse_depth(length, check_positive=True, var_name="length")
+        step = parse_depth(step, check_positive=True, var_name="step")
         n_crops, mod = divmod(self.length - length, step)
         n_crops += 1  # The number of crops strictly within the segment
         if not drop_last and mod and self._has_file("logs"):  # Pad logs by length
@@ -1814,9 +1812,10 @@ class WellSegment(AbstractWellSegment):
 
         Parameters
         ----------
-        step : positive int
+        step : positive int or str
             Distance between any two adjacent values in the new index in
-            centimeters.
+            centimeters.  If `str`, must be specified in a <value><units>
+            format (e.g. "10m").
         interpolate : bool, optional
             Specifies whether to interpolate attributes after reindexation.
             Defaults to `False`.
@@ -1828,7 +1827,7 @@ class WellSegment(AbstractWellSegment):
         self : type(self)
             Self with reindexed `attrs`.
         """
-        step = parse_depth(step)
+        step = parse_depth(step, check_positive=True, var_name="step")
         new_index = np.arange(self.depth_from, self.depth_to, step)
         for attr in self._filter_depth_attrs(attrs):
             attr_val = getattr(self, attr)
@@ -2051,8 +2050,9 @@ class WellSegment(AbstractWellSegment):
 
         Parameters
         ----------
-        max_period : positive int
-            Maximum possible shift in centimeters.
+        max_period : positive int or str
+            Maximum possible shift in centimeters. If `str`, must be specified
+            in a <value><units> format (e.g. "10m").
         mnemonics : None or str or list of str
             - If `None`, shift all logs columns.
             - If `str`, shift single column from logs with `mnemonics` name.
@@ -2064,7 +2064,7 @@ class WellSegment(AbstractWellSegment):
         self : type(self)
             Self with shifted logs columns.
         """
-        max_period = parse_depth(max_period)
+        max_period = parse_depth(max_period, check_positive=True, var_name="max_period")
         mnemonics = self.logs.columns if mnemonics is None else to_list(mnemonics)
         max_period = int(max_period / self.logs_step)
         periods = np.random.randint(-max_period, max_period + 1, len(mnemonics))

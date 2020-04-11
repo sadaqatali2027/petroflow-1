@@ -59,19 +59,36 @@ def process_columns(method):
     return wrapper
 
 
-def parse_depth(depth, check_positive=False):
+def parse_depth(depth, check_positive=False, var_name="Depth/length"):
     """Convert `depth` to centimeters and validate, that it has `int` type.
-    Optionally check, that it is positive."""
+    Optionally check that it is positive.
+
+    Parameters
+    ----------
+    depth : int or str
+        Depth value to parse.
+    check_positive : bool, optional
+        Specifies, whether to check that depth is positive. Defaults to
+        `False`.
+    var_name : str, optional
+        Variable name to check, used to create meaningful exception messages.
+        Defaults to "Depth/length".
+
+    Returns
+    -------
+    depth : int
+        Depth value converted to centimeters.
+    """
     if isinstance(depth, str):
         regexp = re.compile(r"(?P<value>[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?)(?P<units>[a-zA-Z]+)")
         match = regexp.fullmatch(depth)
         if not match:
-            raise ValueError("Depth/length must be specified in a <value><units> format")
+            raise ValueError("{} must be specified in a <value><units> format".format(var_name))
         depth = float(match.group("value")) * UNIT_REGISTRY(match.group("units")).to("cm").magnitude
         if depth.is_integer():
             depth = int(depth)
     if not isinstance(depth, (int, np.integer)):
-        raise ValueError("Depth/length must have int type")
+        raise ValueError("{} must have int type".format(var_name))
     if check_positive and depth <= 0:
-        raise ValueError("Depth/length must be positive")
+        raise ValueError("{} must be positive".format(var_name))
     return depth
