@@ -76,7 +76,7 @@ class WellBatch(Batch, AbstractWell, metaclass=WellDelegatingMeta):
     def _filter_assemble(self, results, *args, **kwargs):
         skip_mask = np.array([isinstance(res, SkipWellException) for res in results])
         if sum(skip_mask) == len(self):
-            raise SkipBatchException
+            raise SkipBatchException(str(results[0]))
         results = np.array(results)[~skip_mask]  # pylint: disable=invalid-unary-operand-type
         if any_action_failed(results):
             errors = self.get_errors(results)
