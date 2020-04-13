@@ -88,7 +88,11 @@ class WellSegment(AbstractWellSegment):
     `core_dl` and `core_uv` attributes are loaded either by accessing them for
     the first time, or by calling `load_core` method.
 
-    # TODO: add info about depth units
+    Depth and length values in all the attributes are assumed to be stored in
+    centimeters for all formats, except for `.las`, where depths units are
+    assumed to be meters and are converted to centimeters by the `load_las`
+    method. Log units are not parsed from a `.las` file header since they are
+    optional and their format is not strictly fixed.
 
     Parameters
     ----------
@@ -295,8 +299,11 @@ class WellSegment(AbstractWellSegment):
     @staticmethod
     def _load_las(path, *args, **kwargs):
         """Load a `.las` file into a `DataFrame`."""
-        # TODO: add m -> cm cast
-        return lasio.read(path, *args, **kwargs).df().reset_index()
+        df = lasio.read(path, *args, **kwargs).df().reset_index().rename(columns={"DEPT": "DEPTH"})
+        # DEPTH values in a .las file are assumed to be in meters and converted to centimeters in the next line. Units
+        # are not parsed from .las file header since they are optional and their format is not strictly fixed.
+        df["DEPTH"] = np.round(df["DEPTH"] * 100).astype(int)
+        return df
 
     @staticmethod
     def _load_csv(path, *args, **kwargs):
