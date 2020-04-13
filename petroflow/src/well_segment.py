@@ -1678,7 +1678,7 @@ class WellSegment(AbstractWellSegment):
             pad_df = pd.DataFrame(data, index=index, columns=logs.columns)
             self._logs = pd.concat([logs, pad_df])
         crops_starts = self.depth_from + np.arange(n_crops) * step
-        crops = [self[start:start+length] for start in crops_starts]
+        crops = [self[int(start):int(start)+length] for start in crops_starts]
         return crops
 
     def create_mask(self, src, column, mapping=None, mode='logs', default=np.nan, dst='mask'):
