@@ -13,6 +13,7 @@ from .base_delegator import BaseDelegator
 from .abstract_classes import AbstractWell
 from .well_segment import WellSegment
 from .exceptions import SkipWellException
+from .utils import parse_depth
 
 
 class SegmentDelegatingMeta(BaseDelegator):
@@ -339,10 +340,12 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Parameters
         ----------
-        length : positive float
-            Length of each crop in centimeters.
-        step : positive float
-            Step of cropping in centimeters.
+        length : positive int or str
+            Length of each crop in centimeters. If `str`, must be specified in
+            a <value><units> format (e.g. "10m").
+        step : positive int or str
+            Step of cropping in centimeters. If `str`, must be specified in a
+            <value><units> format (e.g. "10m").
         drop_last : bool, optional
             If `True`, only crops that lie within well segments will be kept.
             If `False`, the first crop which comes out of segment bounds will
@@ -357,6 +360,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell
             The well with cropped segments.
         """
+        length = parse_depth(length, check_positive=True, var_name="length")
         if drop_last:
             self._check_segment_lengths(length)
         wells = self.iter_level(-2)
@@ -375,8 +379,9 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Parameters
         ----------
-        length : positive float
-            Length of each crop in centimeters.
+        length : positive int or str
+            Length of each crop in centimeters. If `str`, must be specified in
+            a <value><units> format (e.g. "10m").
         n_crops : positive int, optional
             The number of crops from the well. Defaults to 1.
 
@@ -385,6 +390,7 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
         self : AbstractWell
             The well with cropped segments.
         """
+        length = parse_depth(length, check_positive=True, var_name="length")
         self._check_segment_lengths(length)
         wells = self.iter_level(-2)
         p = np.array([sum([segment.length for segment in item]) for item in wells])
@@ -408,15 +414,17 @@ class Well(AbstractWell, metaclass=SegmentDelegatingMeta):
 
         Parameters
         ----------
-        min_length : positive int
+        min_length : positive int or str
             Minimum length of a segment in centimeters to be kept in the well.
+             If `str`, must be specified in a <value><units> format
+             (e.g. "10m").
 
         Returns
         -------
         self : AbstractWell
             The well with dropped short segments.
         """
-        # TODO: parse min_length, must be int
+        min_length = parse_depth(min_length, check_positive=True, var_name="min_length")
         wells = self.iter_level(-2)
         for well in wells:
             well.segments = [segment for segment in well if segment.length >= min_length]

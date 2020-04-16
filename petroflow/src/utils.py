@@ -1,10 +1,15 @@
 """Miscellaneous utility functions."""
 
+import re
 import functools
 
+import pint
 import numpy as np
 
 from numba import njit
+
+UNIT_REGISTRY = pint.UnitRegistry()
+
 
 def to_list(obj):
     """Cast an object to a list. Almost identical to `list(obj)` for 1-D
@@ -55,35 +60,40 @@ def process_columns(method):
     return wrapper
 
 
-def leq_notclose(x1, x2):
-    """Return element-wise truth value of
-    (x1 <= x2) AND (x1 is NOT close to x2).
+def parse_depth(depth, check_positive=False, var_name="Depth/length"):
+    """Convert `depth` to centimeters and validate, that it has `int` type.
+    Optionally check that it is positive.
+
+    Parameters
+    ----------
+    depth : int or str
+        Depth value to parse.
+    check_positive : bool, optional
+        Specifies, whether to check that depth is positive. Defaults to
+        `False`.
+    var_name : str, optional
+        Variable name to check, used to create meaningful exception messages.
+        Defaults to "Depth/length".
+
+    Returns
+    -------
+    depth : int
+        Depth value converted to centimeters.
     """
-    return np.less_equal(x1, x2) & ~np.isclose(x1, x2)
+    if isinstance(depth, str):
+        regexp = re.compile(r"(?P<value>[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?)(?P<units>[a-zA-Z]+)")
+        match = regexp.fullmatch(depth)
+        if not match:
+            raise ValueError("{} must be specified in a <value><units> format".format(var_name))
+        depth = float(match.group("value")) * UNIT_REGISTRY(match.group("units")).to("cm").magnitude
+        if depth.is_integer():
+            depth = int(depth)
+    if not isinstance(depth, (int, np.integer)):
+        raise ValueError("{} must have int type".format(var_name))
+    if check_positive and depth <= 0:
+        raise ValueError("{} must be positive".format(var_name))
+    return depth
 
-
-def leq_close(x1, x2):
-    """Return element-wise truth value of
-    (x1 <= x2) OR (x1 is close to x2).
-    """
-    return np.less_equal(x1, x2) | np.isclose(x1, x2)
-
-
-def geq_close(x1, x2):
-    """Return element-wise truth value of
-    (x1 >= x2) OR (x1 is close to x2).
-    """
-    return np.greater_equal(x1, x2) | np.isclose(x1, x2)
-
-def get_path(batch, index, src):
-    """Get path corresponding to index."""
-    if src is not None:
-        path = src[index]
-    elif isinstance(batch.index, FilesIndex):
-        path = batch.index.get_fullpath(index)
-    else:
-        raise ValueError("Source path is not specified")
-    return path
 
 @njit
 def insert_intervals(arr, starts, ends, values):
